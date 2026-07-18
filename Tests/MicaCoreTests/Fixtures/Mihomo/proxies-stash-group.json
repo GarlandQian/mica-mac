@@ -1,0 +1,19 @@
+{
+  "proxies": {
+    "Proxy": {
+      "type": "Selector",
+      "now": "Node A",
+      "all": ["Node A", "Node B", "Node C"]
+    },
+    "Node A": {
+      "type": "Shadowsocks"
+    },
+    "Node B": {
+      "type": "Shadowsocks",
+      "provider-name": "airport"
+    },
+    "Node C": {
+      "type": "Shadowsocks"
+    }
+  }
+}

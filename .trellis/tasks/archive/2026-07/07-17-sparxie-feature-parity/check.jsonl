@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Verify response decoding, source order, optional fields, malformed boundaries, and complete active UI data."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Verify generation rejection, cancellation, pause behavior, stale retention, lane coalescing, and profile transactions."}
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Audit the approved navigation, table/inspector interactions, empty states, accessibility, preferences, and Liquid Glass scope."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Detect duplicate transports, capability logic, task owners, and presentation projections introduced during the rebuild."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check end-to-end field/action flow from fixture response through SwiftUI and back to protocol requests."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/official-protocol-findings.md","reason":"Compare implementation and tests against official Mihomo and Surge contracts."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sparxie-backend-api-inventory.md","reason":"Check capability coverage for Mihomo, Surge, CMFA, Stash, sing-box, and Tailscale."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sparxie-ui-feature-inventory.md","reason":"Check user-visible parity, filters, sorting, pause semantics, error states, and actions."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sing-box-native-swift-transport.md","reason":"Check native Swift gRPC dependency, generated protocol boundary, stream cancellation, and fixture coverage."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sparxie-license-boundary.md","reason":"Ensure no GPLv3 source reuse enters the MIT Mica repository."}

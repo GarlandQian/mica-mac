@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Preserve controller source order, full-visible business data, and upstream decode truth."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Apply controller ID + generation isolation, lane ownership, pause, stale retention, and profile transaction rules."}
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Keep the approved native macOS workbench navigation, policy selectors, data visibility, empty states, and Liquid Glass boundaries."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace protocol fields and actions through transport, domain, session, presentation, and SwiftUI without hidden gaps."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/official-protocol-findings.md","reason":"Use verified Mihomo and Surge method, response-shape, stream, and unit contracts."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sparxie-backend-api-inventory.md","reason":"Reference Sparxie backend capabilities, runtime variants, streams, polling, actions, and error behavior without copying source."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sparxie-ui-feature-inventory.md","reason":"Reference complete user-visible workflows, filtering, sorting, state, and backend-specific feature reachability."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sing-box-native-swift-transport.md","reason":"Implement sing-box StartedService and Tailscale natively with Swift gRPC under the approved architecture."}
+{"file":".trellis/tasks/07-17-sparxie-feature-parity/research/sparxie-license-boundary.md","reason":"Prevent GPLv3 Sparxie source from being copied or linked into the MIT native Swift implementation."}

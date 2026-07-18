@@ -1,0 +1,29 @@
+import SwiftUI
+
+extension EnvironmentValues {
+    @Entry var micaAppLanguage: AppLanguage = .system
+    @Entry var micaAppAppearance: AppAppearance = .system
+    @Entry var micaAppFontScale: AppFontScale = .comfortable
+}
+
+extension View {
+    func micaAppPreferences(
+        language: AppLanguage,
+        appearance: AppAppearance,
+        fontScale: AppFontScale
+    ) -> some View {
+        environment(\.micaAppLanguage, language)
+            .environment(\.micaAppAppearance, appearance)
+            .environment(\.micaAppFontScale, fontScale)
+            .environment(\.locale, language.resolvedLocale)
+            .environment(\.micaFontMultiplier, fontScale.multiplier)
+            .dynamicTypeSize(fontScale.dynamicTypeSize)
+            .controlSize(fontScale.controlSize)
+            .preferredColorScheme(appearance.colorScheme)
+            .tint(MicaStyle.accent)
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var micaFontMultiplier: CGFloat = AppFontScale.comfortable.multiplier
+}
