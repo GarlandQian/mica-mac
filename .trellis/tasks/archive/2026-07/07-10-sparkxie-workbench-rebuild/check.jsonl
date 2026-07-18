@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Review SwiftUI quality, accessibility, localization, layout stability, and no-mock constraints."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Review controller contracts, unsupported data boundaries, and test coverage."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review end-to-end data flow from controller responses through visible tabs and exports."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Review removed abstractions, replacement primitives, and duplicated logic across tabs."}

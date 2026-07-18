@@ -1,0 +1,41 @@
+# Changelog
+
+## 0.29.0 - 2026-07-10
+
+### Rebuilt
+
+- Replaced the old four-workspace Dashboard, Control Bay, Command Bar, and Command Palette with a single native SparkXie-aligned Workbench.
+- Added dedicated Overview, Policy Groups, Connections, Rules, Sources, Logs, Core Config, Core Actions, Diagnostics, and Settings destinations.
+- Moved controller profile editing into the main-window detail region.
+- Rebuilt settings so language, appearance, and font scale apply immediately to the main window and Settings scene.
+
+### Data
+
+- Preserved raw Mihomo `/proxies` JSON object-key order instead of sorting policy groups by name or `GLOBAL` membership.
+- Added regression coverage for controller order, escaped quotes, and surrogate-pair Unicode policy names.
+- Exposed full reported connection IDs, hosts, process/path, source/destination, rules, payloads, chains, and metadata in the active UI.
+- Rebuilt rules as payload-first rows and sources as proxy-source/rule-set rows using real provider fields.
+- Kept unavailable fields explicit and removed fabricated presentation labels and mock data paths.
+
+### Interface
+
+- Applied the Rose Pine Dawn/Main palette to light and dark appearances.
+- Reserved Liquid Glass/material for navigation and action chrome; data content uses restrained fills and separators.
+- Added inline expandable policy-group blocks with node selection, delay testing, loading, and fixed-selection boundaries.
+- Made controller names and endpoints fully visible and font-scale-aware in the sidebar.
+- Removed the persistent startup profile-load banner.
+- Removed obsolete command-palette, Control Bay, Routing/Traffic workspace, and command-home localization keys.
+
+### Controller Operations
+
+- Kept Mica as a remote controller only: no bundled or launched local core and no system proxy/firewall/OpenWrt changes.
+- Added capability-gated Mihomo remote config, provider, connection, cache, restart, and upgrade paths.
+- Added Surge HTTP API support through `X-Key` with backend-specific policy, request, DNS, and near-live boundaries.
+- Kept Tailscale hidden until a backend reports real support.
+
+### Verification
+
+- Added a source contract covering the replacement architecture, data visibility, ordering, localization, visual tokens, and forbidden legacy surfaces.
+- Added a network-free runtime smoke probe covering English/Chinese, system/light/dark, four font scales, menus, help, accessibility, and every visible destination.
+- Swift build passes and 18 unit tests pass.
+- Visual smoke passed for Chinese/dark/extra-large and English/light/standard configurations.

@@ -1,0 +1,9 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit data flow, persistence, source verification, runtime smoke, and UI behavior across layers."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Detect duplicated or compatibility-only UI abstractions after the replacement."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Apply the project frontend quality gate to every rebuilt area."}
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Check the migrated workbench interaction, visibility, ordering, localization, and accessibility contract."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify controller-facing behavior and test coverage remain correct while presentation state changes."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Check ordering, availability, and full controller field preservation."}
+{"file":".trellis/tasks/07-10-macos27-liquid-glass-ui-rebuild/research/current-ui-audit.md","reason":"Confirm every identified custom-chrome and truncation problem was actually removed."}
+{"file":".trellis/tasks/07-10-macos27-liquid-glass-ui-rebuild/research/controller-contract-audit.md","reason":"Check preserved controller operations, states, data visibility, verifier migration, and test risks."}
+{"file":".trellis/tasks/07-10-macos27-liquid-glass-ui-rebuild/research/apple-liquid-glass.md","reason":"Review native Liquid Glass placement, toolbar behavior, concentric shapes, and reduced-transparency handling."}

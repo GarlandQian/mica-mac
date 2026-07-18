@@ -1,0 +1,9 @@
+{"file":".trellis/spec/guides/index.md","reason":"Load shared project reasoning and reuse guidance before changing cross-cutting UI architecture."}
+{"file":".trellis/spec/frontend/index.md","reason":"Discover the authoritative frontend specifications for the SwiftUI workbench."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Follow project component composition and deletion/reuse conventions during the full UI replacement."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Preserve preference, navigation, selection, and presentation-state ownership across the new shell."}
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Preserve existing data/interaction invariants and deliberately migrate superseded visual rules."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Keep controller order, availability semantics, and full-visible business data intact."}
+{"file":".trellis/tasks/07-10-macos27-liquid-glass-ui-rebuild/research/current-ui-audit.md","reason":"Use the audited replacement boundaries and remove the old custom panel/control system."}
+{"file":".trellis/tasks/07-10-macos27-liquid-glass-ui-rebuild/research/controller-contract-audit.md","reason":"Preserve real controller behavior, fix truncation, and migrate brittle verifier/runtime-smoke assumptions."}
+{"file":".trellis/tasks/07-10-macos27-liquid-glass-ui-rebuild/research/apple-liquid-glass.md","reason":"Apply current Apple macOS 27 Liquid Glass, toolbar, concentricity, and accessibility guidance."}

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "The rebuild spans controller adapters, state projection, SwiftUI surfaces, localization, and verification."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "The full rewrite must replace shared concepts coherently without duplicating presentation and filtering logic."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Primary context for rebuilding SwiftUI workbench surfaces and reusable controls."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Primary context for root preference propagation, stable ordering, selection, and snapshot state."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Controller capability and unavailable/error states must remain truthful across adapters."}

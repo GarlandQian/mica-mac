@@ -1,0 +1,16 @@
+{
+  "checks": [
+    {"type": "contrast", "name": "accent-light-on-white",  "fg": "#7D6A93", "bg": "#FFFFFF"},
+    {"type": "contrast", "name": "mint-light-on-white",    "fg": "#286983", "bg": "#FFFFFF"},
+    {"type": "contrast", "name": "cyan-light-on-white",    "fg": "#467982", "bg": "#FFFFFF"},
+    {"type": "contrast", "name": "amber-light-on-white",   "fg": "#996722", "bg": "#FFFFFF"},
+    {"type": "contrast", "name": "red-light-on-white",     "fg": "#A65B70", "bg": "#FFFFFF"},
+    {"type": "contrast", "name": "violet-light-on-white",  "fg": "#7D6A93", "bg": "#FFFFFF"},
+    {"type": "contrast", "name": "accent-dark-on-card",    "fg": "#C4A7E7", "bg": "#2A2A2A"},
+    {"type": "contrast", "name": "mint-dark-on-card",      "fg": "#43A0C5", "bg": "#2A2A2A"},
+    {"type": "contrast", "name": "cyan-dark-on-card",      "fg": "#9CCFD8", "bg": "#2A2A2A"},
+    {"type": "contrast", "name": "amber-dark-on-card",     "fg": "#F6C177", "bg": "#2A2A2A"},
+    {"type": "contrast", "name": "red-dark-on-card",       "fg": "#EB6F92", "bg": "#2A2A2A"},
+    {"type": "contrast", "name": "violet-dark-on-card",    "fg": "#C4A7E7", "bg": "#2A2A2A"}
+  ]
+}
