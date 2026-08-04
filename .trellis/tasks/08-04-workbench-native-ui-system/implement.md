@@ -50,21 +50,21 @@
 
 ### Logs
 
-- [ ] 保持 `BoundedLogBuffer.maximumEntryCount == 2_000` 和 `maximumUTF8Bytes == 8 MiB`。
-- [ ] 高密度展示时间、级别和完整日志；Trace 只在 sing-box 能力中出现。
-- [ ] Follow Newest 对持续流不饥饿，用户上滚后可明确恢复。
+- [x] 保持 `BoundedLogBuffer.maximumEntryCount == 2_000` 和 `maximumUTF8Bytes == 8 MiB`。
+- [x] 高密度展示时间、级别、类型和完整日志；Trace 只在 sing-box 能力中出现。
+- [x] Follow Newest 对持续流不饥饿，用户上滚后可明确恢复。
 
 ### Rules
 
-- [ ] 保持报告顺序和一个原生 Table；类型、载荷、目标与命中状态可扫描。
-- [ ] 精确可见策略组目标才可跳转；DIRECT/REJECT/节点名/未知目标保持只读。
-- [ ] 页面不出现 API endpoint 或诊断说明。
+- [x] 保持报告顺序和一个原生 Table；序号、类型、载荷、目标、活动与状态可扫描。
+- [x] 精确可见策略组目标才可跳转；DIRECT/REJECT/节点名/未知目标保持只读。
+- [x] 页面不出现 API endpoint 或诊断说明。
 
 ### Sources
 
-- [ ] 保持一个原生 Table 和完整来源字段，不改为 card grid。
-- [ ] Update All 过滤可更新项但不重排，串行执行，通过共享 task slot 发布进度并最终刷新一次。
-- [ ] 单项 update/health/reload 不与 batch 互相取消或竞态。
+- [x] 保持一个原生 Table 和完整来源字段，不改为 card grid。
+- [x] Update All 过滤可更新项但不重排，串行执行，通过共享 task slot 发布进度并最终刷新一次。
+- [x] 单项 update/health/reload 不与 batch 互相取消或竞态。
 
 定向验证：buffer tests、log projection/follow tests、rule projection/navigation tests、source batch ordering/refresh-count tests、2,000+ row projection benchmark、Swift build。
 

@@ -1114,11 +1114,30 @@ assert(count(dataPages, "filtered.sorted(using: sortOrder)") === 3, "Only Connec
 const logProjection = sourceSection(logsPage, "enum WorkbenchLogProjection", "struct WorkbenchLogProjectionCache");
 assertExcludes(logProjection, ".sorted", "Logs must preserve incoming order");
 assertIncludes(logProjection, "return entries.map", "Log rows must retain incoming controller order");
+const logTableSource = sourceSection(logsPage, "private var logStream", "private func rebuildRows");
+for (const logColumnContract of [
+  '"traffic.log_received_time"',
+  '"traffic.log_level"',
+  '"traffic.log_type"',
+  '"traffic.log_payload"',
+]) {
+  assertIncludes(logTableSource, logColumnContract, `Logs must retain the explicit event column ${logColumnContract}`);
+}
 const ruleTableSource = sourceSection(rulesPage, "private var ruleTable", "private func rebuildRows");
 assertIncludes(ruleTableSource, "ruleStateCell(row)", "Rules must combine status and mutation into one scan column");
 assertIncludes(ruleTableSource, "ruleCompactSummary(row)", "Rules must retain a compact composite summary");
 assertIncludes(ruleTableSource, "ruleStackedRow(row)", "Rules must collapse to one complete stacked column");
 assertIncludes(ruleTableSource, "private func ruleStateLabel", "Rules must use a quiet dot-and-text state treatment");
+for (const ruleColumnContract of [
+  '"dashboard.col_index"',
+  '"dashboard.col_type"',
+  '"dashboard.col_payload"',
+  '"dashboard.col_proxy"',
+  '"traffic.rule_section_statistics"',
+  '"dashboard.col_status"',
+]) {
+  assertIncludes(ruleTableSource, ruleColumnContract, `Rules must retain the explicit decision column ${ruleColumnContract}`);
+}
 assertExcludes(ruleTableSource, 'TableColumn(MicaStrings.localizedKey("traffic.action"', "Rules must not restore an isolated action-button column");
 assertExcludes(ruleTableSource, "WorkbenchStatusBadge(", "Rule scan rows must not render type or state as boxed badges");
 for (const rulePathContract of [
@@ -1147,6 +1166,10 @@ for (const connectionNavigationContract of [
   );
 }
 const sourcesPage = read("Sources/Mica/Features/Workbench/WorkbenchSources.swift");
+const sourceTableSource = sourceSection(sourcesPage, "private var sourceTable", "private func rebuildRows");
+assertIncludes(sourceTableSource, "sourceStatus(row)", "Sources must retain a quiet lifecycle state column");
+assertExcludes(sourceTableSource, "WorkbenchStatusBadge(", "Source scan rows must not render lifecycle state as a boxed badge");
+assertIncludes(sourcesPage, "private var lifecycleReadouts", "Selected sources must expose a compact lifecycle summary");
 assertExcludes(connectionsPage, "closeCommand(for:", "Connections must not restore a per-row close command");
 assertExcludes(connectionsPage, 'TableColumn(MicaStrings.localizedKey("traffic.action"', "Connections must not restore an isolated action column");
 assertIncludes(connectionsPage, "WorkbenchConnectionDecisionPathRail", "Selected connections must expose a focus rail");

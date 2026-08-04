@@ -46,8 +46,10 @@ struct WorkbenchSourceRow: Identifiable, Equatable {
     let compactConfigurationText: String
     let itemCountText: String
     let compactStatusText: String
+    let stackedSummaryText: String
     let updatableText: String
     let healthCheckAvailabilityText: String
+    let statusAccessibilityText: String
     let searchText: String
 
     var name: String { source.name }
@@ -129,8 +131,14 @@ enum WorkbenchSourceProjection {
                     itemCountText,
                     updatedText,
                 ]) ?? updatedText,
+                stackedSummaryText: WorkbenchDataFormat.joined([
+                    typeText,
+                    itemCountText,
+                    updatedText,
+                ]) ?? updatedText,
                 updatableText: updatableText,
                 healthCheckAvailabilityText: healthCheckAvailabilityText,
+                statusAccessibilityText: "\(updatableText), \(healthCheckAvailabilityText)",
                 searchText: [
                     source.id, source.name, kindText, source.type, source.behavior ?? "",
                     source.format ?? "", source.vehicleType ?? "", source.updatedAt ?? "",
@@ -168,6 +176,8 @@ struct WorkbenchSourceFocusProjection: Equatable {
     let configuration: String
     let itemCount: String
     let updatedAt: String
+    let updatableStatus: String
+    let healthAvailability: String
     let health: String?
 
     init(row: WorkbenchSourceRow) {
@@ -178,6 +188,8 @@ struct WorkbenchSourceFocusProjection: Equatable {
         ]) ?? row.typeText
         itemCount = row.itemCountText
         updatedAt = row.updatedText
+        updatableStatus = row.updatableText
+        healthAvailability = row.healthCheckAvailabilityText
         health = row.source.healthCheckText?.dataNonEmpty
     }
 }
@@ -548,22 +560,7 @@ struct WorkbenchSourcesView: View {
                         .width(min: 270, ideal: 420)
 
                         TableColumn(MicaStrings.localizedKey("traffic.source_section_status", language: language)) { row in
-                            VStack(alignment: .leading, spacing: 1) {
-                                WorkbenchDataText(
-                                    value: row.compactConfigurationText,
-                                    style: .caption, design: .monospaced
-                                )
-                                WorkbenchDataText(
-                                    value: row.compactStatusText,
-                                    style: .caption, design: .monospaced,
-                                    tone: .secondary
-                                )
-                            }
-                            .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height,
-                                alignment: .leading
-                            )
+                            sourceCompactSummary(row)
                         }
                         .width(min: 210, ideal: 280)
 
@@ -572,23 +569,7 @@ struct WorkbenchSourcesView: View {
                             MicaStrings.localizedKey("dashboard.tab_providers", language: language),
                             value: \.name
                         ) { row in
-                            HStack(spacing: MicaSpacing.module) {
-                                sourceIdentity(row)
-                                Spacer(minLength: MicaSpacing.row)
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    WorkbenchDataMetric(value: row.itemCountText)
-                                    WorkbenchDataText(
-                                        value: row.updatedText,
-                                        style: .caption, design: .monospaced,
-                                        tone: .secondary,
-                                        alignment: .trailing
-                                    )
-                                }
-                            }
-                            .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height
-                            )
+                            sourceStackedRow(row)
                         }
                         .width(min: 220, ideal: 520)
 
@@ -641,25 +622,105 @@ struct WorkbenchSourcesView: View {
 
     private func sourceStatus(_ row: WorkbenchSourceRow) -> some View {
         HStack(spacing: MicaSpacing.row) {
-            WorkbenchStatusBadge(
-                text: row.updatableText,
-                tint: row.source.updatable ? MicaDesignTokens.signalMint : .secondary
-            )
-
-            Image(systemName: "waveform.path.ecg")
-                .foregroundStyle(
-                    row.source.supportsHealthCheck
-                        ? MicaDesignTokens.signalCyan
-                        : Color.secondary
-                )
-                .help(row.healthCheckAvailabilityText)
-                .accessibilityLabel(row.healthCheckAvailabilityText)
+            sourceUpdateState(row)
+            sourceHealthState(row)
         }
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
             maxHeight: WorkbenchDataRowGeometry.height,
             alignment: .leading
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.statusAccessibilityText)
+    }
+
+    private func sourceCompactSummary(_ row: WorkbenchSourceRow) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: MicaSpacing.row) {
+                WorkbenchDataText(
+                    value: row.compactConfigurationText,
+                    style: .caption,
+                    design: .monospaced
+                )
+                Spacer(minLength: MicaSpacing.tight)
+                sourceUpdateState(row)
+                sourceHealthState(row)
+            }
+
+            WorkbenchDataText(
+                value: row.compactStatusText,
+                style: .caption,
+                design: .monospaced,
+                tone: .secondary
+            )
+        }
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height,
+            maxHeight: WorkbenchDataRowGeometry.height,
+            alignment: .leading
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(row.compactConfigurationText), \(row.compactStatusText), \(row.statusAccessibilityText)"
+        )
+    }
+
+    private func sourceStackedRow(_ row: WorkbenchSourceRow) -> some View {
+        HStack(spacing: MicaSpacing.module) {
+            sourceIdentity(row)
+            Spacer(minLength: MicaSpacing.row)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(spacing: MicaSpacing.tight) {
+                    sourceUpdateState(row)
+                    sourceHealthState(row)
+                }
+
+                WorkbenchDataText(
+                    value: row.stackedSummaryText,
+                    style: .caption,
+                    design: .monospaced,
+                    tone: .secondary,
+                    alignment: .trailing
+                )
+            }
+        }
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height,
+            maxHeight: WorkbenchDataRowGeometry.height
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(row.source.name), \(row.kindText), \(row.stackedSummaryText), \(row.statusAccessibilityText)"
+        )
+    }
+
+    private func sourceUpdateState(_ row: WorkbenchSourceRow) -> some View {
+        HStack(spacing: MicaSpacing.tight) {
+            Circle()
+                .fill(row.source.updatable ? MicaDesignTokens.signalMint : Color.secondary)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+
+            Text(verbatim: row.updatableText)
+                .micaFont(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func sourceHealthState(_ row: WorkbenchSourceRow) -> some View {
+        WorkbenchSymbol(
+            systemName: "waveform.path.ecg",
+            tint: row.source.supportsHealthCheck
+                ? MicaDesignTokens.signalCyan
+                : .secondary,
+            size: .inline
+        )
+        .help(row.healthCheckAvailabilityText)
+        .accessibilityLabel(row.healthCheckAvailabilityText)
     }
 
     private func rebuildRows(
@@ -870,14 +931,16 @@ private struct WorkbenchSourceFocusRail: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: MicaSpacing.module) {
-                lifecyclePath
+                focusIdentity
+                lifecycleReadouts
                 Spacer(minLength: MicaSpacing.module)
-                healthAndActions
+                actions
             }
 
             VStack(alignment: .leading, spacing: MicaSpacing.row) {
-                lifecyclePath
-                healthAndActions
+                focusIdentity
+                lifecycleReadouts
+                actions
             }
         }
         .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
@@ -888,43 +951,69 @@ private struct WorkbenchSourceFocusRail: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var lifecyclePath: some View {
+    private var focusIdentity: some View {
+        HStack(spacing: MicaSpacing.row) {
+            WorkbenchSymbol(
+                systemName: "shippingbox",
+                tint: MicaDesignTokens.signalViolet,
+                size: .focus
+            )
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: projection.name)
+                    .micaFont(.callout, weight: .semibold)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+                Text(verbatim: projection.configuration)
+                    .micaFont(.caption, design: .monospaced)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(minWidth: 180, maxWidth: 300, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var lifecycleReadouts: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.row) {
-                sourceStep
-                    .frame(minWidth: 170, maxWidth: 260)
-                WorkbenchDecisionPathConnector()
-                configurationStep
-                    .frame(minWidth: 150, maxWidth: 220)
-                WorkbenchDecisionPathConnector()
-                itemStep
-                    .frame(minWidth: 132, maxWidth: 190)
-                WorkbenchDecisionPathConnector()
-                updatedStep
-                    .frame(minWidth: 160, maxWidth: 240)
+            HStack(spacing: MicaSpacing.section) {
+                updateReadout
+                itemReadout
+                updatedReadout
+                if supportsHealthCheck {
+                    healthReadout
+                }
             }
 
             VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-                sourceStep
-                configurationStep
-                itemStep
-                updatedStep
+                HStack(spacing: MicaSpacing.section) {
+                    updateReadout
+                    itemReadout
+                }
+                HStack(spacing: MicaSpacing.section) {
+                    updatedReadout
+                    if supportsHealthCheck {
+                        healthReadout
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var sourceStep: some View {
-        WorkbenchDecisionPathStep(
-            titleKey: "dashboard.col_provider",
-            value: projection.name,
-            systemImage: "shippingbox",
-            tint: MicaDesignTokens.signalViolet
+    private var updateReadout: some View {
+        WorkbenchDecisionReadout(
+            titleKey: "traffic.provider_updatable",
+            value: projection.updatableStatus,
+            systemImage: "arrow.triangle.2.circlepath",
+            tint: supportsUpdate ? MicaDesignTokens.signalMint : .secondary,
+            monospaced: false
         )
     }
 
-    private var itemStep: some View {
-        WorkbenchDecisionPathStep(
+    private var itemReadout: some View {
+        WorkbenchDecisionReadout(
             titleKey: "traffic.provider_items",
             value: projection.itemCount,
             systemImage: "list.number",
@@ -933,18 +1022,8 @@ private struct WorkbenchSourceFocusRail: View {
         )
     }
 
-    private var configurationStep: some View {
-        WorkbenchDecisionPathStep(
-            titleKey: "traffic.source_section_configuration",
-            value: projection.configuration,
-            systemImage: "slider.horizontal.3",
-            tint: MicaDesignTokens.signalCyan,
-            monospaced: true
-        )
-    }
-
-    private var updatedStep: some View {
-        WorkbenchDecisionPathStep(
+    private var updatedReadout: some View {
+        WorkbenchDecisionReadout(
             titleKey: "traffic.updated_at",
             value: projection.updatedAt,
             systemImage: "clock.arrow.circlepath",
@@ -953,18 +1032,20 @@ private struct WorkbenchSourceFocusRail: View {
         )
     }
 
-    private var healthAndActions: some View {
-        HStack(spacing: MicaSpacing.tight) {
-            if let health = projection.health {
-                WorkbenchDecisionReadout(
-                    titleKey: "traffic.provider_health_check",
-                    value: health,
-                    systemImage: "waveform.path.ecg",
-                    tint: MicaDesignTokens.signalMint,
-                    monospaced: true
-                )
-            }
+    private var healthReadout: some View {
+        WorkbenchDecisionReadout(
+            titleKey: "traffic.provider_health_check",
+            value: projection.health ?? projection.healthAvailability,
+            systemImage: "waveform.path.ecg",
+            tint: projection.health == nil
+                ? MicaDesignTokens.signalCyan
+                : MicaDesignTokens.signalMint,
+            monospaced: projection.health != nil
+        )
+    }
 
+    private var actions: some View {
+        HStack(spacing: MicaSpacing.tight) {
             if isChecking {
                 ProgressView()
                     .controlSize(.small)

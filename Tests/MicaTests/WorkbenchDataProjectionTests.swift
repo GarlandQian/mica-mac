@@ -895,12 +895,19 @@ struct WorkbenchDataProjectionTests {
             language: .english
         )
         #expect(rows.map(\.activeConnections) == [2, 1])
+        #expect(rows[0].indexText == "0")
+        #expect(rows[0].indexSortValue == 0)
+        #expect(rows[0].typeText == "DOMAIN")
         #expect(rows[0].definitionTitleText == "example.com")
         #expect(rows[0].definitionDetailText == "DOMAIN · #0")
         #expect(rows[0].targetText == "Proxy")
         #expect(rows[0].activeConnectionsText == "2")
         #expect(rows[0].hitCountText == "12")
-        #expect(rows[0].stackedMetricsText == "2 · 12")
+        #expect(rows[0].activityText == "2 · 12")
+        #expect(
+            rows[0].activityAccessibilityText
+                == "\(MicaStrings.localizedKey("dashboard.active_sessions", language: .english)): 2, \(MicaStrings.localizedKey("traffic.rule_hits", language: .english)): 12"
+        )
         #expect(rows[0].statusText == MicaStrings.localizedKey("traffic.rule_status_enabled", language: .english))
         #expect(rows[1].statusText == MicaStrings.localizedKey("traffic.rule_status_disabled", language: .english))
 
@@ -1298,6 +1305,10 @@ struct WorkbenchDataProjectionTests {
         #expect(rows[1].compactConfigurationText == "File · Not reported · yaml")
         #expect(rows[1].itemCountText == "4")
         #expect(rows[1].compactStatusText == "4 · Not reported")
+        #expect(
+            rows[1].statusAccessibilityText
+                == "Read-only, This source does not report an available health-check configuration."
+        )
 
         let proxyRows = WorkbenchSourceProjection.visibleRows(
             from: rows,
@@ -1347,6 +1358,8 @@ struct WorkbenchDataProjectionTests {
         #expect(focus.configuration == "Proxy · HTTP")
         #expect(focus.itemCount == "42")
         #expect(focus.updatedAt == row.updatedText)
+        #expect(focus.updatableStatus == "Updatable")
+        #expect(focus.healthAvailability == "Available")
         #expect(focus.health?.contains("alive") == true)
     }
 
