@@ -1,0 +1,33 @@
+{
+  "id": "workbench-native-ui-system",
+  "name": "workbench-native-ui-system",
+  "title": "Mica Workbench 全局原生 UI 重构",
+  "description": "Source-aligned phased native SwiftUI redesign of all Mica Workbench, Settings, editor, menu, toolbar, and shell surfaces.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "frontend",
+  "package": "Mica",
+  "priority": "P2",
+  "creator": "mica",
+  "assignee": "mica",
+  "createdAt": "2026-08-04",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-03-connections-native-visual-rebuild"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "Sources/Mica/Features/Workbench",
+    "Sources/Mica/Features/Routers/Views",
+    "Sources/Mica/App/MicaApp.swift",
+    "Sources/Mica/Resources/Localizable.xcstrings"
+  ],
+  "notes": "Parent planning and integration task. Existing connections-native-visual-rebuild is linked as a child.",
+  "meta": {}
+}
