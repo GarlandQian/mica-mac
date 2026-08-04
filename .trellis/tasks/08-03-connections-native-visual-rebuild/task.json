@@ -19,8 +19,8 @@
   "pr_url": null,
   "subtasks": [],
   "children": [],
-  "parent": null,
+  "parent": "08-04-workbench-native-ui-system",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Acceptance passed 2026-08-04: source verifier, localization JSON, Swift build, 299 Swift tests across 27 suites, and git diff --check all passed. Runtime smoke was not run and no controller was contacted.",
   "meta": {}
 }
