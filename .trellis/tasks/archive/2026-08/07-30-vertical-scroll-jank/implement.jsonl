@@ -1,0 +1,9 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/workbench-ui-contract.md", "reason": "Preserve the current Workbench navigation, native control, complete-data, and interaction contracts while changing scroll boundaries."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Apply project Observation, MainActor, narrow-state, and persistence conventions during invalidation reduction."}
+{"file": ".trellis/spec/frontend/live-session-controller-contract.md", "reason": "Keep live publication, stale/disconnect, interaction priority, and generation semantics correct."}
+{"file": ".trellis/spec/backend/controller-data-contract.md", "reason": "Preserve controller order, full data, DTO/domain boundaries, and controller-family capability behavior."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Trace runtime publication through AppModel and page presentation rather than optimizing views in isolation."}
+{"file": ".trellis/tasks/07-30-vertical-scroll-jank/research/vertical-scroll-source-audit.md", "reason": "Use the current task source audit and confirmed static/live root-cause evidence."}
+{"file": ".trellis/tasks/07-29-comprehensive-performance-optimization/research/ui-performance-audit.md", "reason": "Reuse prior measured UI hot-path context without treating its completion as proof of smooth scrolling."}
+{"file": ".trellis/tasks/07-29-comprehensive-performance-optimization/research/algorithmic-performance-audit.md", "reason": "Avoid regressing actor ingestion, projection complexity, topology, and persistence improvements from the prior task."}

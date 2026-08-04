@@ -1,0 +1,47 @@
+# Architecture
+
+## Module Ownership
+
+- `MicaCore` owns controller HTTP/WebSocket/gRPC requests, decoding, endpoint/RPC construction, capability models, and controller-neutral snapshots.
+- `Mica` owns profile/credential persistence, application state, presentation availability, localization, appearance, font scale, commands, and SwiftUI composition.
+- `Sources/Mica/Features/Workbench/` is the only active main-window information architecture.
+- Connections is split by update rate: `WorkbenchConnections.swift` owns row/pulse projections and caches, `WorkbenchConnectionsView.swift` owns the native Table and workspace coordination, and `WorkbenchConnectionDetails.swift` owns the selected route path and inspector.
+
+## Window Composition
+
+`MicaApp` creates a primary `WindowGroup` and a native Settings scene. `ContentView` owns the `NavigationSplitView`, persisted `WorkbenchDestination`, main-window lifecycle registration, sleep/wake forwarding, and in-window transactional controller editing. It also coordinates `MainWindowCloseGuard`, a lifecycle-only AppKit delegate proxy that blocks close while saving and presents the native destructive confirmation for a dirty draft. `WorkbenchRootView` provides the native toolbar, search placement, persistent session status bar, focused View-menu navigation, destination routing, and the sole `LiveSessionVisibleDestination` mapping. `WorkbenchSidebarControllerSwitcher` reads profiles and selected ID in its own view boundary; live session controls remain separate so stream frames do not rebuild switcher contents unnecessarily.
+
+The sidebar has ten fixed destinations grouped as Workbench (Overview, Proxies, Connections, Logs, Rules, Sources) and Controller Management (Controllers, Configuration, Actions, Diagnostics). Application preferences live only in the native Settings scene opened from the app menu; they are not duplicated in Workbench navigation. A collapsed inline controller switcher can reveal persisted-order quick-switch rows plus Add/Manage commands; Controllers owns the full native `List` plus same-window detail region. Its management selection is independent from `selectedRouterID`, and only explicit Use or a quick-switch row enters a different session. Recent-controller history observes all selected-ID changes and remains independent from the persisted manual profile order.
+
+Native window/sidebar/toolbar controls own the platform material hierarchy. Workbench content does not define a custom Liquid Glass primitive; selectors, data rows, logs, and inspectors use opaque high-readability surfaces.
+
+## Data Flow
+
+1. A stored `RouterProfile` selects the controller family and endpoint.
+2. `MihomoClient`, `SurgeHttpAPIClient`, or native `SingBoxGRPCClient` obtains real controller responses. Auto Detect resolves the HTTP family first, short-circuits a successful HTTP identity, and only falls through to StartedService when the HTTP result is unrecognized or ambiguous, without rewriting the persisted profile kind.
+3. `MicaCore` decodes and normalizes those responses without inventing unavailable fields.
+4. `AppModel` coordinates one selected-controller generation while `LiveSessionRuntime` owns high-frequency raw traffic, memory, connection, closed-history, and log ingestion off the main actor. The actor emits immutable per-domain publications carrying controller ID, generation, revision, receipt time, observation counts, and either a bounded snapshot or log append/drop delta. AppModel rejects stale identities and out-of-order revisions before updating observable presentation state.
+5. `SessionRefreshCoordinator` owns one iterative single-flight task per 2s/5s/30s REST lane. Manual and periodic requests join the current flight, reserve at most one coalesced follow-up, and share generation invalidation, cancellation, retry classification, and backoff. Mihomo streams, Surge near-live polling, and sing-box structured gRPC streams remain children of the same selected generation.
+6. Pure presentation projections filter real objects without mutating source identity or controller order. Connections split structure, metrics, and aggregate-traffic revisions; its current-scope pulse rebuilds for structure/filter changes and applies keyed metric deltas without rescanning owner buckets. Logs consume explicit append/drop deltas; rules, sources, policy groups, Overview timelines, and topology use bounded caches keyed by their actual inputs. Inactive destinations do not perform expensive projection work, and activation publishes only the latest current-generation state.
+
+`TrafficTimeline`, `MemoryTimeline`, `ConnectionCountTimeline`, the Workbench projection caches, and `ConnectionTopologyBuilder` contain bounded or pure presentation transformations. `WorkbenchWorkspaceStore` owns narrow per-controller/per-destination search, sort, selection, open proxy tabs, active group, member filters, and same-window connection navigation; persistence is coalesced and excludes live session state. These types do not own network access or create fallback business data.
+
+`ControllerSession` remains the main-actor lifecycle and atomic baseline authority: generation, capability-aware connecting/reconnecting state, pause controls, endpoint last values, and committed presentation mirrors. `LiveSessionRuntime` is the generation-owned raw ingestion authority after installation. It retains five-minute timelines, the O(1) 2,000-entry/8 MiB log ring, connection-rate tracking, and pending closed rows until publication. The root destination maps visible domains; logs/traffic/connections/memory publish at 5/4/2/1 Hz with one non-restarting task slot per domain. Hidden domains retain raw state and flush once on entry. Endpoint failures retain last values and surface stale state; only never-loaded data becomes an error empty state.
+
+Performance instrumentation uses privacy-safe `OSSignposter` intervals and operation counters. Payloads contain only typed counts/categories, never controller names, hosts, request URLs, connection IDs, rules, logs, credentials, or raw responses. The opt-in offline Release benchmark uses deterministic fixtures and writes comparable JSON reports under `tmp/codex/performance/`; it never opens a controller connection.
+
+Sources keeps provider test URLs and subscription metadata in the typed dashboard projection. Update All is an AppModel operation over the existing provider task slot: it filters only reported updatable entries, preserves catalog order, runs sequentially with generation checks after every suspension, publishes typed progress and per-source failures, and performs one provider snapshot refresh at the end. Overview remains a focused summary: real traffic/memory/active-connection charts, short latency/rule/active-connection summaries, a complete all-active-path Canvas topology, and controller/network facts. Full connection metadata and retained closed history stay on Connections rather than creating a second Overview browser.
+
+The sing-box StartedService session owns status, groups, mode, connection, log, and Tailscale producers in one structured task group. Stream cancellation closes the gRPC client channel, Tailscale error/readiness remains independent so a Tailscale failure does not erase an otherwise healthy controller session, and every reported log level including `trace` survives into the Logs presentation.
+
+Selected-session commands expose shared Test/Refresh/Pause capabilities. Menu, toolbar, Actions, Rules, and Sources consume those capabilities rather than reimplementing pause or busy checks. Settings-only state has no selected generation and therefore cannot issue live-session commands.
+
+Profile save/delete and manual reorder persist before mutating the observable array. Secret changes are rolled back when profile persistence fails. Active-controller edits replace the generation after commit; non-active edits and inserts have no session side effect. The selected controller UUID persists separately in `UserDefaults` and is restored after secrets load.
+
+## Preference Flow
+
+Language, appearance, and font scale are stored with `@AppStorage` and injected at the scene/root boundary through `micaAppPreferences`. Appearance is also applied to `NSApplication` and existing windows. Language changes relocalize cached presentation strings. Font scale updates SwiftUI Dynamic Type; control size remains bounded to native small/regular values, and workbench geometry is not multiplied by the text preference.
+
+## Removed Architecture
+
+The four-tab `AppWorkspace`, old Dashboard views, `MicaDashboard` compatibility palette, command palette, command bar, deck/chart abstractions, modal controller editor, sidebar controller list, user-visible snapshot/sync mode, legacy Settings hierarchy, unavailable fixed-selection action, and custom icon/card decoration are not compatibility boundaries. New work must extend the Workbench directly rather than restoring wrappers or aliases for those concepts.

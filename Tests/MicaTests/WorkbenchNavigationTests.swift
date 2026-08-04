@@ -1,0 +1,354 @@
+import Foundation
+import MicaCore
+import Observation
+import Synchronization
+import Testing
+@testable import Mica
+
+struct WorkbenchNavigationTests {
+    @Test func destinationsKeepTheFixedProductOrder() {
+        #expect(WorkbenchDestination.allCases.map(\.rawValue) == [
+            "overview",
+            "proxies",
+            "connections",
+            "logs",
+            "rules",
+            "sources",
+            "controllers",
+            "configuration",
+            "actions",
+            "diagnostics",
+        ])
+
+        #expect(WorkbenchDestination.workbenchTabCases.map(\.rawValue) == [
+            "overview", "proxies", "connections", "logs", "rules", "sources",
+        ])
+        #expect(WorkbenchDestination.controllerManagementCases.map(\.rawValue) == [
+            "controllers", "configuration", "actions", "diagnostics",
+        ])
+    }
+
+    @Test func destinationsKeepStableGroupsAndControllerRequirements() {
+        #expect(WorkbenchDestination.Group.allCases.map(\.titleKey) == [
+            "sidebar.group_workbench",
+            "sidebar.group_controller_management",
+        ])
+        #expect(
+            WorkbenchDestination.allCases
+                .filter { $0.group == .workbench }
+                .map(\.rawValue)
+                == WorkbenchDestination.workbenchTabCases.map(\.rawValue)
+        )
+        #expect(
+            WorkbenchDestination.allCases
+                .filter { $0.group == .controllerManagement }
+                .map(\.rawValue)
+                == WorkbenchDestination.controllerManagementCases.map(\.rawValue)
+        )
+        #expect(!WorkbenchDestination.controllers.requiresController)
+        #expect(
+            WorkbenchDestination.allCases
+                .filter(\.requiresController)
+                .map(\.rawValue)
+                == [
+                    "overview", "proxies", "connections", "logs", "rules", "sources",
+                    "configuration", "actions", "diagnostics",
+                ]
+        )
+    }
+
+    @Test func searchAndKeyboardDestinationsRemainDeliberate() {
+        #expect(
+            WorkbenchDestination.allCases
+                .filter(\.supportsSearch)
+                .map(\.rawValue)
+                == ["proxies", "connections", "logs", "rules", "sources", "controllers"]
+        )
+        #expect(WorkbenchDestination.overview.shortcut == "1")
+        #expect(WorkbenchDestination.proxies.shortcut == "2")
+        #expect(WorkbenchDestination.connections.shortcut == "3")
+        #expect(WorkbenchDestination.logs.shortcut == "4")
+        #expect(WorkbenchDestination.rules.shortcut == "5")
+        #expect(WorkbenchDestination.sources.shortcut == "6")
+        #expect(
+            WorkbenchDestination.controllerManagementCases.allSatisfy { $0.shortcut == nil }
+        )
+    }
+
+    @Test func editorPresentationsUseUniqueViewIdentityForTheSameDraft() {
+        let draft = RouterDraft(displayName: "Controller")
+        let first = RouterEditorPresentation(titleKey: "editor.edit_router", draft: draft)
+        let second = RouterEditorPresentation(titleKey: "editor.edit_router", draft: draft)
+
+        #expect(first.draft.id == second.draft.id)
+        #expect(first.id != second.id)
+    }
+
+    @Test func controllerEditorUsesCurrentWorkbenchPresentation() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = repositoryRoot.appending(
+            path: "Sources/Mica/Features/Routers/Views/RouterEditorView.swift"
+        )
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        #expect(source.contains("WorkbenchPageScaffold"))
+        #expect(source.contains("WorkbenchCommandBar"))
+        #expect(source.contains("WorkbenchManagementFormCanvas"))
+        #expect(source.contains("if testState.shouldShow"))
+        #expect(!source.contains("editorCanvas(availableWidth:"))
+        #expect(!source.contains("GeometryReader"))
+        #expect(!source.contains("HSplitView"))
+    }
+
+    @MainActor
+    @Test func workspaceStateIsIsolatedByControllerAndDestination() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let first = UUID()
+        let second = UUID()
+
+        store.update(controllerID: first, destination: .connections) {
+            $0.searchText = "github"
+            $0.selectedItemID = "connection-1"
+        }
+        store.update(controllerID: second, destination: .connections) {
+            $0.searchText = "apple"
+        }
+        store.update(controllerID: first, destination: .logs) {
+            $0.searchText = "warning"
+        }
+
+        #expect(
+            store.workspace(controllerID: first, destination: .connections).searchText
+                == "github"
+        )
+        #expect(
+            store.workspace(controllerID: second, destination: .connections).searchText
+                == "apple"
+        )
+        #expect(
+            store.workspace(controllerID: first, destination: .logs).searchText
+                == "warning"
+        )
+    }
+
+    @MainActor
+    @Test func sessionEndClearsOnlyDataBoundWorkspaceState() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+
+        store.update(controllerID: controllerID, destination: .proxies) {
+            $0.searchText = "smart"
+            $0.filters["scope"] = "available"
+            $0.sort = [WorkbenchWorkspaceSort(field: "latency", ascending: true)]
+            $0.selectedItemID = "node-1"
+            $0.scrollAnchorID = "node-1"
+            $0.openGroupIDs = ["group-1"]
+            $0.activeGroupID = "group-1"
+            $0.selectedGroupMemberIDs["group-1"] = "node-1"
+        }
+
+        store.clearSessionBoundState(controllerID: controllerID)
+        let workspace = store.workspace(controllerID: controllerID, destination: .proxies)
+
+        #expect(workspace.searchText == "smart")
+        #expect(workspace.filters["scope"] == "available")
+        #expect(workspace.sort == [WorkbenchWorkspaceSort(field: "latency", ascending: true)])
+        #expect(workspace.selectedItemID == nil)
+        #expect(workspace.scrollAnchorID == nil)
+        #expect(workspace.openGroupIDs.isEmpty)
+        #expect(workspace.activeGroupID == nil)
+        #expect(workspace.selectedGroupMemberIDs.isEmpty)
+    }
+
+    @MainActor
+    @Test func connectionNavigationRejectsAStaleGeneration() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+        let generation = UUID()
+
+        store.stageConnectionNavigation(
+            WorkbenchConnectionNavigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                connectionID: "connection-1"
+            )
+        )
+
+        #expect(
+            store.consumeConnectionNavigation(
+                controllerID: controllerID,
+                generation: UUID()
+            ) == nil
+        )
+        #expect(
+            store.consumeConnectionNavigation(
+                controllerID: controllerID,
+                generation: generation
+            )?.connectionID == "connection-1"
+        )
+        #expect(
+            store.consumeConnectionNavigation(
+                controllerID: controllerID,
+                generation: generation
+            ) == nil
+        )
+    }
+
+    @MainActor
+    @Test func ruleNavigationIsSessionBoundAndInvalidatedByGenerationChange() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+        let generation = UUID()
+
+        store.activateSession(controllerID: controllerID, generation: generation)
+        store.stageRuleNavigation(
+            WorkbenchRuleNavigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                type: "DOMAIN",
+                payload: "example.com"
+            )
+        )
+
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection?.payload == "example.com"
+        )
+
+        store.activateSession(controllerID: controllerID, generation: UUID())
+
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection == nil
+        )
+        #expect(
+            store.consumeRuleNavigation(
+                controllerID: controllerID,
+                generation: generation
+            ) == nil
+        )
+    }
+
+    @MainActor
+    @Test func deletingAControllerRemovesItsWorkspaceOnly() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let removed = UUID()
+        let retained = UUID()
+
+        store.update(controllerID: removed, destination: .rules) {
+            $0.searchText = "removed"
+        }
+        store.update(controllerID: retained, destination: .rules) {
+            $0.searchText = "retained"
+        }
+
+        store.retainControllers([retained])
+
+        #expect(
+            store.workspace(controllerID: removed, destination: .rules).searchText.isEmpty
+        )
+        #expect(
+            store.workspace(controllerID: retained, destination: .rules).searchText
+                == "retained"
+        )
+    }
+
+    @MainActor
+    @Test func searchObservationIsScopedToOneWorkspaceField() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let first = UUID()
+        let second = UUID()
+        let invalidated = Mutex(false)
+        let binding = store.searchBinding(
+            controllerID: first,
+            destination: .connections
+        )
+
+        withObservationTracking {
+            _ = binding.wrappedValue
+        } onChange: {
+            invalidated.withLock { $0 = true }
+        }
+
+        store.update(controllerID: first, destination: .connections) {
+            $0.selectedItemID = "connection-1"
+        }
+        store.update(controllerID: second, destination: .connections) {
+            $0.searchText = "another controller"
+        }
+        store.update(controllerID: first, destination: .logs) {
+            $0.searchText = "another page"
+        }
+
+        #expect(!invalidated.withLock { $0 })
+
+        binding.wrappedValue = "tracked search"
+
+        #expect(invalidated.withLock { $0 })
+    }
+
+    @Test func controllerSelectorSnapshotKeepsOrderAndStableIdentity() {
+        let first = RouterProfile(
+            displayName: "Primary",
+            scheme: .https,
+            host: "2001:db8::1",
+            port: 6171,
+            controllerKind: .surgeCompatible
+        )
+        let second = RouterProfile(
+            displayName: "Backup",
+            host: "127.0.0.1",
+            port: 9090,
+            controllerKind: .mihomoCompatible
+        )
+        let snapshot = WorkbenchControllerSelectorSnapshot(
+            profiles: [first, second],
+            selectedID: second.id
+        )
+
+        #expect(snapshot.items.map(\.id) == [first.id, second.id])
+        #expect(snapshot.items.map(\.displayName) == ["Primary", "Backup"])
+        #expect(snapshot.items[0].endpointURL == "https://[2001:db8::1]:6171")
+        #expect(snapshot.items[0].profile == first)
+        #expect(snapshot.selectedItem?.id == second.id)
+
+        let reselection = WorkbenchControllerSelectorSnapshot(
+            profiles: [first, second],
+            selectedID: first.id
+        )
+        #expect(reselection.items.map(\.id) == snapshot.items.map(\.id))
+        #expect(reselection.selectedItem?.id == first.id)
+    }
+
+    @MainActor
+    private func makeWorkspaceStore() -> (
+        store: WorkbenchWorkspaceStore,
+        defaults: UserDefaults,
+        suiteName: String
+    ) {
+        let suiteName = "MicaTests.WorkbenchNavigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let store = WorkbenchWorkspaceStore(
+            defaults: defaults,
+            persistenceKey: "workspace",
+            persistenceDelay: .seconds(60)
+        )
+        return (store, defaults, suiteName)
+    }
+}
