@@ -260,3 +260,38 @@ Replaced the policy-group workspace with a native vertical expandable design, co
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: Refine Logs Rules and Sources
+
+**Date**: 2026-08-04
+**Task**: Refine Logs Rules and Sources
+**Branch**: `main`
+
+### Summary
+
+Completed and archived the native Logs, Rules, and Sources data-browser phase while preserving controller order, stream, capability, inspector, and sequential update contracts.
+
+### Main Changes
+
+- Logs now exposes explicit event columns with the existing bounded stream and Follow Newest behavior.
+- Rules now exposes explicit index, type, payload, target, activity, and state columns while preserving exact policy navigation.
+- Sources now uses quiet lifecycle status and a compact focus rail while retaining sequential Update All and one final refresh.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9b26e1b` | (see git log) |
+
+### Testing
+
+- [OK] Source verifier, XCStrings JSON validation, swift build, focused 41 tests, full 299-test suite, and diff check passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Continue the parent Workbench task with the controller-management workspace phase.

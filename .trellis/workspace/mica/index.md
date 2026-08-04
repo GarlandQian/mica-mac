@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
-- **Last Active**: 2026-08-03
+- **Total Sessions**: 8
+- **Last Active**: 2026-08-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~262 | Active |
+| `journal-1.md` | ~297 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-08-04 | Refine Logs Rules and Sources | `9b26e1b` | `main` |
 | 7 | 2026-08-03 | Workbench native visual rebuild | `8ff951d`, `50efd62` | `main` |
 | 6 | 2026-07-24 | Workbench native UI rebuild completed | `532e990`, `3e15b67` | `main` |
 | 5 | 2026-07-19 | Sparxie controller parity and Mica project skill consolidation | `81e0d5dd`, `60a4e63d` | `main` |
