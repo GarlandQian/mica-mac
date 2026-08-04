@@ -1,0 +1,19 @@
+{
+  "checks": [
+    {"type": "contrast", "name": "primary-text-light",   "fg": "#1D1D1F", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "secondary-text-light", "fg": "#6E6E73", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "primary-text-dark",    "fg": "#F5F5F7", "bg": "#1F1D2E"},
+    {"type": "contrast", "name": "secondary-text-dark",  "fg": "#A1A1A6", "bg": "#1F1D2E"},
+    {"type": "contrast", "name": "accent-light",         "fg": "#735C82", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "cyan-light",           "fg": "#286983", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "mint-light",           "fg": "#3F7257", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "amber-light",          "fg": "#9A5B14", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "red-light",            "fg": "#A34F6A", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "violet-light",         "fg": "#7A5A96", "bg": "#FFFAF3"},
+    {"type": "contrast", "name": "accent-dark",          "fg": "#C4A7E7", "bg": "#1F1D2E"},
+    {"type": "contrast", "name": "cyan-dark",            "fg": "#9CCFD8", "bg": "#1F1D2E"},
+    {"type": "contrast", "name": "mint-dark",            "fg": "#8ECFA8", "bg": "#1F1D2E"},
+    {"type": "contrast", "name": "amber-dark",           "fg": "#F6C177", "bg": "#1F1D2E"},
+    {"type": "contrast", "name": "red-dark",             "fg": "#EB6F92", "bg": "#1F1D2E"}
+  ]
+}

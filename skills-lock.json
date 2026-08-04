@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "apple-hig-expert": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "product-team/apple-hig-expert/skills/apple-hig-expert/SKILL.md",
+      "computedHash": "1965f43d62ba8d71d5ae4cc16920382390cd6ff2e2fa6c470bc0a7b2195c8174"
+    },
+    "macos-app-design": {
+      "source": "petekp/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-app-design/SKILL.md",
+      "computedHash": "5029321dfc7eb85d56175b1552c509b8be68ace721cd4aea6b09cc89153350c7"
+    },
+    "macos-development": {
+      "source": "rshankras/claude-code-apple-skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos/SKILL.md",
+      "computedHash": "e785d476d46a702399d9b688f8a23973f1b9159ba8b8537ddf5ddf15f6e6c565"
+    },
+    "swift-charts": {
+      "source": "dpearson2699/swift-ios-skills",
+      "sourceType": "github",
+      "skillPath": "skills/swift-charts/SKILL.md",
+      "computedHash": "e97daf59d75c7b0ec2f2cbee80688cac3f2fcc3c795419fa15bcec41ac935d76"
+    },
+    "swiftui-liquid-glass": {
+      "source": "dimillian/skills",
+      "sourceType": "github",
+      "skillPath": "swiftui-liquid-glass/SKILL.md",
+      "computedHash": "e4d3634171bc6caa7cc8d15f58cd2fb848dab4744493edc56ec14f4b2c8521a0"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+.DS_Store
+.build/
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+Package.resolved
+.swiftpm/
+
+# Local developer config
+.env
+*.local
+
+# Release artifacts
+artifacts/
+dist/
+*.dmg
+*.xcarchive
+
+# Local scratch space for agents and manual experiments
+tmp/
