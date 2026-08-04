@@ -898,12 +898,17 @@ struct WorkbenchLogsView: View {
                         TableColumn(MicaStrings.localizedKey("traffic.log_received_time", language: language)) { row in
                             logTimestamp(row)
                         }
-                        .width(min: 122, ideal: 142)
+                        .width(min: 104, ideal: 120)
 
                         TableColumn(MicaStrings.localizedKey("traffic.log_level", language: language)) { row in
                             logLevel(row)
                         }
-                        .width(min: 118, ideal: 150)
+                        .width(min: 82, ideal: 104)
+
+                        TableColumn(MicaStrings.localizedKey("traffic.log_type", language: language)) { row in
+                            logType(row)
+                        }
+                        .width(min: 112, ideal: 148)
 
                         TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
                             WorkbenchDataText(
@@ -911,7 +916,7 @@ struct WorkbenchLogsView: View {
                                 style: .callout, design: .monospaced
                             )
                         }
-                        .width(min: 360, ideal: 760)
+                        .width(min: 320, ideal: 720)
 
                     case .compact:
                         TableColumn(MicaStrings.localizedKey("traffic.log_section_event", language: language)) { row in
@@ -992,25 +997,39 @@ struct WorkbenchLogsView: View {
     }
 
     private func logLevel(_ row: WorkbenchLogRow) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            WorkbenchDataText(
-                value: row.levelText,
-                style: .caption, weight: .semibold, design: .monospaced
+        WorkbenchDataText(
+            value: row.levelText,
+            style: .caption, weight: .semibold, design: .monospaced
+        )
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height,
+            maxHeight: WorkbenchDataRowGeometry.height,
+            alignment: .leading
+        )
+        .accessibilityLabel(row.levelText)
+    }
+
+    private func logType(_ row: WorkbenchLogRow) -> some View {
+        HStack(spacing: MicaSpacing.tight) {
+            WorkbenchSymbol(
+                systemName: logTypeSymbol(row),
+                tint: row.severity.tint,
+                size: .inline
             )
-            if row.typeText != row.levelText {
-                WorkbenchDataText(
-                    value: row.typeText,
-                    style: .caption, design: .monospaced,
-                    tone: .secondary
-                )
-            }
+
+            WorkbenchDataText(
+                value: row.typeText,
+                style: .caption,
+                design: .monospaced,
+                tone: row.typeText == row.levelText ? .secondary : .primary
+            )
         }
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
             maxHeight: WorkbenchDataRowGeometry.height,
             alignment: .leading
         )
-        .accessibilityLabel(row.accessibilityText)
+        .accessibilityLabel(row.typeText)
     }
 
     private func compactLogEvent(_ row: WorkbenchLogRow) -> some View {
@@ -1022,13 +1041,22 @@ struct WorkbenchLogsView: View {
                 style: .caption, design: .monospaced,
                 tone: .secondary
             )
-            .frame(width: 96, alignment: .leading)
+            .frame(width: 82, alignment: .leading)
 
-            WorkbenchDataText(
-                value: row.levelText,
-                style: .caption, weight: .semibold, design: .monospaced
-            )
-            .frame(width: 88, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                WorkbenchDataText(
+                    value: row.levelText,
+                    style: .caption, weight: .semibold, design: .monospaced
+                )
+                if row.typeText != row.levelText {
+                    WorkbenchDataText(
+                        value: row.typeText,
+                        style: .caption2, design: .monospaced,
+                        tone: .secondary
+                    )
+                }
+            }
+            .frame(width: 86, alignment: .leading)
 
             WorkbenchDataText(
                 value: row.payloadText,
@@ -1079,6 +1107,16 @@ struct WorkbenchLogsView: View {
             .fill(row.severity.tint.opacity(0.72))
             .frame(width: 3, height: 28)
             .accessibilityHidden(true)
+    }
+
+    private func logTypeSymbol(_ row: WorkbenchLogRow) -> String {
+        switch row.severity {
+        case .error: "exclamationmark.circle"
+        case .warning: "exclamationmark.triangle"
+        case .info: "info.circle"
+        case .debug: "ladybug"
+        case .trace: "point.3.connected.trianglepath.dotted"
+        }
     }
 
     private func rebuildRows(reconcileSelection: Bool) {

@@ -352,11 +352,11 @@ compatibility files or recreate one-file-per-small-component sprawl.
   columns within that Table; do not retain eager full/compact/stacked Table
   trees. Scan rows keep stable single-line geometry while complete wrapped,
   selectable values remain available in the same-window inspector.
-- Rules merge reported type/index into the primary definition cell. Wide mode
-  then shows route, activity, and a dot-and-text state cell whose trailing edge
-  owns the optional mutation command. Compact mode combines route, metrics,
-  state, and mutation; stacked mode has one complete composite column. Never
-  restore boxed type/status badges or an isolated action-button column.
+- Rules wide mode separates reported index, type, payload, target, activity,
+  and state into explicit scan columns. The state cell's trailing edge owns the
+  optional mutation command. Compact mode combines route, metrics, state, and
+  mutation; stacked mode has one complete composite column. Never restore boxed
+  type/status badges or an isolated action-button column.
 - Connection search text and complete inspector values are precomputed on
   structural revision. Metrics-only frames carry changed row positions and
   update only those metric rows; a missed revision falls back to the complete

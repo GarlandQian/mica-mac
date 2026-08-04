@@ -56,12 +56,16 @@ struct WorkbenchRuleRow: Identifiable, Equatable {
     let rule: RuleViewState
     let statusText: String
     let activeConnections: Int
+    let indexText: String
+    let indexSortValue: Int
+    let typeText: String
     let definitionTitleText: String
     let definitionDetailText: String
     let targetText: String
     let activeConnectionsText: String
     let hitCountText: String
-    let stackedMetricsText: String
+    let activityText: String
+    let activityAccessibilityText: String
     let activeConnectionsAccessibilityText: String
     let hitCountAccessibilityText: String
     let searchText: String
@@ -175,9 +179,11 @@ enum WorkbenchRuleProjection {
                 rule.type,
                 language: language
             )
+            let indexSortValue = rule.index ?? index + 1
+            let indexText = String(indexSortValue)
             let definitionDetailText = WorkbenchDataFormat.joined([
                 typeText,
-                rule.index.map { "#\($0)" },
+                "#\(indexText)",
             ]) ?? typeText
             let targetText = WorkbenchDataFormat.reported(
                 rule.proxy,
@@ -197,6 +203,9 @@ enum WorkbenchRuleProjection {
                 "traffic.rule_hits",
                 language: language
             )
+            let activityText = "\(activeConnectionsText) · \(hitCountText)"
+            let activeConnectionsAccessibilityText = "\(activeConnectionsTitle): \(activeConnectionsText)"
+            let hitCountAccessibilityText = "\(hitCountTitle): \(hitCountText)"
             let identity = identities.make(
                 reportedID: rule.id,
                 fallbackComponents: [
@@ -210,14 +219,18 @@ enum WorkbenchRuleProjection {
                 rule: rule,
                 statusText: statusText,
                 activeConnections: activeConnections,
+                indexText: indexText,
+                indexSortValue: indexSortValue,
+                typeText: typeText,
                 definitionTitleText: definitionTitleText,
                 definitionDetailText: definitionDetailText,
                 targetText: targetText,
                 activeConnectionsText: activeConnectionsText,
                 hitCountText: hitCountText,
-                stackedMetricsText: "\(activeConnectionsText) · \(hitCountText)",
-                activeConnectionsAccessibilityText: "\(activeConnectionsTitle): \(activeConnectionsText)",
-                hitCountAccessibilityText: "\(hitCountTitle): \(hitCountText)",
+                activityText: activityText,
+                activityAccessibilityText: "\(activeConnectionsAccessibilityText), \(hitCountAccessibilityText)",
+                activeConnectionsAccessibilityText: activeConnectionsAccessibilityText,
+                hitCountAccessibilityText: hitCountAccessibilityText,
                 searchText: [
                     rule.id, rule.type, rule.payload, rule.proxy, statusText,
                     rule.index.map(String.init) ?? "", rule.hitCount.map(String.init) ?? "",
@@ -265,12 +278,16 @@ enum WorkbenchRuleProjection {
             rule: row.rule,
             statusText: row.statusText,
             activeConnections: activeConnections,
+            indexText: row.indexText,
+            indexSortValue: row.indexSortValue,
+            typeText: row.typeText,
             definitionTitleText: row.definitionTitleText,
             definitionDetailText: row.definitionDetailText,
             targetText: row.targetText,
             activeConnectionsText: String(activeConnections),
             hitCountText: row.hitCountText,
-            stackedMetricsText: "\(activeConnections) · \(row.hitCountText)",
+            activityText: "\(activeConnections) · \(row.hitCountText)",
+            activityAccessibilityText: "\(MicaStrings.localizedKey("dashboard.active_sessions", language: language)): \(activeConnections), \(row.hitCountAccessibilityText)",
             activeConnectionsAccessibilityText: "\(MicaStrings.localizedKey("dashboard.active_sessions", language: language)): \(activeConnections)",
             hitCountAccessibilityText: row.hitCountAccessibilityText,
             searchText: row.searchText
@@ -754,41 +771,57 @@ struct WorkbenchRulesView: View {
                     switch mode {
                     case .full:
                         TableColumn(
+                            MicaStrings.localizedKey("dashboard.col_index", language: language),
+                            value: \.indexSortValue
+                        ) { row in
+                            WorkbenchDataMetric(value: row.indexText, tone: .secondary)
+                        }
+                        .width(min: 48, ideal: 56)
+
+                        TableColumn(
+                            MicaStrings.localizedKey("dashboard.col_type", language: language),
+                            value: \.type
+                        ) { row in
+                            ruleTypeCell(row)
+                        }
+                        .width(min: 118, ideal: 148)
+
+                        TableColumn(
                             MicaStrings.localizedKey("dashboard.col_payload", language: language),
                             value: \.payload
                         ) { row in
-                            ruleIdentity(row)
+                            WorkbenchDataText(
+                                value: row.definitionTitleText,
+                                style: .callout,
+                                design: .monospaced
+                            )
                         }
-                        .width(min: 270, ideal: 420)
+                        .width(min: 240, ideal: 420)
 
                         TableColumn(
                             MicaStrings.localizedKey("dashboard.col_proxy", language: language),
                             value: \.proxy
                         ) { row in
-                            WorkbenchDataText(value: row.targetText)
+                            WorkbenchDataText(
+                                value: row.targetText,
+                                style: .callout,
+                                weight: .medium
+                            )
                         }
-                        .width(min: 140, ideal: 210)
+                        .width(min: 132, ideal: 196)
 
                         TableColumn(
-                            MicaStrings.localizedKey("dashboard.active_sessions", language: language),
+                            MicaStrings.localizedKey("traffic.rule_section_statistics", language: language),
                             value: \.activeConnections
                         ) { row in
-                            WorkbenchDataMetric(value: row.activeConnectionsText)
+                            ruleActivityCell(row)
                         }
-                        .width(min: 82, ideal: 104)
-
-                        TableColumn(
-                            MicaStrings.localizedKey("traffic.rule_hits", language: language),
-                            value: \.hitCount
-                        ) { row in
-                            WorkbenchDataMetric(value: row.hitCountText)
-                        }
-                        .width(min: 72, ideal: 88)
+                        .width(min: 128, ideal: 154)
 
                         TableColumn(MicaStrings.localizedKey("dashboard.col_status", language: language)) { row in
                             ruleStateCell(row)
                         }
-                        .width(min: 150, ideal: 180)
+                        .width(min: 142, ideal: 176)
 
                     case .compact:
                         TableColumn(
@@ -837,6 +870,51 @@ struct WorkbenchRulesView: View {
         )
     }
 
+    private func ruleTypeCell(_ row: WorkbenchRuleRow) -> some View {
+        HStack(spacing: MicaSpacing.row) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(ruleStatusTint(row.rule).opacity(0.72))
+                .frame(width: 3, height: 28)
+                .accessibilityHidden(true)
+
+            WorkbenchDataText(
+                value: row.typeText,
+                style: .caption,
+                weight: .semibold,
+                design: .monospaced
+            )
+        }
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height,
+            maxHeight: WorkbenchDataRowGeometry.height,
+            alignment: .leading
+        )
+    }
+
+    private func ruleActivityCell(_ row: WorkbenchRuleRow) -> some View {
+        HStack(spacing: MicaSpacing.module) {
+            ruleMetric(
+                value: row.activeConnectionsText,
+                systemImage: "point.3.connected.trianglepath.dotted",
+                accessibilityText: row.activeConnectionsAccessibilityText
+            )
+            ruleMetric(
+                value: row.hitCountText,
+                systemImage: "scope",
+                accessibilityText: row.hitCountAccessibilityText
+            )
+        }
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height,
+            maxHeight: WorkbenchDataRowGeometry.height,
+            alignment: .leading
+        )
+        .accessibilityLabel(
+            row.activityAccessibilityText
+        )
+        .accessibilityValue(row.activityText)
+    }
+
     private func ruleCompactSummary(_ row: WorkbenchRuleRow) -> some View {
         HStack(spacing: MicaSpacing.row) {
             VStack(alignment: .leading, spacing: 1) {
@@ -881,9 +959,15 @@ struct WorkbenchRulesView: View {
 
                 HStack(spacing: MicaSpacing.row) {
                     ruleStateLabel(row)
-                    WorkbenchDataMetric(
-                        value: row.stackedMetricsText,
-                        tone: .secondary
+                    ruleMetric(
+                        value: row.activeConnectionsText,
+                        systemImage: "point.3.connected.trianglepath.dotted",
+                        accessibilityText: row.activeConnectionsAccessibilityText
+                    )
+                    ruleMetric(
+                        value: row.hitCountText,
+                        systemImage: "scope",
+                        accessibilityText: row.hitCountAccessibilityText
                     )
                 }
             }
@@ -1175,6 +1259,7 @@ struct WorkbenchRulesView: View {
         workspaceSort.compactMap { item -> KeyPathComparator<WorkbenchRuleRow>? in
             let order: SortOrder = item.ascending ? .forward : .reverse
             switch item.field {
+            case "index": return KeyPathComparator(\WorkbenchRuleRow.indexSortValue, order: order)
             case "payload": return KeyPathComparator(\WorkbenchRuleRow.payload, order: order)
             case "type": return KeyPathComparator(\WorkbenchRuleRow.type, order: order)
             case "proxy": return KeyPathComparator(\WorkbenchRuleRow.proxy, order: order)
@@ -1189,7 +1274,9 @@ struct WorkbenchRulesView: View {
         _ comparator: KeyPathComparator<WorkbenchRuleRow>
     ) -> WorkbenchWorkspaceSort? {
         let field: String
-        if comparator.keyPath == \WorkbenchRuleRow.payload {
+        if comparator.keyPath == \WorkbenchRuleRow.indexSortValue {
+            field = "index"
+        } else if comparator.keyPath == \WorkbenchRuleRow.payload {
             field = "payload"
         } else if comparator.keyPath == \WorkbenchRuleRow.type {
             field = "type"
