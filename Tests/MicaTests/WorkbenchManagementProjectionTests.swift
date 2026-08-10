@@ -231,26 +231,238 @@ struct WorkbenchManagementProjectionTests {
         )
     }
 
-    @Test func actionsProjectionKeepsOnlySupportedExecutableRowsInNativeOrder() {
-        let rows = [
-            runtimeOperationRow(id: "core-upgrade", status: .supported),
-            runtimeOperationRow(id: "memory", status: .unavailable),
-            runtimeOperationRow(id: "dns-flush", status: .supported),
-            runtimeOperationRow(id: "configuration-reload", status: .supported, actionKey: nil),
-            runtimeOperationRow(id: "core-restart", status: .partial),
-        ]
+    @Test func actionsRecoveryDoesNotCountDisabledRefresh() {
+        let router = controllerProfile(
+            kind: .autoDetect,
+            host: "127.0.0.1"
+        )
+        let snapshot = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: router,
+                controllerType: .smartProbe,
+                state: .failedBeforeFirstSnapshot("Connection refused"),
+                capabilities: .probeReadiness,
+                canTest: true,
+                canRefresh: false
+            )
+        )
 
-        let projection = WorkbenchActionsProjection(runtimeRows: rows) { action in
-            action.rawValue == UnifiedControllerAction.testConnection.rawValue
-                || action.rawValue == UnifiedControllerAction.reloadRules.rawValue
+        #expect(snapshot.availability == .recovery)
+        #expect(snapshot.executableCount == 0)
+        #expect(snapshot.groups.isEmpty)
+        #expect(snapshot.recovery?.primaryIntent == .testConnection)
+        #expect(snapshot.targetScope == .thisMac)
+        #expect(snapshot.showsTargetCorrection)
+    }
+
+    @Test func actionsProjectionUsesVerifiedControllerDispatchers() {
+        let rows = runtimeRowsForActions()
+        let mihomo = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .nikkiMihomoCompatible),
+                controllerType: .nikkiMihomoCompatible,
+                capabilities: .mihomoCompatible,
+                runtimeRows: rows
+            )
+        )
+        #expect(
+            mihomo.visibleOperationIDs == [
+                "refresh", "reload-rules", "reload-providers",
+                "configuration-reload", "geo-resources", "memory",
+                "dns-flush", "cache-flush", "core-restart", "core-upgrade",
+            ]
+        )
+        #expect(mihomo.relatedDestinations.isEmpty)
+
+        for (kind, type) in [
+            (ControllerKind.mihomoCompatible, UnifiedControllerType.mihomoCompatible),
+            (.openClashMihomoCompatible, .openClashMihomoCompatible),
+        ] {
+            let familySnapshot = WorkbenchActionsProjection.snapshot(
+                actionsInput(
+                    router: controllerProfile(kind: kind),
+                    controllerType: type,
+                    capabilities: .mihomoCompatible,
+                    runtimeRows: rows
+                )
+            )
+            #expect(familySnapshot.visibleOperationIDs == mihomo.visibleOperationIDs)
         }
 
-        #expect(projection.supports(.testConnection))
-        #expect(projection.supports(.reloadRules))
-        #expect(!projection.supports(.refreshSnapshot))
-        #expect(projection.runtimeRows.map(\.id) == ["dns-flush"])
-        #expect(projection.lifecycleRows.map(\.id) == ["core-upgrade"])
-        #expect(projection.supportedOperationCount == 4)
+        let cmfa = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .cmfaCompatible),
+                controllerType: .cmfaCompatible,
+                capabilities: .cmfaCompatible,
+                runtimeRows: rows
+            )
+        )
+        #expect(
+            cmfa.visibleOperationIDs == [
+                "refresh", "reload-rules", "reload-providers", "memory",
+                "dns-flush", "cache-flush",
+            ]
+        )
+
+        let singBox = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .singBoxCompatible),
+                controllerType: .singBoxCompatible,
+                capabilities: .singBoxCompatible,
+                runtimeRows: rows
+            )
+        )
+        #expect(singBox.visibleOperationIDs == ["refresh"])
+        #expect(!singBox.visibleOperationIDs.contains("memory"))
+        #expect(!singBox.relatedDestinations.isEmpty)
+
+        let surge = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .surgeCompatible),
+                controllerType: .surgeHTTPAPI,
+                capabilities: .surgeHTTPAPI,
+                runtimeRows: rows
+            )
+        )
+        #expect(
+            surge.visibleOperationIDs == [
+                "refresh", "reload-rules", "reload-profile", "dns-flush",
+            ]
+        )
+
+        let stash = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .stashCompatible),
+                controllerType: .stashCompatible,
+                capabilities: .stashCompatible,
+                runtimeRows: rows
+            )
+        )
+        #expect(stash.visibleOperationIDs == ["refresh", "reload-rules", "reload-providers"])
+
+        let unsupported = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .unsupported),
+                controllerType: .unsupported,
+                state: .live,
+                capabilities: .none,
+                runtimeRows: rows,
+                canRefresh: false
+            )
+        )
+        #expect(unsupported.availability == .unsupported)
+        #expect(unsupported.visibleOperationIDs.isEmpty)
+    }
+
+    @Test func actionsExecutableCountTracksTransientReadinessWithoutLosingInventory() {
+        let snapshot = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .mihomoCompatible),
+                controllerType: .mihomoCompatible,
+                capabilities: .mihomoCompatible,
+                runtimeRows: runtimeRowsForActions(),
+                isBusy: true
+            )
+        )
+
+        #expect(snapshot.availability == .ready)
+        #expect(!snapshot.groups.isEmpty)
+        #expect(snapshot.executableCount == 0)
+        #expect(snapshot.groups.flatMap(\.commands).allSatisfy { !$0.isEnabled })
+    }
+
+    @Test func actionsRuntimeObservationMatchesDispatcherFamilies() {
+        for controllerType in [
+            UnifiedControllerType.mihomoCompatible,
+            .nikkiMihomoCompatible,
+            .openClashMihomoCompatible,
+            .cmfaCompatible,
+        ] {
+            #expect(controllerType.hasWorkbenchRuntimeOperations)
+        }
+
+        for controllerType in [
+            UnifiedControllerType.surgeHTTPAPI,
+            .singBoxCompatible,
+            .stashCompatible,
+            .stashCmfaCompatible,
+            .smartProbe,
+            .unknown,
+            .unsupported,
+        ] {
+            #expect(!controllerType.hasWorkbenchRuntimeOperations)
+        }
+    }
+
+    @Test func actionsAvailabilitySeparatesCheckingPartialAndUnsupportedStates() {
+        let checking = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .autoDetect),
+                controllerType: .smartProbe,
+                state: .connecting,
+                capabilities: .probeReadiness,
+                canRefresh: false
+            )
+        )
+        #expect(checking.availability == .checking)
+        #expect(checking.groups.isEmpty)
+        #expect(checking.recovery?.primaryIntent == nil)
+
+        let partial = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .mihomoCompatible),
+                controllerType: .mihomoCompatible,
+                state: .partial("Some data is retained"),
+                capabilities: .mihomoCompatible,
+                runtimeRows: runtimeRowsForActions()
+            )
+        )
+        #expect(partial.availability == .partial)
+        #expect(!partial.groups.isEmpty)
+
+        let unresolved = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .unknown),
+                controllerType: .unknown,
+                capabilities: .none,
+                canRefresh: false
+            )
+        )
+        #expect(unresolved.availability == .unsupported)
+        #expect(unresolved.groups.isEmpty)
+    }
+
+    @Test func actionsEffectiveUnsupportedStateCarriesUnsupportedRecovery() {
+        let snapshot = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .mihomoCompatible),
+                controllerType: .mihomoCompatible,
+                capabilities: .none,
+                canRefresh: false
+            )
+        )
+
+        #expect(snapshot.availability == .unsupported)
+        #expect(snapshot.groups.isEmpty)
+        #expect(snapshot.recovery?.titleKey == "actions.unsupported_title")
+    }
+
+    @Test func targetScopeDistinguishesThisMacNetworkAndExplicitMacLocal() {
+        #expect(WorkbenchControllerTargetScope(host: "localhost") == .thisMac)
+        #expect(WorkbenchControllerTargetScope(host: "127.8.4.2") == .thisMac)
+        #expect(WorkbenchControllerTargetScope(host: "[::1]") == .thisMac)
+        #expect(WorkbenchControllerTargetScope(host: "192.168.1.1") == .networkHost)
+        #expect(WorkbenchControllerTargetScope(host: "router.lan") == .networkHost)
+        #expect(WorkbenchControllerTargetScope(host: "  ") == .unconfigured)
+
+        let macLocal = RouterProfile(
+            displayName: "Surge",
+            host: "127.0.0.1",
+            controllerKind: .surgeCompatible,
+            surgePlatform: .macLocal
+        )
+        #expect(macLocal.permitsThisMacTarget)
+        #expect(!macLocal.expectsNetworkControllerTarget)
     }
 
     @MainActor
@@ -270,223 +482,268 @@ struct WorkbenchManagementProjectionTests {
         )
     }
 
-    @Test func diagnosticsCheckResultProjectionKeepsUserFacingValuesInDisplayOrder() {
-        let row = CheckResultRow(
-            id: "result",
-            title: "Controller request",
-            state: .partial,
-            currentState: "Ready",
-            latestResult: "Controller check completed",
-            lastChecked: "2026-07-28 18:42:01 +0800",
-            nextAction: "Refresh the complete controller snapshot",
-            retryAction: "Retry against https://controller.example:9090/full/path",
-            reportPolicy: "Exclude credentials and raw response bodies only"
+    @Test func diagnosticsControllerFailureSuppressesDuplicateEndpointFailures() {
+        let health = controllerHealth(
+            summary: .offline,
+            statuses: ControllerEndpointKind.allCases.map {
+                ($0, ControllerEndpointStatus.failed("Connection refused"))
+            }
+        )
+        let snapshot = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .autoDetect, host: "127.0.0.1"),
+                controllerType: .smartProbe,
+                state: .failedBeforeFirstSnapshot("Connection refused"),
+                health: health,
+                capabilities: .probeReadiness
+            )
         )
 
-        let fields = WorkbenchDiagnosticsProjection.fields(for: row)
-
-        #expect(
-            fields.map(\.id) == [
-                "current-state",
-                "latest-result",
-                "last-checked",
-                "next-action",
-            ]
-        )
-        #expect(
-            fields.map(\.value) == [
-                row.currentState,
-                row.latestResult,
-                row.lastChecked,
-                row.nextAction,
-            ]
-        )
-        #expect(fields.filter(\.monospaced).map(\.id) == ["last-checked"])
+        #expect(snapshot.overallState == .blocked)
+        #expect(snapshot.issues.map(\.id) == ["controller-access"])
+        #expect(snapshot.availableAreas.isEmpty)
+        #expect(snapshot.targetScope == .thisMac)
+        #expect(snapshot.issues.first?.primaryAction == .refresh)
     }
 
-    @Test func diagnosticsProjectionOmitsEmptyAndMachineFacingValues() {
-        let row = CheckResultRow(
-            id: "technical-result",
-            title: "Controller request",
-            state: .attention,
-            currentState: "ready at https://controller.example:9090/full/path",
-            latestResult: "connection-id=0123456789abcdef; provider=full-provider-name",
-            lastChecked: "   ",
-            nextAction: "GET /rules",
-            retryAction: "Retry against https://controller.example:9090/full/path",
-            reportPolicy: "Exclude credentials and raw response bodies only"
+    @Test func diagnosticsProjectionOmitsMachineFacingEvidence() {
+        #expect(
+            WorkbenchDiagnosticsProjection.displayableText(
+                "connection-id=0123456789abcdef; provider=full-provider-name"
+            ) == nil
         )
-
-        #expect(WorkbenchDiagnosticsProjection.fields(for: row).isEmpty)
+        #expect(WorkbenchDiagnosticsProjection.displayableText("GET /rules") == nil)
+        #expect(
+            WorkbenchDiagnosticsProjection.displayableText(
+                "https://controller.example:9090/full/path"
+            ) == nil
+        )
+        #expect(
+            WorkbenchDiagnosticsProjection.displayableText("Connection refused")
+                == "Connection refused"
+        )
     }
 
-    @Test func diagnosticsVisibilityRemovesUnsupportedItemsFromBothLevels() {
-        let capabilityRows = [
-            CapabilityMatrixRow(
-                id: "supported",
-                title: "Supported",
-                status: .supported,
-                evidence: "ready",
-                operationImpact: "visible"
-            ),
-            CapabilityMatrixRow(
-                id: "unavailable",
-                title: "Unavailable",
-                status: .unavailable,
-                evidence: "missing",
-                operationImpact: "hidden"
-            ),
-            CapabilityMatrixRow(
-                id: "adapter-source",
-                title: "Adapter Source",
-                status: .supported,
-                evidence: "internal",
-                operationImpact: "hidden"
-            ),
-            CapabilityMatrixRow(
-                id: "empty",
-                title: "",
-                status: .supported,
-                evidence: "ready",
-                operationImpact: ""
-            ),
-        ]
-        #expect(
-            WorkbenchDiagnosticsVisibility.availableCapabilityRows(capabilityRows)
-                .map(\.id) == ["supported"]
+    @Test func diagnosticsUsesCapabilitiesToSuppressUnsupportedFailures() {
+        let snapshot = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .singBoxCompatible),
+                controllerType: .singBoxCompatible,
+                state: .live,
+                lastSuccessAt: Date(timeIntervalSince1970: 2_000_000_000),
+                isPaused: true,
+                health: controllerHealth(summary: .ready),
+                capabilities: .singBoxCompatible,
+                rulesState: .unavailable("Rules are unavailable"),
+                providersState: .unavailable("Providers are unavailable")
+            )
         )
 
-        let observabilityRows = [
-            ObservabilityReadinessRow(
-                id: "ready",
-                title: "Ready",
-                category: "Local",
-                state: .ready,
-                detail: "ready",
-                boundary: "local"
-            ),
-            ObservabilityReadinessRow(
-                id: "future",
-                title: "Future",
-                category: "Stream",
-                state: .futureOptionalStream,
-                detail: "future",
-                boundary: "optional"
-            ),
-            ObservabilityReadinessRow(
-                id: "unavailable",
-                title: "Unavailable",
-                category: "Controller",
-                state: .unavailable,
-                detail: "missing",
-                boundary: "unsupported"
-            ),
-            ObservabilityReadinessRow(
-                id: "empty",
-                title: "",
-                category: "Local",
-                state: .ready,
-                detail: "",
-                boundary: "local"
-            ),
-        ]
-        #expect(
-            WorkbenchDiagnosticsVisibility.availableObservabilityRows(observabilityRows)
-                .map(\.id) == ["ready"]
-        )
+        #expect(snapshot.overallState == .needsAttention)
+        #expect(snapshot.issues.map(\.id) == ["presentation-paused"])
+        #expect(snapshot.freshness == .paused(Date(timeIntervalSince1970: 2_000_000_001)))
+        #expect(snapshot.issues.first?.primaryAction == .resumePresentation)
+        #expect(!snapshot.issues.contains { $0.id == "rules-data" || $0.id == "sources-data" })
+        #expect(snapshot.availableAreas.map(\.destination).contains(.proxies))
+        #expect(!snapshot.availableAreas.map(\.destination).contains(.rules))
+        #expect(!snapshot.availableAreas.map(\.destination).contains(.sources))
+    }
 
-        let support = WorkbenchDiagnosticsSupport(
-            enhancedSnapshot: true,
-            providerUpdate: false,
-            delayTest: true,
-            connectionClose: false
-        )
-        let steps = [
-            endpointStep(id: "endpoint-profile"),
-            endpointStep(id: "endpoint-enhanced-snapshot"),
-            endpointStep(id: "endpoint-provider-update"),
-            endpointStep(id: "endpoint-delay-test"),
-            endpointStep(id: "endpoint-connection-close"),
-            EndpointCheckStep(
-                id: "empty",
-                title: "",
-                state: .ready,
-                detail: "",
-                nextAction: "",
-                primaryAction: nil
-            ),
-        ]
-        #expect(
-            WorkbenchDiagnosticsVisibility.availableEndpointSteps(
-                steps,
-                support: support
-            ).map(\.id) == [
-                "endpoint-profile",
-                "endpoint-enhanced-snapshot",
-                "endpoint-delay-test",
-            ]
-        )
+    @Test func diagnosticsTracksCheckingRetainedPartialAndHealthyStates() {
+        let router = controllerProfile(kind: .mihomoCompatible)
+        let lastSuccess = Date(timeIntervalSince1970: 2_000_000_000)
 
-        let results = [
-            checkResult(id: "profile"),
-            checkResult(id: "enhanced-snapshot"),
-            checkResult(id: "provider-update"),
-            checkResult(id: "delay-test"),
-            checkResult(id: "close-connection"),
-            checkResult(id: "close-all-connections"),
-            CheckResultRow(
-                id: "empty",
-                title: "",
-                state: .notChecked,
-                currentState: "key=value",
-                latestResult: "GET /rules",
-                lastChecked: "",
-                nextAction: "",
-                retryAction: "",
-                reportPolicy: ""
-            ),
-        ]
+        let checking = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: router,
+                controllerType: .mihomoCompatible,
+                state: .connecting,
+                health: controllerHealth(summary: .checking),
+                capabilities: .mihomoCompatible
+            )
+        )
+        #expect(checking.overallState == .checking)
+        #expect(checking.freshness == .checking)
+        #expect(checking.issues.isEmpty)
+        #expect(checking.availableAreas.isEmpty)
+
+        let retained = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: router,
+                controllerType: .mihomoCompatible,
+                state: .staleReconnecting("Connection timed out"),
+                lastSuccessAt: lastSuccess,
+                health: controllerHealth(summary: .ready),
+                capabilities: .mihomoCompatible
+            )
+        )
+        #expect(retained.overallState == .needsAttention)
+        #expect(retained.freshness == .retained(lastSuccess))
+        #expect(retained.issues.map(\.id) == ["session-stale"])
+        #expect(retained.issues.first?.primaryAction == .refresh)
+
+        let partial = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: router,
+                controllerType: .mihomoCompatible,
+                state: .partial("Only part of the snapshot is available"),
+                lastSuccessAt: lastSuccess,
+                health: controllerHealth(summary: .partial),
+                capabilities: .mihomoCompatible
+            )
+        )
+        #expect(partial.overallState == .needsAttention)
+        #expect(partial.freshness == .live(lastSuccess))
+        #expect(partial.issues.map(\.id) == ["session-partial"])
+
+        let healthy = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: router,
+                controllerType: .mihomoCompatible,
+                state: .live,
+                lastSuccessAt: lastSuccess,
+                health: controllerHealth(summary: .ready),
+                capabilities: .mihomoCompatible
+            )
+        )
+        #expect(healthy.overallState == .ready)
+        #expect(healthy.issues.isEmpty)
         #expect(
-            WorkbenchDiagnosticsVisibility.availableCheckResults(
-                results,
-                support: support
-            ).map(\.id) == [
-                "profile",
-                "enhanced-snapshot",
-                "delay-test",
+            healthy.availableAreas.map(\.destination) == [
+                .proxies, .connections, .rules, .sources, .overview, .configuration,
             ]
         )
     }
 
-    private func endpointStep(id: String) -> EndpointCheckStep {
-        EndpointCheckStep(
-            id: id,
-            title: id,
-            state: .ready,
-            detail: "detail",
-            nextAction: "next",
-            primaryAction: nil
+    @Test func diagnosticsCheckingSuppressesProvisionalFailuresAndAreas() {
+        let health = controllerHealth(
+            summary: .checking,
+            statuses: ControllerEndpointKind.allCases.map {
+                ($0, ControllerEndpointStatus.failed("Connection refused"))
+            }
+        )
+        let snapshot = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .autoDetect),
+                controllerType: .smartProbe,
+                state: .connecting,
+                health: health,
+                capabilities: .mihomoCompatible
+            )
+        )
+
+        #expect(snapshot.overallState == .checking)
+        #expect(snapshot.issues.isEmpty)
+        #expect(snapshot.availableAreas.isEmpty)
+    }
+
+    @Test func diagnosticsProjectedEvidenceUsesSafeFallback() throws {
+        let snapshot = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .mihomoCompatible),
+                controllerType: .mihomoCompatible,
+                state: .staleReconnecting("GET /rules"),
+                lastSuccessAt: Date(timeIntervalSince1970: 2_000_000_000),
+                health: controllerHealth(summary: .ready),
+                capabilities: .mihomoCompatible
+            )
+        )
+
+        let issue = try #require(snapshot.issues.first { $0.id == "session-stale" })
+        #expect(
+            issue.evidence.first?.value
+                == MicaStrings.localizedKey(
+                    "diagnostics.evidence_unavailable",
+                    language: .english
+                )
         )
     }
 
-    private func checkResult(id: String) -> CheckResultRow {
-        CheckResultRow(
-            id: id,
-            title: id,
-            state: .ready,
-            currentState: "ready",
-            latestResult: "ready",
-            lastChecked: "now",
-            nextAction: "none",
-            retryAction: "none",
-            reportPolicy: "full"
+    @Test func diagnosticsRetainedControllerFailureSuppressesEndpointFailures() {
+        let lastSuccess = Date(timeIntervalSince1970: 2_000_000_000)
+        let health = controllerHealth(
+            summary: .offline,
+            statuses: ControllerEndpointKind.allCases.map {
+                ($0, ControllerEndpointStatus.failed("Connection refused"))
+            }
+        )
+        let snapshot = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .mihomoCompatible),
+                controllerType: .mihomoCompatible,
+                state: .failed("Connection refused"),
+                lastSuccessAt: lastSuccess,
+                health: health,
+                capabilities: .mihomoCompatible
+            )
+        )
+
+        #expect(snapshot.overallState == .needsAttention)
+        #expect(snapshot.freshness == .retained(lastSuccess))
+        #expect(snapshot.issues.map(\.id) == ["controller-access"])
+    }
+
+    @Test func diagnosticsMapsExpectedEndpointFailuresToProductAreas() {
+        let health = controllerHealth(
+            summary: .partial,
+            statuses: [
+                (.version, .ready("1.0")),
+                (.configs, .ready("Ready")),
+                (.proxies, .failed("Policy read failed")),
+                (.connections, .ready("Ready")),
+                (.rules, .failed("Rule read failed")),
+                (.providers, .ready("Ready")),
+            ]
+        )
+        let snapshot = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .mihomoCompatible),
+                controllerType: .mihomoCompatible,
+                state: .live,
+                lastSuccessAt: Date(timeIntervalSince1970: 2_000_000_000),
+                health: health,
+                capabilities: .mihomoCompatible
+            )
+        )
+
+        #expect(snapshot.issues.map(\.id) == ["endpoint-proxies", "endpoint-rules"])
+        #expect(!snapshot.availableAreas.map(\.destination).contains(.proxies))
+        #expect(!snapshot.availableAreas.map(\.destination).contains(.rules))
+        #expect(snapshot.availableAreas.map(\.destination).contains(.connections))
+        #expect(snapshot.availableAreas.map(\.destination).contains(.sources))
+    }
+
+    @Test func diagnosticsSelectionReconcilesByStableIssueID() {
+        let issues = [
+            diagnosticIssue(id: "first"),
+            diagnosticIssue(id: "second"),
+        ]
+
+        #expect(
+            WorkbenchDiagnosticsProjection.reconciledSelection(
+                currentID: "second",
+                issues: issues
+            ) == "second"
+        )
+        #expect(
+            WorkbenchDiagnosticsProjection.reconciledSelection(
+                currentID: "resolved",
+                issues: issues
+            ) == "first"
+        )
+        #expect(
+            WorkbenchDiagnosticsProjection.reconciledSelection(
+                currentID: "first",
+                issues: []
+            ) == nil
         )
     }
 
     private func runtimeOperationRow(
         id: String,
         status: CapabilityStatus,
-        actionKey: String? = "action.run"
+        actionKey: String? = "action.run",
+        isDestructive: Bool = false
     ) -> DiagnosticsRuntimeOperationRow {
         DiagnosticsRuntimeOperationRow(
             id: id,
@@ -498,10 +755,119 @@ struct WorkbenchManagementProjectionTests {
             status: status,
             nextStepKey: "action.next",
             actionButtonKey: actionKey,
-            requiresConfirmation: false,
-            confirmationMessageKey: nil,
-            isDestructive: false,
+            requiresConfirmation: isDestructive,
+            confirmationMessageKey: isDestructive ? "action.confirm" : nil,
+            isDestructive: isDestructive,
             evidence: "ready"
+        )
+    }
+
+    private func runtimeRowsForActions() -> [DiagnosticsRuntimeOperationRow] {
+        [
+            runtimeOperationRow(id: "configuration-reload", status: .supported),
+            runtimeOperationRow(id: "geo-resources", status: .supported),
+            runtimeOperationRow(id: "memory", status: .supported),
+            runtimeOperationRow(id: "dns-flush", status: .supported),
+            runtimeOperationRow(id: "cache-flush", status: .supported),
+            runtimeOperationRow(id: "core-restart", status: .supported, isDestructive: true),
+            runtimeOperationRow(id: "core-upgrade", status: .supported, isDestructive: true),
+        ]
+    }
+
+    private func actionsInput(
+        router: RouterProfile,
+        controllerType: UnifiedControllerType,
+        state: LiveSessionState = .live,
+        capabilities: ControllerCapabilities,
+        runtimeRows: [DiagnosticsRuntimeOperationRow] = [],
+        canTest: Bool = true,
+        canRefresh: Bool = true,
+        isBusy: Bool = false
+    ) -> WorkbenchActionsInput {
+        WorkbenchActionsInput(
+            router: router,
+            generation: UUID(),
+            controllerType: controllerType,
+            sessionState: state,
+            capabilities: capabilities,
+            runtimeRows: runtimeRows,
+            canTest: canTest,
+            canRefresh: canRefresh,
+            isBusy: isBusy
+        )
+    }
+
+    private func diagnosticsInput(
+        router: RouterProfile,
+        controllerType: UnifiedControllerType,
+        state: LiveSessionState,
+        lastSuccessAt: Date? = nil,
+        isPaused: Bool = false,
+        health: ControllerHealthSnapshot,
+        capabilities: ControllerCapabilities,
+        rulesState: EnhancedSnapshotState = .available,
+        providersState: EnhancedSnapshotState = .available,
+        liveStreamState: LiveStreamState = .live
+    ) -> WorkbenchDiagnosticsInput {
+        WorkbenchDiagnosticsInput(
+            router: router,
+            generation: UUID(),
+            detectedKind: router.controllerKind,
+            controllerType: controllerType,
+            sessionState: state,
+            lastSuccessAt: lastSuccessAt,
+            isPresentationPaused: isPaused,
+            presentationPausedAt: isPaused ? Date(timeIntervalSince1970: 2_000_000_001) : nil,
+            health: health,
+            capabilities: capabilities,
+            rulesState: rulesState,
+            providersState: providersState,
+            liveStreamState: liveStreamState,
+            metadata: .empty,
+            language: .english
+        )
+    }
+
+    private func controllerHealth(
+        summary: ControllerHealthSummary,
+        statuses: [(ControllerEndpointKind, ControllerEndpointStatus)] = []
+    ) -> ControllerHealthSnapshot {
+        ControllerHealthSnapshot(
+            summary: summary,
+            routerName: "Controller",
+            checkedAt: Date(timeIntervalSince1970: 2_000_000_002),
+            endpoints: ControllerEndpointKind.allCases.map { endpoint in
+                ControllerEndpointHealth(
+                    endpoint: endpoint,
+                    status: statuses.first { $0.0 == endpoint }?.1 ?? .ready("Ready")
+                )
+            }
+        )
+    }
+
+    private func diagnosticIssue(id: String) -> WorkbenchDiagnosticsIssue {
+        WorkbenchDiagnosticsIssue(
+            id: id,
+            severity: .warning,
+            title: id,
+            detail: id,
+            affectedDestinations: [.overview],
+            evidence: [],
+            primaryAction: nil
+        )
+    }
+
+    private func controllerProfile(
+        kind: ControllerKind,
+        host: String = "router.example"
+    ) -> RouterProfile {
+        RouterProfile(
+            displayName: kind.label,
+            scheme: .http,
+            host: host,
+            port: 9090,
+            controllerKind: kind,
+            surgePlatform: .remoteMac
         )
     }
 

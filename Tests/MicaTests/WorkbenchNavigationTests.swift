@@ -26,6 +26,10 @@ struct WorkbenchNavigationTests {
         #expect(WorkbenchDestination.controllerManagementCases.map(\.rawValue) == [
             "controllers", "configuration", "actions", "diagnostics",
         ])
+        #expect(
+            WorkbenchDestination.sidebarCases.map(\.rawValue)
+                == WorkbenchDestination.allCases.map(\.rawValue)
+        )
     }
 
     @Test func destinationsKeepStableGroupsAndControllerRequirements() {

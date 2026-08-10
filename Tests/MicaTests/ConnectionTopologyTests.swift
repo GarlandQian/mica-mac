@@ -312,9 +312,10 @@ struct ConnectionTopologyTests {
         #expect(cancellable == synchronous)
     }
 
-    @Test func sharedRouteMembershipOperationsScaleWithTotalStages() {
-        let smallCount = 256
-        let largeCount = smallCount * 2
+    @Test func sharedRouteMembershipOperationsScaleThroughTwoThousandConnections() {
+        let smallCount = 500
+        let largeCount = 2_000
+        let scale = largeCount / smallCount
         let stagesPerPath = 6
         let edgesPerPath = stagesPerPath - 1
 
@@ -357,32 +358,33 @@ struct ConnectionTopologyTests {
 
         #expect(
             large.operationCounts.nodeTableLookupCount
-                == small.operationCounts.nodeTableLookupCount * 2
+                == small.operationCounts.nodeTableLookupCount * scale
         )
         #expect(
             large.operationCounts.edgeTableLookupCount
-                == small.operationCounts.edgeTableLookupCount * 2
+                == small.operationCounts.edgeTableLookupCount * scale
         )
         #expect(
             large.operationCounts.nodeMembershipWriteCount
-                == small.operationCounts.nodeMembershipWriteCount * 2
+                == small.operationCounts.nodeMembershipWriteCount * scale
         )
         #expect(
             large.operationCounts.edgeMembershipWriteCount
-                == small.operationCounts.edgeMembershipWriteCount * 2
+                == small.operationCounts.edgeMembershipWriteCount * scale
         )
     }
 
-    @Test func cancellableProjectionThrowsWhenTaskIsCancelled() async {
+    @Test func cancellableLargeProjectionThrowsWhenTaskIsCancelled() async {
+        let connections = sharedRouteConnections(count: 2_000)
         let task = Task {
             do {
                 try await Task.sleep(for: .seconds(30))
             } catch {
                 // Continue with the task's cancellation bit set.
             }
-            return try await ConnectionTopologyBuilder.buildCancellable(from: [
-                connection(id: "1", sourceIP: "10.0.0.1", chains: ["DIRECT"]),
-            ])
+            return try await ConnectionTopologyBuilder.buildCancellable(
+                from: connections
+            )
         }
         task.cancel()
 

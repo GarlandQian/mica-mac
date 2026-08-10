@@ -4,6 +4,14 @@ import Testing
 @testable import Mica
 
 struct WorkbenchDataProjectionTests {
+    @Test func sharedDataSearchKeepsUnicodeCaseInsensitiveSemantics() {
+        #expect(WorkbenchDataSearch.contains("browser.app", in: "Browser.APP"))
+        #expect(WorkbenchDataSearch.contains("mÜnchen", in: "München Edge"))
+        #expect(WorkbenchDataSearch.contains("σίσυφος", in: "Σίσυφος"))
+        #expect(WorkbenchDataSearch.contains("東京", in: "東京节点"))
+        #expect(!WorkbenchDataSearch.contains("munchen", in: "München Edge"))
+    }
+
     @Test func endpointStateDistinguishesUnavailableLoadingEmptyFilteredAndStale() {
         #expect(
             WorkbenchDataStateResolver.endpoint(

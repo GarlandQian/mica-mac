@@ -1,6 +1,306 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "actions.checking_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica is resolving the controller and waiting for the first complete snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 正在识别控制器并等待首个完整快照。"}}}
+    },
+    "actions.checking_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking Controller"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在检查控制器"}}}
+    },
+    "actions.executable_count %lld": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%lld available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 项可用"}}}
+    },
+    "actions.group_connection": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "连接"}}}
+    },
+    "actions.group_data": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Data"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器数据"}}}
+    },
+    "actions.group_maintenance": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Maintenance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "维护"}}}
+    },
+    "actions.recovery_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Commands stay unavailable until Mica can identify the controller and commit a complete snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 识别控制器并取得完整快照后，相关命令才会可用。"}}}
+    },
+    "actions.recovery_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Not Ready"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器尚未就绪"}}}
+    },
+    "actions.related_workspaces": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Related Workspaces"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "相关工作区"}}}
+    },
+    "actions.status_checking": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "检查中"}}}
+    },
+    "actions.status_partial": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Partial"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分可用"}}}
+    },
+    "actions.status_ready": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Ready"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "就绪"}}}
+    },
+    "actions.status_recovery": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Needs Connection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要连接"}}}
+    },
+    "actions.status_unsupported": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No Standalone Commands"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无独立命令"}}}
+    },
+    "actions.target_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Target"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器目标"}}}
+    },
+    "actions.unsupported_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This controller has no verified standalone commands here. Its supported workflows remain available in their owning workspaces."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此控制器在这里没有已验证的独立命令；已支持的流程仍位于各自工作区。"}}}
+    },
+    "actions.unsupported_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No Actions Available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "没有可用操作"}}}
+    },
+    "diagnostics.affected_areas": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Affected Areas"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "影响范围"}}}
+    },
+    "diagnostics.affected_count %lld": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%lld affected areas"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "影响 %lld 个区域"}}}
+    },
+    "diagnostics.available_now": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Available Now"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前可用"}}}
+    },
+    "diagnostics.evidence": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Evidence"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "证据"}}}
+    },
+    "diagnostics.evidence_paused_at": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Paused At"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "暂停时间"}}}
+    },
+    "diagnostics.evidence_reason": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reason"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "原因"}}}
+    },
+    "diagnostics.evidence_result": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Latest Result"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "最新结果"}}}
+    },
+    "diagnostics.evidence_unavailable": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No safe display detail is available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "没有可安全显示的详细信息。"}}}
+    },
+    "diagnostics.severity_critical": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Critical"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "严重"}}}
+    },
+    "diagnostics.severity_warning": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Warning"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "警告"}}}
+    },
+    "diagnostics.freshness": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Data Freshness"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "数据新鲜度"}}}
+    },
+    "diagnostics.freshness_checking": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "检查中"}}}
+    },
+    "diagnostics.freshness_live %@": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Live · %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "实时 · %@"}}}
+    },
+    "diagnostics.freshness_paused %@": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Paused · %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "已暂停 · %@"}}}
+    },
+    "diagnostics.freshness_retained %@": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retained · %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "保留数据 · %@"}}}
+    },
+    "diagnostics.freshness_unavailable": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "不可用"}}}
+    },
+    "diagnostics.issue_adapter_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica could not resolve this profile to a supported controller adapter."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 无法将此配置识别为受支持的控制器适配器。"}}}
+    },
+    "diagnostics.issue_adapter_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Type Is Unresolved"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器类型尚未识别"}}}
+    },
+    "diagnostics.issue_endpoint_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The controller supports this data area, but its latest read did not succeed."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器支持此数据区域，但最近一次读取未成功。"}}}
+    },
+    "diagnostics.issue_endpoint_title %@": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%@ Is Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%@不可用"}}}
+    },
+    "diagnostics.issue_partial_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The controller session is usable, but part of the latest snapshot is unavailable."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器会话仍可使用，但最新快照有部分内容不可用。"}}}
+    },
+    "diagnostics.issue_partial_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session Is Partially Available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会话部分可用"}}}
+    },
+    "diagnostics.issue_paused_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Networking continues, but Mica is holding the visible data at the paused time."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "网络仍在运行，但 Mica 将可见数据停留在暂停时刻。"}}}
+    },
+    "diagnostics.issue_paused_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Presentation Is Paused"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "界面展示已暂停"}}}
+    },
+    "diagnostics.issue_rules_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The last successful rule data remains visible when available, but it is not current."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "如有旧规则数据会继续显示，但它不是当前数据。"}}}
+    },
+    "diagnostics.issue_rules_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Rules Are Not Current"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "规则数据不是最新状态"}}}
+    },
+    "diagnostics.issue_sources_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The last successful source data remains visible when available, but it is not current."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "如有旧资源数据会继续显示，但它不是当前数据。"}}}
+    },
+    "diagnostics.issue_sources_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Sources Are Not Current"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "资源数据不是最新状态"}}}
+    },
+    "diagnostics.issue_stale_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica is reconnecting and showing the last complete snapshot as retained data."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 正在重连，并将上一个完整快照作为保留数据显示。"}}}
+    },
+    "diagnostics.issue_stale_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Showing Retained Data"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在显示保留数据"}}}
+    },
+    "diagnostics.issue_telemetry_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Snapshot data remains usable, but one or more live telemetry channels are degraded."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "快照数据仍可使用，但一个或多个实时遥测通道状态下降。"}}}
+    },
+    "diagnostics.issue_telemetry_title": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Live Telemetry Is Degraded"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "实时遥测状态下降"}}}
+    },
+    "diagnostics.needs_attention": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Needs Attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要处理"}}}
+    },
+    "diagnostics.recheck_now": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recheck Now"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "立即重新检查"}}}
+    },
+    "diagnostics.technical_controller": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器"}}}
+    },
+    "diagnostics.technical_details": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Technical Details"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "技术详情"}}}
+    },
+    "diagnostics.technical_detected_type": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Detected Type"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "识别类型"}}}
+    },
+    "diagnostics.technical_evidence": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Evidence"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "证据"}}}
+    },
+    "diagnostics.technical_last_success": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Last Complete Snapshot"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "最近完整快照"}}}
+    },
+    "diagnostics.technical_requested_type": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Configured Type"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "配置类型"}}}
+    },
+    "diagnostics.technical_session": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会话"}}}
+    },
+    "diagnostics.technical_session_state": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session State"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会话状态"}}}
+    },
+    "diagnostics.technical_target_scope": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Target Location"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "目标位置"}}}
+    },
+    "diagnostics.verdict_attention": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Needs Attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要处理"}}}
+    },
+    "diagnostics.verdict_attention_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some controller data remains usable, but one or more current issues need attention."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分控制器数据仍可使用，但当前存在需要处理的问题。"}}}
+    },
+    "diagnostics.verdict_blocked": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器不可用"}}}
+    },
+    "diagnostics.verdict_blocked_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica has not received a complete controller snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 尚未收到完整的控制器快照。"}}}
+    },
+    "diagnostics.verdict_checking": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking Controller"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在检查控制器"}}}
+    },
+    "diagnostics.verdict_checking_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Waiting for the first complete controller snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在等待首个完整控制器快照。"}}}
+    },
+    "diagnostics.verdict_ready": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Ready"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器已就绪"}}}
+    },
+    "diagnostics.verdict_ready_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No current issue was found in the supported controller areas."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前受支持的控制器区域未发现问题。"}}}
+    },
+    "target.loopback_recovery_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "127.0.0.1 and localhost point to this Mac. For a controller on a router or another device, use that device's LAN IP or hostname and match its API port and credential."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "127.0.0.1 和 localhost 指向当前 Mac。若控制器运行在路由器或其他设备上，请使用该设备的 LAN IP 或主机名，并匹配 API 端口和凭据。"}}}
+    },
+    "target.scope_network_host": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Network Host"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "网络主机"}}}
+    },
+    "target.scope_network_host_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This target is reached over the local or remote network."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此目标通过本地或远程网络访问。"}}}
+    },
+    "target.scope_this_mac": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This Mac"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前 Mac"}}}
+    },
+    "target.scope_this_mac_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This address resolves to the Mac running Mica."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此地址指向运行 Mica 的当前 Mac。"}}}
+    },
+    "target.scope_unconfigured": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Not Configured"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "未配置"}}}
+    },
+    "target.scope_unconfigured_detail": {
+      "extractionState": "manual",
+      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The controller host is missing or invalid."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器主机缺失或格式无效。"}}}
+    },
     "Direct": {
       "extractionState": "manual",
       "localizations": {
@@ -22748,6 +23048,13 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "收起" } }
       }
     },
+    "overview.topology_clear_selection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Clear Selection" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "清除选择" } }
+      }
+    },
     "overview.topology_empty_detail": {
       "extractionState": "manual",
       "localizations": {
@@ -22769,6 +23076,27 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "代理链出口" } }
       }
     },
+    "overview.topology_next_path": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Next Path" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "下一条路径" } }
+      }
+    },
+    "overview.topology_pin_selection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pin Selection" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "固定选择" } }
+      }
+    },
+    "overview.topology_previous_path": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Previous Path" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "上一条路径" } }
+      }
+    },
     "overview.topology_rule": {
       "extractionState": "manual",
       "localizations": {
@@ -22781,6 +23109,20 @@
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "Source" } },
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "来源" } }
+      }
+    },
+    "overview.topology_unpin_selection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Unpin Selection" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "取消固定" } }
+      }
+    },
+    "overview.topology_unavailable_paths": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Unavailable paths" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "不可用路径" } }
       }
     },
     "overview.upload_rate": {

@@ -175,41 +175,91 @@ function assertDirectLocalizationKeys(files, strings) {
 }
 
 const expectedWorkbenchFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchActions.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchActionsPresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchChrome.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchConfiguration.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchConnectionCache.swift",
   "Sources/Mica/Features/Workbench/WorkbenchConnectionDetails.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchConnectionPulseView.swift",
   "Sources/Mica/Features/Workbench/WorkbenchConnections.swift",
   "Sources/Mica/Features/Workbench/WorkbenchConnectionsView.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchControllerPresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchControllerSelector.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchControllers.swift",
   "Sources/Mica/Features/Workbench/WorkbenchDashboard.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDataInteraction.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDataPresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchDataShared.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDesignSystem.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDiagnostics.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDiagnosticsComponents.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDiagnosticsPresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchLogPresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchLogs.swift",
   "Sources/Mica/Features/Workbench/WorkbenchManagement.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewEditor.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewLayoutStore.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewPersonalization.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewProjection.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewRuntimes.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewTelemetry.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewTopology.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewTopologyView.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewWindowCoordinator.swift",
   "Sources/Mica/Features/Workbench/WorkbenchProxyGroupPanels.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchProxyInteraction.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchProxyPresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchProxies.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchRuleDetails.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchRulePresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchRules.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchSettings.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchSidebar.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchSourceDetails.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchSourcePresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchSources.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchStatusBar.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchTailscale.swift",
   "Sources/Mica/Features/Workbench/WorkbenchVisualSystem.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchWindow.swift",
   "Sources/Mica/Features/Workbench/WorkbenchWorkspaceStore.swift",
   "Sources/Mica/Features/Workbench/WorkbenchWorkspaceView.swift",
 ].sort();
 
 const connectionPageFiles = [
   "Sources/Mica/Features/Workbench/WorkbenchConnections.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchConnectionCache.swift",
   "Sources/Mica/Features/Workbench/WorkbenchConnectionsView.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchConnectionPulseView.swift",
   "Sources/Mica/Features/Workbench/WorkbenchConnectionDetails.swift",
 ];
 
+const logPageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchLogPresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchLogs.swift",
+];
+
+const rulePageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchRulePresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchRules.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchRuleDetails.swift",
+];
+
+const sourcePageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchSourcePresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchSources.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchSourceDetails.swift",
+];
+
 const dataPageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchDataInteraction.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDataPresentation.swift",
   "Sources/Mica/Features/Workbench/WorkbenchDataShared.swift",
   ...connectionPageFiles,
-  "Sources/Mica/Features/Workbench/WorkbenchRules.swift",
-  "Sources/Mica/Features/Workbench/WorkbenchSources.swift",
-  "Sources/Mica/Features/Workbench/WorkbenchLogs.swift",
+  ...logPageFiles,
+  ...rulePageFiles,
+  ...sourcePageFiles,
 ];
 
 const dataBrowserTableFiles = [
@@ -217,6 +267,31 @@ const dataBrowserTableFiles = [
   "Sources/Mica/Features/Workbench/WorkbenchRules.swift",
   "Sources/Mica/Features/Workbench/WorkbenchSources.swift",
   "Sources/Mica/Features/Workbench/WorkbenchLogs.swift",
+];
+
+const controllerPageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchControllerPresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchControllers.swift",
+];
+
+const actionPageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchActionsPresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchActions.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchTailscale.swift",
+];
+
+const diagnosticsPageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchDiagnosticsPresentation.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDiagnostics.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchDiagnosticsComponents.swift",
+];
+
+const managementPageFiles = [
+  "Sources/Mica/Features/Workbench/WorkbenchManagement.swift",
+  ...controllerPageFiles,
+  "Sources/Mica/Features/Workbench/WorkbenchConfiguration.swift",
+  ...actionPageFiles,
+  ...diagnosticsPageFiles,
 ];
 
 const requiredPresentationTests = [
@@ -343,32 +418,88 @@ const agentsRules = read("AGENTS.md");
 const workbenchContract = read(".trellis/spec/frontend/workbench-ui-contract.md");
 const controllerContract = read(".trellis/spec/backend/controller-data-contract.md");
 const liveSessionContract = read(".trellis/spec/frontend/live-session-controller-contract.md");
+const designSystem = read("Sources/Mica/Features/Workbench/WorkbenchDesignSystem.swift");
 const visualSystem = read("Sources/Mica/Features/Workbench/WorkbenchVisualSystem.swift");
+const visualSource = [designSystem, visualSystem].join("\n");
 const chrome = read("Sources/Mica/Features/Workbench/WorkbenchChrome.swift");
+const window = read("Sources/Mica/Features/Workbench/WorkbenchWindow.swift");
+const sidebar = read("Sources/Mica/Features/Workbench/WorkbenchSidebar.swift");
+const statusBar = read("Sources/Mica/Features/Workbench/WorkbenchStatusBar.swift");
+const chromeSource = [chrome, window, sidebar, statusBar].join("\n");
 const controllerSelector = read("Sources/Mica/Features/Workbench/WorkbenchControllerSelector.swift");
 const workspaceView = read("Sources/Mica/Features/Workbench/WorkbenchWorkspaceView.swift");
 const dashboard = read("Sources/Mica/Features/Workbench/WorkbenchDashboard.swift");
 const overviewEditor = read("Sources/Mica/Features/Workbench/WorkbenchOverviewEditor.swift");
 const overviewPersonalization = read("Sources/Mica/Features/Workbench/WorkbenchOverviewPersonalization.swift");
+const overviewLayoutStore = read("Sources/Mica/Features/Workbench/WorkbenchOverviewLayoutStore.swift");
+const overviewWindowCoordinator = read("Sources/Mica/Features/Workbench/WorkbenchOverviewWindowCoordinator.swift");
+const overviewPersonalizationSource = [
+  overviewPersonalization,
+  overviewLayoutStore,
+  overviewWindowCoordinator,
+].join("\n");
 const overviewProjection = read("Sources/Mica/Features/Workbench/WorkbenchOverviewProjection.swift");
 const overviewRuntimes = read("Sources/Mica/Features/Workbench/WorkbenchOverviewRuntimes.swift");
+const overviewTelemetry = read("Sources/Mica/Features/Workbench/WorkbenchOverviewTelemetry.swift");
 const overviewTopology = read("Sources/Mica/Features/Workbench/WorkbenchOverviewTopology.swift");
+const overviewTopologyView = read("Sources/Mica/Features/Workbench/WorkbenchOverviewTopologyView.swift");
 const overviewSource = [
   dashboard,
   overviewEditor,
-  overviewPersonalization,
+  overviewPersonalizationSource,
   overviewProjection,
   overviewRuntimes,
+  overviewTelemetry,
   overviewTopology,
+  overviewTopologyView,
 ].join("\n");
-const proxyModel = read("Sources/Mica/Features/Workbench/WorkbenchProxies.swift");
+const proxyRoot = read("Sources/Mica/Features/Workbench/WorkbenchProxies.swift");
 const proxyPanels = read("Sources/Mica/Features/Workbench/WorkbenchProxyGroupPanels.swift");
-const proxies = [proxyModel, proxyPanels].join("\n");
+const proxyInteraction = read("Sources/Mica/Features/Workbench/WorkbenchProxyInteraction.swift");
+const proxyPresentation = read("Sources/Mica/Features/Workbench/WorkbenchProxyPresentation.swift");
+const proxies = [proxyRoot, proxyPanels, proxyInteraction, proxyPresentation].join("\n");
+const dataInteraction = read("Sources/Mica/Features/Workbench/WorkbenchDataInteraction.swift");
+const dataPresentation = read("Sources/Mica/Features/Workbench/WorkbenchDataPresentation.swift");
+const dataShared = read("Sources/Mica/Features/Workbench/WorkbenchDataShared.swift");
 const dataPages = dataPageFiles.map(read).join("\n");
+const connectionsPresentation = read("Sources/Mica/Features/Workbench/WorkbenchConnections.swift");
+const connectionCache = read("Sources/Mica/Features/Workbench/WorkbenchConnectionCache.swift");
+const connectionsRoot = read("Sources/Mica/Features/Workbench/WorkbenchConnectionsView.swift");
+const connectionPulseView = read("Sources/Mica/Features/Workbench/WorkbenchConnectionPulseView.swift");
+const connectionDetails = read("Sources/Mica/Features/Workbench/WorkbenchConnectionDetails.swift");
 const connectionsPage = connectionPageFiles.map(read).join("\n");
-const logsPage = read("Sources/Mica/Features/Workbench/WorkbenchLogs.swift");
-const rulesPage = read("Sources/Mica/Features/Workbench/WorkbenchRules.swift");
-const management = read("Sources/Mica/Features/Workbench/WorkbenchManagement.swift");
+const logPresentation = read("Sources/Mica/Features/Workbench/WorkbenchLogPresentation.swift");
+const logsRoot = read("Sources/Mica/Features/Workbench/WorkbenchLogs.swift");
+const logsPage = logPageFiles.map(read).join("\n");
+const rulePresentation = read("Sources/Mica/Features/Workbench/WorkbenchRulePresentation.swift");
+const rulesRoot = read("Sources/Mica/Features/Workbench/WorkbenchRules.swift");
+const ruleDetails = read("Sources/Mica/Features/Workbench/WorkbenchRuleDetails.swift");
+const rulesPage = rulePageFiles.map(read).join("\n");
+const sourcePresentation = read("Sources/Mica/Features/Workbench/WorkbenchSourcePresentation.swift");
+const sourcesRoot = read("Sources/Mica/Features/Workbench/WorkbenchSources.swift");
+const sourceDetails = read("Sources/Mica/Features/Workbench/WorkbenchSourceDetails.swift");
+const sourcesPage = sourcePageFiles.map(read).join("\n");
+const managementShared = read("Sources/Mica/Features/Workbench/WorkbenchManagement.swift");
+const controllerPresentation = read("Sources/Mica/Features/Workbench/WorkbenchControllerPresentation.swift");
+const controllersRoot = read("Sources/Mica/Features/Workbench/WorkbenchControllers.swift");
+const controllersPage = controllerPageFiles.map(read).join("\n");
+const configurationPage = read("Sources/Mica/Features/Workbench/WorkbenchConfiguration.swift");
+const actionsRoot = read("Sources/Mica/Features/Workbench/WorkbenchActions.swift");
+const actionsPresentation = read("Sources/Mica/Features/Workbench/WorkbenchActionsPresentation.swift");
+const tailscale = read("Sources/Mica/Features/Workbench/WorkbenchTailscale.swift");
+const actionsPage = actionPageFiles.map(read).join("\n");
+const diagnosticsPresentation = read("Sources/Mica/Features/Workbench/WorkbenchDiagnosticsPresentation.swift");
+const diagnosticsRoot = read("Sources/Mica/Features/Workbench/WorkbenchDiagnostics.swift");
+const diagnosticsComponents = read("Sources/Mica/Features/Workbench/WorkbenchDiagnosticsComponents.swift");
+const diagnosticsPage = diagnosticsPageFiles.map(read).join("\n");
+const management = [
+  managementShared,
+  controllersPage,
+  configurationPage,
+  actionsPage,
+  diagnosticsPage,
+].join("\n");
+const settings = read("Sources/Mica/Features/Workbench/WorkbenchSettings.swift");
 const workspaceStore = read("Sources/Mica/Features/Workbench/WorkbenchWorkspaceStore.swift");
 const workbenchSource = expectedWorkbenchFiles.map(read).join("\n");
 const workbenchCode = code(workbenchSource);
@@ -482,16 +613,37 @@ assertIncludes(
   "WorkbenchManagementFormCanvas",
   "Controller detail must use the native grouped management form canvas",
 );
-const actionsContentSection = sourceSection(
-  management,
-  "private func actionsContent(_ projection: WorkbenchActionsProjection) -> some View {",
-  "private func commandBar(_ projection: WorkbenchActionsProjection) -> some View {",
+assertIncludes(actionsPresentation, "struct WorkbenchActionsInput", "Actions must consume one pure typed input");
+assertIncludes(actionsPresentation, "struct WorkbenchActionsSnapshot", "Actions must expose one pure typed snapshot");
+const actionsInputSource = sourceSection(
+  actionsPresentation,
+  "struct WorkbenchActionsInput: Equatable {",
+  "struct WorkbenchActionsSnapshot: Equatable {",
 );
-assertIncludes(
-  actionsContentSection,
-  "WorkbenchManagementFormCanvas",
-  "Actions must use the native grouped management form canvas",
+const diagnosticsInputSource = sourceSection(
+  diagnosticsPresentation,
+  "struct WorkbenchDiagnosticsInput: Equatable {",
+  "struct WorkbenchDiagnosticsSnapshot: Equatable {",
 );
+for (const streamPayloadType of [
+  "ConnectionSnapshot",
+  "ControllerLogEntry",
+  "TrafficTimeline",
+  "ConnectionsCatalogSnapshot",
+  "LogsCatalogSnapshot",
+]) {
+  assertExcludes(actionsInputSource, streamPayloadType, `Actions input must not observe ${streamPayloadType}`);
+  assertExcludes(diagnosticsInputSource, streamPayloadType, `Diagnostics input must not observe ${streamPayloadType}`);
+}
+assertIncludes(actionsPresentation, "supportsRuntimeDispatcher", "Actions must prove the adapter dispatcher before exposing runtime commands");
+assertIncludes(actionsPresentation, "executableCount:", "Actions must derive an exact executable count");
+assertIncludes(actionsPresentation, "let effectiveAvailability", "Actions must derive recovery and rendering from one effective state");
+assertIncludes(actionsPresentation, "showsRelatedDestinations", "Actions must reserve related workspaces for compact command states");
+assertIncludes(actionsRoot, "recoveryCanvas", "Actions must use a dedicated recovery composition");
+assertIncludes(actionsRoot, "commandCanvas", "Actions must use a dedicated connected command composition");
+assertIncludes(actionsRoot, "appModel.actionsRuntimeOperationRows", "Actions must consume evidence-free runtime command rows");
+assertIncludes(actionsRoot, "let usesTwoColumns = availableWidth >= 900", "Actions must adapt connected commands by measured width");
+assertExcludes(actionsRoot, "WorkbenchManagementFormCanvas", "Actions must not force recovery and commands into a grouped form");
 assertExcludes(
   management,
   'WorkbenchSection("controllers.actions"',
@@ -604,7 +756,6 @@ for (const forbiddenPattern of [
   "GlassEffectContainer",
   ".sheet(",
   ".popover(",
-  ".contextMenu",
   ".confirmationDialog(",
   "NSViewRepresentable",
   "NSViewControllerRepresentable",
@@ -624,13 +775,13 @@ assert(
   "Workbench text must use micaFont except for the scaled-font modifier and two Canvas Text renderers",
 );
 assertIncludes(
-  visualSystem,
+  designSystem,
   "content.font(\n            .system(",
   "The semantic font modifier must own ordinary interface font construction",
 );
 assertIncludes(
   workbenchSource,
-  "size: fontScale.pointSize(for: MicaTextStyle.caption.basePointSize)",
+  "size: fontScale.pointSize(for: MicaTextStyle.callout.basePointSize)",
   "Topology Canvas column labels must receive the active font scale",
 );
 assertIncludes(
@@ -666,16 +817,17 @@ for (const token of [
   "light: color(0xB23A52)", "dark: color(0xF28B9E)",
   "light: color(0x6C4FD1)", "dark: color(0xB79CFF)",
 ]) {
-  assertIncludes(visualSystem, token, `Visual system must retain the Midnight Instrument token ${token}`);
+  assertIncludes(designSystem, token, `Design system must retain the Midnight Instrument token ${token}`);
 }
-assertIncludes(visualSystem, "static let accentSoft", "Midnight Instrument must expose a soft selection fill");
-assertIncludes(visualSystem, "static let navigationSelectionFill = accentSoft", "Sidebar selection must remain a restrained semantic tint");
-assertIncludes(visualSystem, "enum MicaTextStyle", "Typography ladder must expose semantic Mica text roles");
-assertIncludes(visualSystem, "struct MicaScaledFontModifier", "Typography ladder must visibly apply the selected font scale");
-assertIncludes(visualSystem, "fontScale.pointSize(for: style.basePointSize)", "Typography ladder must calculate an explicit macOS point size");
+assertIncludes(designSystem, "static let accentSoft", "Midnight Instrument must expose a soft selection fill");
+assertIncludes(designSystem, "static let navigationSelectionFill = accentSoft", "Sidebar selection must remain a restrained semantic tint");
+assertIncludes(designSystem, "static let chromeSeparator = separator.opacity(0.72)", "Window chrome must expose one semantic separator treatment");
+assertIncludes(designSystem, "enum MicaTextStyle", "Typography ladder must expose semantic Mica text roles");
+assertIncludes(designSystem, "struct MicaScaledFontModifier", "Typography ladder must visibly apply the selected font scale");
+assertIncludes(designSystem, "fontScale.pointSize(for: style.basePointSize)", "Typography ladder must calculate an explicit macOS point size");
 assert(count(workbenchSource, ".micaFont(") >= 150, "Workbench interface text must use the scalable typography API");
-assertIncludes(visualSystem, "enum WorkbenchMotion", "Instrument motion primitives must exist");
-assertIncludes(visualSystem, "accessibilityReduceMotion", "Motion must honor Reduce Motion");
+assertIncludes(designSystem, "enum WorkbenchMotion", "Instrument motion primitives must exist");
+assertIncludes(designSystem, "accessibilityReduceMotion", "Motion must honor Reduce Motion");
 for (const metric of [
   "static let controlMinHeight: CGFloat = 28",
   "static let iconControlSize: CGFloat = 28",
@@ -689,9 +841,9 @@ for (const metric of [
   "static let inspectorMax: CGFloat = 480",
   "static let wideThreshold: CGFloat = 720",
 ]) {
-  assertIncludes(visualSystem, metric, `Visual system must retain bounded metric ${metric}`);
+  assertIncludes(designSystem, metric, `Design system must retain bounded metric ${metric}`);
 }
-assertExcludes(visualSystem, "hitTarget", "Workbench must not restore a universal touch-target metric");
+assertExcludes(designSystem, "hitTarget", "Workbench must not restore a universal touch-target metric");
 for (const primitive of [
   "struct WorkbenchSymbol",
   "struct WorkbenchPageScaffold",
@@ -709,22 +861,26 @@ assertIncludes(visualSystem, ".symbolRenderingMode(.monochrome)", "Shared workbe
 assertIncludes(visualSystem, "ContentUnavailableView", "Shared states must use native centered unavailable content");
 assertIncludes(visualSystem, ".frame(maxWidth: .infinity, maxHeight: .infinity)", "Full-page states must center in the remaining region");
 
-const destinationSource = sourceSection(chrome, "enum WorkbenchDestination", "struct ContentView");
+const destinationSource = sourceSection(chrome, "enum WorkbenchDestination", "// MARK: - Workbench Shell");
 assertOrdered(destinationSource, [
   "case overview", "case proxies", "case connections", "case logs", "case rules", "case sources",
   "case controllers", "case configuration", "case actions", "case diagnostics",
 ], "Workbench destinations must keep the fixed product order");
 assertIncludes(destinationSource, ".overview, .proxies, .connections, .logs, .rules, .sources,", "Keyboard destinations must keep the fixed six-tab order");
 assertIncludes(destinationSource, ".controllers, .configuration, .actions, .diagnostics,", "Management destinations must keep their fixed order");
+assertIncludes(destinationSource, "static let sidebarCases = workbenchTabCases + controllerManagementCases", "Sidebar keyboard navigation must use the visible destination order");
 assertExcludes(destinationSource, "case settings", "Application Settings must remain a native Settings scene, not a Workbench destination");
-assertIncludes(chrome, "NavigationSplitView", "Main window must use native split navigation");
-assertIncludes(chrome, "List {", "Sidebar must retain a native virtualized list");
+assertIncludes(window, "NavigationSplitView", "Main window must use native split navigation");
+assertIncludes(sidebar, "List {", "Sidebar must retain a native virtualized list");
 assertIncludes(chrome, ".toolbarTitleDisplayMode(.inline)", "Native navigation title must retain toolbar space without duplicate identity chrome");
 assertIncludes(chrome, ".sharedBackgroundVisibility(.hidden)", "Session commands must not be wrapped in a second shared glass capsule");
-assertExcludes(chrome, "WorkbenchToolbarControllerButton", "Controller identity must not be duplicated in the toolbar");
-assertExcludes(chrome, "workbenchArea", "Replacement navigation must not migrate the old area model");
-assertExcludes(chrome, "workbenchActivitySection", "Replacement navigation must not migrate the old activity model");
-const sidebarSource = sourceSection(chrome, "struct WorkbenchSidebarView", "// MARK: - Toolbar");
+assertExcludes(chromeSource, "WorkbenchToolbarControllerButton", "Controller identity must not be duplicated in the toolbar");
+assertExcludes(workbenchSource, "CommandPalette", "Workbench must not restore a command palette");
+assertExcludes(workbenchSource, "CommandDeck", "Workbench must not restore a command deck");
+assertExcludes(micaApp, '.keyboardShortcut("k", modifiers: [.command])', "Mica must not reserve Command-K for a custom command surface");
+assertExcludes(chromeSource, "workbenchArea", "Replacement navigation must not migrate the old area model");
+assertExcludes(chromeSource, "workbenchActivitySection", "Replacement navigation must not migrate the old activity model");
+const sidebarSource = sourceSection(sidebar, "struct WorkbenchSidebarView");
 assertExcludes(sidebarSource, "@Environment(AppModel.self)", "Destination list shell must not observe controller or stream state");
 assertIncludes(sidebarSource, "@Environment(\\.micaAppLanguage)", "Sidebar must observe language changes directly");
 assertIncludes(sidebarSource, "language: language", "Sidebar localization must resolve from its observed language");
@@ -732,14 +888,17 @@ assertExcludes(sidebarSource, "List(selection:", "Sidebar must not restore the s
 assertExcludes(sidebarSource, ".accentColor(", "Sidebar must not restore the soft-deprecated accent override");
 assertIncludes(sidebarSource, "Button(action: action)", "Every custom navigation row must retain native button semantics");
 assertIncludes(sidebarSource, ".listRowInsets(\n                    EdgeInsets()", "Sidebar navigation buttons must occupy the full list-row width");
+assert(count(sidebarSource, ".frame(maxWidth: .infinity, alignment: .leading)") >= 2, "Sidebar navigation labels and buttons must both occupy the complete row width");
 assertIncludes(sidebarSource, ".contentShape(.interaction, Rectangle())", "Sidebar navigation must make trailing row whitespace clickable");
+assertIncludes(sidebarSource, ".focused(focusedDestination, equals: destination)", "Sidebar rows must expose native keyboard focus");
+assertIncludes(sidebarSource, ".onMoveCommand(perform: onMove)", "Sidebar rows must support directional keyboard navigation");
 assertExcludes(sidebarSource, "defaultMinListRowHeight", "Sidebar height must remain content-driven rather than globally fixed");
 assertIncludes(sidebarSource, ".fill(MicaStyle.navigationSelectionFill)", "Selected navigation must use the restrained shared fill");
 assertIncludes(sidebarSource, ".accessibilityAddTraits(isSelected ? .isSelected : [])", "Custom navigation must expose selection to accessibility");
 assertExcludes(sidebarSource, ".appSettings", "The Workbench sidebar must not duplicate the native Settings scene");
 assertIncludes(controllerSelector, "ForEach(snapshot.items)", "Inline sidebar controller switching must preserve persisted controller order");
 assertIncludes(controllerSelector, "onSelectController(item.profile)", "Controller switching must route through the window replacement guard");
-assertOrdered(chrome, ["await Task.yield()", "appModel.selectRouter(router)"], "Guarded controller switching must settle before replacing the live generation");
+assertOrdered(window, ["await Task.yield()", "appModel.selectRouter(router)"], "Guarded controller switching must settle before replacing the live generation");
 for (const route of [
   "WorkbenchOverviewView(destination: $destination)",
   "WorkbenchPolicyGroupsView(searchText: searchText)",
@@ -749,8 +908,8 @@ for (const route of [
   "WorkbenchSourcesView(searchText: searchText)",
   "WorkbenchControllersView(",
   "WorkbenchConfigurationView()",
-  "WorkbenchActionsView()",
-  "WorkbenchDiagnosticsView()",
+  "WorkbenchActionsView(",
+  "WorkbenchDiagnosticsView(",
 ]) {
   assertIncludes(workspaceView, route, `Workspace must route the replacement destination ${route}`);
 }
@@ -762,21 +921,27 @@ assertIncludes(
 );
 assertIncludes(workspaceView, ".searchable(", "Searchable destinations must share the native toolbar search field");
 assertIncludes(chrome, ".safeAreaInset(edge: .bottom", "Workbench must keep a fixed bottom status bar");
-assertIncludes(chrome, "struct WorkbenchStatusBar", "Workbench must expose the replacement status bar");
-assertIncludes(chrome, "struct WorkbenchOperationOutcomePresentation", "Completed operations must retain a durable presentation projection");
-assertIncludes(chrome, "activityIdentity(status:", "Completed operations must share the stable bottom status surface");
-assertExcludes(chrome, "WorkbenchOperationOutcomeBar", "Operation outcomes must not add a second stacked bottom bar");
-assertIncludes(chrome, ".textSelection(.enabled)", "Status chrome business values must remain selectable");
+assertIncludes(statusBar, "struct WorkbenchStatusBar", "Workbench must expose the replacement status bar");
+assert(count(chromeSource, "WorkbenchChromeSeparator()") >= 2, "Workbench command and status chrome must share the semantic separator");
+assertIncludes(statusBar, "struct WorkbenchOperationOutcomePresentation", "Completed operations must retain a durable presentation projection");
+assertIncludes(statusBar, "activityIdentity(status:", "Completed operations must share the stable bottom status surface");
+assertExcludes(statusBar, "WorkbenchOperationOutcomeBar", "Operation outcomes must not add a second stacked bottom bar");
+assertIncludes(statusBar, ".textSelection(.enabled)", "Status chrome business values must remain selectable");
 assertExcludes(dataPages, "setVisibleSessionDestination", "Only the window root may own live-domain visibility");
 assertIncludes(chrome, "registerLiveSessionWindowDemand(", "Each window must register a stable live-domain demand");
 assertIncludes(chrome, "updateLiveSessionWindowDemand(", "Each window must update only its own live-domain demand");
 assertIncludes(chrome, "unregisterLiveSessionWindowDemand(", "A closing window must unregister only its own live-domain demand");
-assertIncludes(chrome, "MainWindowCloseGuardAttachment(closeGuard:", "Dirty-close protection must bind to the owning SwiftUI window");
+assertIncludes(window, "MainWindowCloseGuardAttachment(closeGuard:", "Dirty-close protection must bind to the owning SwiftUI window");
 assertIncludes(mainWindowCloseGuard, "func attach(to candidate: NSWindow)", "The close guard must attach to an explicit owning window");
 assertExcludes(mainWindowCloseGuard, "NSApplication.shared.mainWindow", "A window-local close guard must not select a process-global main window");
 assertIncludes(appModel, "var didFinishLoadingPersistedState = false", "Controller layout cleanup must wait for completed profile loading");
-assertIncludes(chrome, "previous.subtracting(current)", "Layout cleanup must remove only controllers deleted after initial loading");
-assertExcludes(chrome, "overviewLayoutStore.retainControllers(", "Cold launch must not prune overrides from a transient router snapshot");
+assertIncludes(window, "previous.subtracting(current)", "Layout cleanup must remove only controllers deleted after initial loading");
+assertExcludes(window, "overviewLayoutStore.retainControllers(", "Cold launch must not prune overrides from a transient router snapshot");
+assertIncludes(chrome, "struct WorkbenchRootView", "WorkbenchChrome must own root destination composition");
+assertExcludes(chrome, "struct ContentView", "WorkbenchChrome must not absorb window editing coordination");
+assertIncludes(window, "struct ContentView", "WorkbenchWindow must own window and editor coordination");
+assertIncludes(sidebar, "struct WorkbenchSidebarView", "WorkbenchSidebar must own navigation rendering");
+assertIncludes(statusBar, "struct WorkbenchBottomChrome", "WorkbenchStatusBar must own bottom status composition");
 assertIncludes(micaCommandFocus, "Binding<WorkbenchDestination>", "App menus must target the focused replacement destination");
 assertIncludes(micaApp, "WorkbenchDestination.workbenchTabCases", "View menu must use the replacement destination order");
 
@@ -792,35 +957,108 @@ for (const realTimeline of [
 ]) {
   assertIncludes(overviewSource, realTimeline, `Overview must render real projected data through ${realTimeline}`);
 }
+assertIncludes(dashboard, "OverviewTelemetrySection(", "Overview root must compose the extracted telemetry surface");
+assertIncludes(dashboard, "OverviewTopologySection(", "Overview root must compose the extracted topology surface");
+assertIncludes(dashboard, "OverviewInstrumentRailSection(", "Overview root must compose the extracted instrument rail");
+assertExcludes(dashboard, "struct OverviewTelemetrySection", "Dashboard root must not retain telemetry implementation ownership");
+assertExcludes(dashboard, "struct OverviewTopologySection", "Dashboard root must not retain topology view implementation ownership");
+assertExcludes(dashboard, "struct OverviewInstrumentRailSection", "Dashboard root must not retain instrument implementation ownership");
+assertIncludes(overviewTelemetry, "struct OverviewTelemetrySection", "Telemetry source must own the chart surface");
+assertIncludes(overviewTelemetry, "struct OverviewInstrumentRailSection", "Telemetry source must own the instrument rail");
+assertIncludes(overviewTopologyView, "struct OverviewTopologySection", "Topology view source must own SwiftUI and Canvas composition");
 assert(
-  (dashboard.match(/\bChart(?:\s*\{|\()/g) ?? []).length === 2,
+  (overviewTelemetry.match(/\bChart(?:\s*\{|\()/g) ?? []).length === 2,
   "Overview must use one reusable traffic chart primitive plus one connection chart primitive",
 );
-assertIncludes(dashboard, "trafficChart(.upload", "Overview must render a dedicated upload chart");
-assertIncludes(dashboard, "trafficChart(.download", "Overview must render a dedicated download chart");
-assert(count(dashboard, "AreaPlot(") === 3, "Overview live charts must keep upload, download, and connection areas");
-assert(count(dashboard, "LinePlot(") === 3, "Overview live charts must keep upload, download, and connection lines");
-assert(count(dashboard, "PointPlot(") === 3, "Overview live charts must expose the latest real sample for each displayed timeline");
+assert(/trafficChart\(\s*\.upload/.test(overviewTelemetry), "Overview must render a dedicated upload chart");
+assert(/trafficChart\(\s*\.download/.test(overviewTelemetry), "Overview must render a dedicated download chart");
+assert(count(overviewTelemetry, "AreaPlot(") === 3, "Overview live charts must keep upload, download, and connection areas");
+assert(count(overviewTelemetry, "LinePlot(") === 3, "Overview live charts must keep upload, download, and connection lines");
+assert(count(overviewTelemetry, "PointPlot(") === 3, "Overview live charts must expose the latest real sample for each displayed timeline");
 assertIncludes(overviewProjection, "struct OverviewTimelineChartScale", "Overview charts must retain a real-data visible scale");
-assertIncludes(dashboard, ".chartYScale(domain: scale.domain)", "Overview charts must apply their visible real-data scale");
+assertIncludes(overviewTelemetry, ".chartYScale(domain: scale.domain)", "Overview charts must apply their visible real-data scale");
 assertIncludes(dashboard, "LazyVStack(alignment: .leading", "Overview below-fold analytics must construct lazily");
 assertIncludes(dashboard, "OverviewDashboardRowPacker.rows(", "Overview modules must use deterministic sequential row packing");
-assertIncludes(dashboard, "struct OverviewInstrumentRailSection", "Overview must use one unified instrument rail");
-assertIncludes(dashboard, "struct OverviewTelemetryPanel", "Overview must use one repeated metric-panel primitive for its three primary charts");
-assertIncludes(dashboard, "if availableWidth >= 960", "Overview charts must use a three-column wide layout");
-assertIncludes(dashboard, "else if availableWidth >= 700", "Overview charts must use a two-column medium layout");
-assertIncludes(dashboard, ".frame(height: 144)", "Every primary Overview plot must remain large enough to inspect");
-assertExcludes(dashboard, "OverviewMemoryBaseChart", "Memory must remain context on the connection chart instead of a fourth plot");
+assertExcludes(dashboard, "min(availableWidth, 1_180)", "Overview charts and topology must use the full padded content width");
+assertIncludes(dashboard, ".frame(maxWidth: .infinity, alignment: .topLeading)", "Overview monitoring content must fill the available canvas");
+const overviewFlatSection = sourceSection(
+  dashboard,
+  "struct OverviewFlatSection",
+  "private struct OverviewHighlightsSection",
+);
+const overviewSymbolMark = sourceSection(
+  dashboard,
+  "struct OverviewSymbolMark",
+  "struct OverviewFlatSection",
+);
+const overviewHighlightsSection = sourceSection(
+  dashboard,
+  "private struct OverviewHighlightsSection",
+  "private struct OverviewSummaryColumn",
+);
+const overviewNetworkSection = sourceSection(
+  dashboard,
+  "private struct OverviewNetworkFactsSection",
+  "private struct OverviewNetworkFactGroupHeader",
+);
+const overviewTopologySection = sourceSection(
+  overviewTopologyView,
+  "struct OverviewTopologySection",
+  "private struct OverviewTopologyWorkspace",
+);
+const overviewTelemetryControls = sourceSection(
+  overviewTelemetry,
+  "private struct OverviewTelemetryControls",
+  "private struct OverviewSessionStateReadout",
+);
+assertIncludes(overviewSymbolMark, ".symbolRenderingMode(.hierarchical)", "Overview marks must retain refined native symbol layering");
+assertIncludes(overviewSymbolMark, "case .section: 34", "Overview section marks must retain prominent geometry");
+assertIncludes(overviewSymbolMark, "case .metric: 28", "Overview metric marks must retain legible geometry");
+assertIncludes(overviewFlatSection, "OverviewSymbolMark(", "Overview sections must use the dedicated native symbol mark");
+assertIncludes(overviewFlatSection, "size: .section", "Overview section marks must remain visually prominent");
+assertIncludes(overviewFlatSection, ".micaFont(.title3, weight: .semibold)", "Overview section titles must anchor the monitoring hierarchy");
+assertIncludes(overviewFlatSection, "tint: Color = MicaStyle.signalCyan", "Overview category marks must default to the informational tint");
+assertExcludes(overviewHighlightsSection, "tint: MicaStyle.signalViolet", "Overview category marks must not borrow the debug tint");
+assertExcludes(overviewNetworkSection, "tint: MicaStyle.signalMint", "Overview category marks must not borrow the healthy-state tint");
+assertExcludes(overviewTopologySection, "tint: MicaStyle.signalViolet", "Topology category chrome must not borrow the debug tint");
+assertIncludes(overviewTopologySection, "OverviewTopologyHeaderControls(", "Topology commands must share the section heading row");
+assertIncludes(overviewTelemetryControls, "} else if snapshot.isPinned {", "Only a pinned chart sample may change the global chart state to selected");
+assertExcludes(overviewTelemetryControls, "snapshot.selectedDate != nil", "Transient chart hover must not change header chrome state");
+const overviewResponsiveRow = sourceSection(
+  dashboard,
+  "private struct OverviewDashboardResponsiveRow",
+  "private struct OverviewDashboardSpanLayout",
+);
+for (const viewportAnimation of ["appeared", ".opacity(", ".offset(", ".animation("]) {
+  assertExcludes(
+    overviewResponsiveRow,
+    viewportAnimation,
+    `Overview rows must not animate while entering the scrolling viewport: ${viewportAnimation}`,
+  );
+}
+assertIncludes(overviewTelemetry, "struct OverviewInstrumentRailSection", "Overview must use one unified instrument rail");
+assertIncludes(overviewTelemetry, "struct OverviewTelemetryPanel", "Overview must use one repeated metric-panel primitive for its three primary charts");
+assertIncludes(dashboard, ".background(MicaStyle.contentFill)", "Overview telemetry and network facts must use bounded continuous data surfaces");
+assertIncludes(overviewTelemetry, ".background(MicaStyle.contentFill)", "Overview telemetry must use a bounded continuous data surface");
+assertIncludes(overviewTelemetry, "if availableWidth >= 960", "Overview charts must use a three-column wide layout");
+assertIncludes(overviewTelemetry, "else if availableWidth >= 700", "Overview charts must use a two-column medium layout");
+assertIncludes(overviewTelemetry, "private var plotHeight: CGFloat", "Overview plot height must follow the effective panel width");
+assertIncludes(overviewTelemetry, "return min(max(panelWidth * 0.60, 240), 300)", "Overview plots must retain the primary 240-300 point visual range");
+assertIncludes(overviewTelemetry, "systemName: \"chart.line.uptrend.xyaxis\"", "Overview telemetry must retain its native chart symbol");
+assertIncludes(overviewTelemetry, "size: .section", "Overview telemetry title must use the prominent section mark");
+assertIncludes(overviewTelemetry, "size: .metric", "Overview metric titles must use the dedicated metric mark");
+assertIncludes(overviewTelemetry, ".frame(height: plotHeight)", "Every primary Overview plot must use the responsive height");
+assertExcludes(overviewSource, "OverviewMemoryBaseChart", "Memory must remain context on the connection chart instead of a fourth plot");
 assertIncludes(overviewPersonalization, ".init(id: .instrumentRail, size: .full, isVisible: false)", "The default Overview must hide the duplicate instrument rail");
 assertIncludes(overviewPersonalization, ".init(id: .operationalSummaries, size: .full, isVisible: false)", "The default Overview must hide secondary summaries");
-assertExcludes(dashboard, "OverviewSessionHeader", "Overview must not duplicate selected-controller session chrome");
-assertExcludes(dashboard, "OverviewMetricModule", "Overview must not restore four independent KPI cards");
+assertExcludes(overviewSource, "OverviewSessionHeader", "Overview must not duplicate selected-controller session chrome");
+assertExcludes(overviewSource, "OverviewMetricModule", "Overview must not restore four independent KPI cards");
 for (const removedSparkline of [
   "OverviewTrafficSparkline",
   "OverviewMemorySparkline",
   "OverviewCategorySparkline",
 ]) {
-  assertExcludes(dashboard, removedSparkline, `Overview KPI sparklines must stay removed: ${removedSparkline}`);
+  assertExcludes(overviewSource, removedSparkline, `Overview KPI sparklines must stay removed: ${removedSparkline}`);
 }
 const overviewRoot = sourceSection(
   dashboard,
@@ -836,12 +1074,17 @@ assertIncludes(overviewPersonalization, "modules.filter(\\.isVisible)", "Hidden 
 assertIncludes(overviewPersonalization, "enum OverviewDashboardPreset", "Overview must retain built-in native layout presets");
 assertIncludes(overviewEditor, ".dropDestination(for: String.self)", "Overview editing must support one-shot native drag reordering");
 assertIncludes(overviewRuntimes, "OverviewDashboardModuleRuntimeRegistry", "Overview must preserve expensive module runtimes across reordering");
-assertIncludes(overviewPersonalization, "case resetController", "Reset must remove a controller override instead of copying the current default");
-assertIncludes(overviewPersonalization, "guard current.token == expected", "Global-default commits must CAS both target and global revisions");
-assertIncludes(overviewPersonalization, "resetsControllerOverride", "Window drafts must retain inherited-default intent");
+assertIncludes(overviewLayoutStore, "case resetController", "Reset must remove a controller override instead of copying the current default");
+assertIncludes(overviewLayoutStore, "guard current.token == expected", "Global-default commits must CAS both target and global revisions");
+assertIncludes(overviewWindowCoordinator, "resetsControllerOverride", "Window drafts must retain inherited-default intent");
+assertIncludes(overviewPersonalization, "struct OverviewDashboardLayout", "Overview personalization must own layout value models");
+assertExcludes(overviewPersonalization, "OverviewDashboardPersistenceCoordinator", "Overview layout models must not absorb persistence");
+assertIncludes(overviewLayoutStore, "private actor OverviewDashboardPersistenceCoordinator", "Overview layout writes must remain actor-coordinated");
+assertIncludes(overviewLayoutStore, "final class OverviewDashboardLayoutStore", "Overview layout store must publish committed presentation state on the main actor");
+assertIncludes(overviewWindowCoordinator, "final class OverviewDashboardWindowCoordinator", "Overview window coordination must own draft and conflict state");
 assertIncludes(dashboard, ".disabled(coordinator.isEditing)", "Layout editing must disable keyboard and accessibility business actions");
-assertExcludes(dashboard, ".onChange(of: preferredTimelineWindow, initial: true)", "Pure module reorder must not reset a temporary timeline selection");
-assertIncludes(dashboard, "state.label(language: language)", "The instrument rail must expose live or stale session state");
+assertExcludes(overviewTelemetry, ".onChange(of: preferredTimelineWindow, initial: true)", "Pure module reorder must not reset a temporary timeline selection");
+assertIncludes(overviewTelemetry, "state.label(language: language)", "Telemetry must expose live or stale session state");
 assertIncludes(overviewEditor, "width: MicaBounds.iconControlSize", "Overview editor icon commands must use compact macOS control geometry");
 for (const personalizationRegression of [
   "staleGlobalCommitCannotDeleteNewerControllerOverride",
@@ -855,9 +1098,9 @@ for (const personalizationRegression of [
     `Overview personalization needs regression coverage for ${personalizationRegression}`,
   );
 }
-assertExcludes(dashboard, "selectedConnectionFields", "Overview must not restore the removed raw connection inspector");
-assertExcludes(dashboard, "geoIPCoordinator.lookup", "Overview facts must not start per-connection GeoIP work");
-assertExcludes(dashboard, "NetworkInfoProjector", "Removed overview network abstractions must not return");
+assertExcludes(overviewSource, "selectedConnectionFields", "Overview must not restore the removed raw connection inspector");
+assertExcludes(overviewSource, "geoIPCoordinator.lookup", "Overview facts must not start per-connection GeoIP work");
+assertExcludes(overviewSource, "NetworkInfoProjector", "Removed overview network abstractions must not return");
 for (const interaction of [
   "enum OverviewTimelineWindow",
   "enum OverviewTimelineProjection",
@@ -874,7 +1117,39 @@ for (const interaction of [
 ]) {
   assertIncludes(overviewSource, interaction, `Overview must retain operational chart interaction through ${interaction}`);
 }
-assertExcludes(dashboard, "DragGesture(minimumDistance: 0)", "Overview overlays must not steal vertical scrolling with zero-distance drags");
+assertExcludes(overviewSource, "DragGesture(minimumDistance: 0)", "Overview overlays must not steal vertical scrolling with zero-distance drags");
+assertIncludes(overviewTelemetry, "layout: .regular", "Telemetry controls must retain the regular header composition");
+assertIncludes(overviewTelemetry, "layout: .compact", "Telemetry controls must retain the compact wrapped composition");
+assertIncludes(overviewTelemetry, ".pickerStyle(.segmented)", "Telemetry must retain the explicit 1/3/5 minute mode control");
+assertExcludes(overviewTelemetry, "overview.real_samples_count", "Telemetry footers must prioritize user-facing time and memory context over projection counts");
+const overviewTrafficChart = sourceSection(
+  overviewTelemetry,
+  "private struct OverviewTrafficChart",
+  "private struct OverviewTrafficBaseChart",
+);
+const overviewConnectionChart = sourceSection(
+  overviewTelemetry,
+  "private struct OverviewConnectionChart",
+  "private struct OverviewConnectionBaseChart",
+);
+for (const chart of [overviewTrafficChart, overviewConnectionChart]) {
+  assertIncludes(chart, ".accessibilityLabel(", "Every Overview chart must expose a localized purpose");
+  assertIncludes(chart, ".accessibilityValue(", "Every Overview chart must expose its current or selected value");
+  assertExcludes(chart, ".accessibilityElement(children: .ignore)", "Overview chart summaries must not flatten Swift Charts data accessibility");
+}
+const overviewTrafficBase = sourceSection(
+  overviewTelemetry,
+  "private struct OverviewTrafficBaseChart",
+  "private struct OverviewConnectionChart",
+);
+const overviewConnectionBase = sourceSection(
+  overviewTelemetry,
+  "private struct OverviewConnectionBaseChart",
+  "private struct OverviewTrafficSelectionIndicator",
+);
+for (const baseChart of [overviewTrafficBase, overviewConnectionBase]) {
+  assertExcludes(baseChart, ".animation(", "Live chart samples must update without animating the complete plot geometry");
+}
 for (const topologyContract of [
   "case policyHop(Int)",
   "let paths: [PathRecord]",
@@ -887,38 +1162,97 @@ for (const topologyContract of [
 }
 assertExcludes(connectionTopology, ".prefix(", "Complete topology must not cap active connection paths");
 assertExcludes(connectionTopology, "maximumConnection", "Complete topology must not introduce a Top-N admission limit");
-assertIncludes(dashboard, "Canvas { context, _ in", "Topology must render through one Canvas pass");
+assertIncludes(overviewTopologyView, "Canvas { context, _ in", "Topology must render through one Canvas pass");
 const overviewTopologyViewport = sourceSection(
-  dashboard,
+  overviewTopologyView,
   "private struct OverviewTopologyViewport",
   "private struct OverviewTopologySelectionDetail",
 );
 assertExcludes(overviewTopologyViewport, "ScrollView(.horizontal)", "Complete topology must fit its available width without a nested horizontal viewport");
 assertIncludes(overviewTopologyViewport, ".frame(maxWidth: .infinity, alignment: .center)", "Complete topology must center its width-fitted canvas");
+assertIncludes(overviewTopologyViewport, ".overlay(alignment: .topLeading)", "Topology selection feedback must stay inside stable graph geometry");
+assertIncludes(overviewTopologyViewport, ".padding(.top, OverviewTopologyLayout.columnHeaderHeight)", "Topology selection feedback must occupy the reserved graph header inset");
+assertIncludes(overviewTopologyViewport, ".focusable()", "Topology must expose one native keyboard focus surface");
+assertIncludes(overviewTopologyViewport, ".onMoveCommand(perform: movePathSelection)", "Topology must support keyboard path stepping");
+assertIncludes(overviewTopologyViewport, ".onExitCommand", "Topology must clear local selection with the native exit command");
+assertIncludes(overviewTopologyViewport, ".contextMenu", "Topology must mirror selection commands in a native context menu");
+assert(
+  [...workbenchCode.matchAll(/\.contextMenu/g)].length === 1,
+  "Workbench context menus are limited to the topology canvas command mirror",
+);
+assertOrdered(
+  overviewTopologyViewport,
+  ["private var topologyGraph", "OverviewTopologySelectionDetail("],
+  "Topology selection detail must not be conditionally inserted before the graph",
+);
+const overviewTopologySelectionDetail = sourceSection(
+  overviewTopologyView,
+  "private struct OverviewTopologySelectionDetail",
+  "private struct OverviewTopologyPathRows",
+);
+const overviewTopologyIdleSummary = sourceSection(
+  overviewTopologyView,
+  "private struct OverviewTopologyIdleSummary",
+  "private struct OverviewTopologyPathRows",
+);
+assertIncludes(overviewTopologySelectionDetail, "systemName: \"pin.fill\"", "Pinned topology state must use one restrained symbol");
+assertIncludes(overviewTopologySelectionDetail, "frameSize: 20", "Pinned topology state must remain visually legible");
+assertIncludes(overviewTopologySelectionDetail, "OverviewTopologyIdleSummary(", "Idle topology detail must use its reserved geometry for real summary data");
+assert(
+  [...overviewTopologySelectionDetail.matchAll(/WorkbenchIconCommand\(/g)].length === 1,
+  "Topology detail must expose only the eligible Connections command",
+);
+assertExcludes(overviewTopologySelectionDetail, "overview.topology_previous_path", "Topology detail must not become a path-navigation toolbar");
+assertExcludes(overviewTopologySelectionDetail, "overview.topology_clear_selection", "Topology detail must not expose redundant clear chrome");
+assertExcludes(overviewTopologySelectionDetail, ".background(", "Topology detail must remain unframed inside the graph");
+assertExcludes(overviewTopologySelectionDetail, "RoundedRectangle", "Topology detail must not create a nested card outline");
+assertIncludes(overviewTopologyIdleSummary, "overview.connection_count", "Idle topology summary must retain the real connection count");
+assertIncludes(overviewTopologyIdleSummary, "overview.topology_unavailable_paths", "Idle topology summary must expose unavailable real paths");
+assertExcludes(overviewTopologyIdleSummary, "WorkbenchSymbol(", "Idle topology summary must not repeat the section icon");
+assertExcludes(overviewTopologyView, "WorkbenchCommandSummary(", "Topology must not repeat its section identity in a second command summary");
 assertIncludes(overviewTopology, "let graphWidth = max(availableWidth.rounded(.down), 1)", "Topology layout must be bounded by the measured module width");
-for (const sankeyContract of [
+assertIncludes(overviewTopology, "static let columnHeaderHeight: CGFloat = 40", "Topology columns must reserve a legible header geometry");
+assertIncludes(overviewTopology, "static let selectionDetailHeight: CGFloat = 80", "Topology layout must reserve a readable stable selection-detail geometry");
+assertIncludes(overviewTopologyView, "private func minimumFlowHeight(for availableWidth: Int)", "Topology must scale its sparse-flow viewport with the available width");
+assertIncludes(overviewTopologyView, "return Int(min(max(scaledHeight, 680), 920).rounded())", "Topology must remain a primary 680-920 point surface when sparse");
+for (const sankeyScaleContract of [
   "log10(Double(connectionCount) + 1) * 10",
-  "private static let sankeyNodeWidth: CGFloat = 15",
-  "private static let sankeyNodeGap: CGFloat = 4",
   "private static func sankeyRibbonPath(",
 ]) {
-  assertIncludes(overviewTopology, sankeyContract, `Topology must retain Zashboard-aligned Sankey behavior through ${sankeyContract}`);
+  assertIncludes(overviewTopology, sankeyScaleContract, `Topology must retain count-faithful Sankey behavior through ${sankeyScaleContract}`);
 }
-assertExcludes(dashboard, "ScrollView([.horizontal, .vertical])", "Topology must not compete with Overview for vertical scrolling");
-assertIncludes(dashboard, "ForEach(layout.renderBands)", "Complete topology must render through stable vertical bands");
-assertIncludes(dashboard, "struct OverviewTopologyBaseBand", "Topology base drawing must have an isolated invalidation boundary");
-assertIncludes(dashboard, "struct OverviewTopologyHighlightBand", "Topology highlighting must have an isolated invalidation boundary");
-assertIncludes(dashboard, "struct OverviewTopologyHitBand", "Topology hit testing must have an isolated invalidation boundary");
-assertIncludes(dashboard, "stageConnectionNavigation(", "Topology paths must open the matching connection in the same window");
-assertIncludes(dashboard, "runtime.interaction.snapshot.isHovering", "Topology hover must freeze only the presented snapshot");
-assertIncludes(dashboard, "runtime.isPaused", "Topology must provide explicit presentation pause");
-assertIncludes(dashboard, "runtime.isExpanded", "Topology must provide same-window expansion");
+for (const sankeyGeometryContract of [
+  "private static let sankeyNodeWidth: CGFloat = 20",
+  "private static let sankeyNodeGap: CGFloat = 8",
+  "private static let nodeLabelGap: CGFloat = 8",
+  "private static let minimumReadableNodeHeight: CGFloat = 20",
+]) {
+  assertIncludes(overviewTopology, sankeyGeometryContract, `Topology must retain large-format geometry through ${sankeyGeometryContract}`);
+}
+assertExcludes(overviewTopologyView, "ScrollView([.horizontal, .vertical])", "Topology must not compete with Overview for vertical scrolling");
+assertIncludes(overviewTopologyView, "ForEach(layout.renderBands)", "Complete topology must render through stable vertical bands");
+assertIncludes(overviewTopologyView, "struct OverviewTopologyBaseBand", "Topology base drawing must have an isolated invalidation boundary");
+assertIncludes(overviewTopologyView, "struct OverviewTopologyHighlightBand", "Topology highlighting must have an isolated invalidation boundary");
+assertIncludes(overviewTopologyView, "snapshot.activeSelection == nil ? 0 : 0.34", "Topology highlighting must preserve surrounding graph context");
+assertIncludes(overviewTopologyView, "struct OverviewTopologyHitBand", "Topology hit testing must have an isolated invalidation boundary");
+assertIncludes(overviewTopologyView, "stageConnectionNavigation(", "Topology paths must open the matching connection in the same window");
+assertIncludes(overviewTopologyView, "runtime.interaction.snapshot.isHovering", "Topology hover must freeze only the presented snapshot");
+assertIncludes(overviewTopologyView, "runtime.isPaused", "Topology must provide explicit presentation pause");
+assertIncludes(overviewTopologyView, "runtime.isExpanded", "Topology must provide same-window expansion");
+assertIncludes(overviewTopology, "let isPinned: Bool", "Topology interaction snapshots must distinguish hover from pinned selection");
+assertIncludes(overviewTopology, "func clearSelection()", "Topology interaction must expose an explicit local clear command");
+assertIncludes(overviewTopology, "func movePathSelection(", "Topology interaction must support bounded path stepping");
+assertIncludes(overviewTopologyView, ".accessibilityAddTraits(isPinned ? .isSelected : [])", "Topology paths must expose pinned state to accessibility");
+assertIncludes(overviewTopologyView, "Text(verbatim: node.node.name)", "Topology labels must consume the complete reported node name");
+assertIncludes(overviewTopologyView, "label.measure(", "Topology label alignment must use resolved font metrics");
+assertIncludes(overviewTopologyView, "labelContext.clip(to: Path(node.labelRect))", "Topology labels must remain clipped to their fitted column rectangle");
+assertExcludes(overviewTopologyView, "displayLabel(", "Topology must not rewrite reported names using fixed character counts");
 for (const stateKind of ["kind: .noController", "kind: .loading", "kind: .unsupported", "kind: .empty", "kind: .failed"]) {
-  assertIncludes(dashboard, stateKind, `Overview must distinguish ${stateKind}`);
+  assertIncludes(overviewSource, stateKind, `Overview must distinguish ${stateKind}`);
   assertIncludes(proxies, stateKind, `Proxies must distinguish ${stateKind}`);
 }
 for (const syntheticSource of ["Timer", "Double.random", "Int.random", "PreviewData", "mockData", "placeholderSamples"]) {
-  assertExcludes(code(dashboard), syntheticSource, `Overview must not synthesize controller data with ${syntheticSource}`);
+  assertExcludes(code(overviewSource), syntheticSource, `Overview must not synthesize controller data with ${syntheticSource}`);
 }
 for (const timelineContract of [
   "static let maximumSampleCount = 300",
@@ -938,7 +1272,7 @@ for (const chartContract of [
   ".chartXScale(domain: dateDomain)",
   "connections: appModel.connectionCountTimeline.samples",
 ]) {
-  assertIncludes(dashboard, chartContract, `Overview charts must retain Zashboard-aligned real-data interaction through ${chartContract}`);
+  assertIncludes(overviewTelemetry, chartContract, `Overview charts must retain Zashboard-aligned real-data interaction through ${chartContract}`);
 }
 assertIncludes(operationSessionModels, "final class ControllerSessionPresentationState", "SwiftUI session state must use a field-granular observable reference");
 assertIncludes(operationSessionModels, "if state != session.state", "Session presentation must guard state publication");
@@ -1002,8 +1336,6 @@ assertIncludes(operationSessionModels, "mutating func commitBaseline(at date: Da
 assertIncludes(liveSessionRefreshModels, "case .staleReconnecting", "Stale reconnecting sessions must reject live commands");
 
 for (const proxyContract of [
-  "struct ProxyMasterDetailMetrics",
-  "struct ProxyOpenPathRibbonProjection",
   "struct ProxyLatencyScale",
   "struct ProxyGroupCatalogIndex",
   "struct ProxyActiveGroupIndex",
@@ -1020,9 +1352,93 @@ for (const proxyContract of [
 ]) {
   assertIncludes(proxies, proxyContract, `Proxy replacement must retain ${proxyContract}`);
 }
-assertExcludes(sourceSection(proxies, "enum ProxyProjection"), ".sorted", "Proxy presentation must preserve controller-reported order");
-assertExcludes(sourceSection(proxies, "enum ProxyProjection"), "ranked", "GLOBAL options must not rank or reorder peer groups");
-assertExcludes(sourceSection(proxies, "enum ProxyProjection"), "globalGroups.first?.group.options", "GLOBAL options must not drive presentation order");
+for (const rootContract of [
+  "struct WorkbenchPolicyGroupsView",
+  "ProxyPolicyGroupPanel(",
+  "@State private var projectionCache",
+  "@State private var expandedProjections",
+]) {
+  assertIncludes(proxyRoot, rootContract, `Proxy root must own ${rootContract}`);
+}
+for (const displacedRootContract of [
+  "struct ProxyPolicyGroupPanel",
+  "final class ProxyCatalogPresentationCoordinator",
+  "struct ProxyCatalogProjectionCache",
+  "enum ProxyProjection",
+]) {
+  assertExcludes(proxyRoot, displacedRootContract, `Proxy root must not own ${displacedRootContract}`);
+}
+for (const panelContract of [
+  "struct ProxyPolicyGroupPanel",
+  "ProxyLatencyDistributionView",
+  "private extension ProxyLatencyDistributionBucket",
+  "ProxyPolicyNodeInlineDetails",
+]) {
+  assertIncludes(proxyPanels, panelContract, `Proxy panels must own ${panelContract}`);
+}
+for (const displacedPanelContract of [
+  "struct WorkbenchPolicyGroupsView",
+  "final class ProxyCatalogPresentationCoordinator",
+  "enum ProxyProjection",
+]) {
+  assertExcludes(proxyPanels, displacedPanelContract, `Proxy panels must not own ${displacedPanelContract}`);
+}
+for (const interactionContract of [
+  "struct ProxyCatalogRevision",
+  "final class ProxyCatalogPresentationCoordinator",
+  "final class ProxyScrollInteractionTracker",
+  "func proxyScrollInteraction(",
+  "struct ProxyCatalogPresentationScheduler",
+]) {
+  assertIncludes(proxyInteraction, interactionContract, `Proxy interaction must own ${interactionContract}`);
+}
+for (const displacedInteractionContract of [
+  "struct WorkbenchPolicyGroupsView",
+  "struct ProxyCatalogProjectionCache",
+  "enum ProxyProjection",
+]) {
+  assertExcludes(proxyInteraction, displacedInteractionContract, `Proxy interaction must not own ${displacedInteractionContract}`);
+}
+for (const presentationContract of [
+  "struct ProxySessionPresentation",
+  "struct ProxyOperationActivity",
+  "struct ProxyCatalogProjectionCache",
+  "enum ProxyWorkspaceProjection",
+  "enum ProxyProjection",
+]) {
+  assertIncludes(proxyPresentation, presentationContract, `Proxy presentation must own ${presentationContract}`);
+}
+for (const displacedPresentationContract of [
+  "struct WorkbenchPolicyGroupsView",
+  "final class ProxyCatalogPresentationCoordinator",
+  "import SwiftUI",
+  "MicaDesignTokens",
+  "ViewModifier",
+]) {
+  assertExcludes(proxyPresentation, displacedPresentationContract, `Proxy presentation must not own ${displacedPresentationContract}`);
+}
+for (const supersededProxyType of [
+  "private struct ProxyCompactGroupDirectoryHeader: View",
+  "private struct ProxyGroupDirectory: View",
+  "private struct ProxyGroupDirectoryRow: View",
+  "private struct ProxyNodeWorkspace: View",
+  "private struct ProxyOpenPathRibbon: View",
+  "private struct ProxyOpenPathRibbonItem: View",
+  "private struct ProxyActiveGroupFocusRail: View",
+  "private struct ProxyNodeList: View",
+  "private struct ProxyNodeRow: View",
+  "private struct ProxyNodeInspector: View",
+  "private struct ProxyNodeDetailSections: View",
+  "private struct ProxyNodeVerbatimDetailField: View",
+  "enum ProxyWorkspaceLayoutMode",
+  "struct ProxyMasterDetailMetrics",
+  "struct ProxyOpenPathRibbonProjection",
+]) {
+  assertExcludes(proxies, supersededProxyType, `Proxy source must remove superseded ${supersededProxyType}`);
+}
+assertExcludes(sourceSection(proxyPresentation, "enum ProxyProjection"), ".sorted", "Proxy presentation must preserve controller-reported order");
+assertExcludes(sourceSection(proxyPresentation, "enum ProxyProjection"), "ranked", "GLOBAL options must not rank or reorder peer groups");
+assertExcludes(sourceSection(proxyPresentation, "enum ProxyProjection"), "globalGroups.first?.group.options", "GLOBAL options must not drive presentation order");
 assertExcludes(dashboardSessionModels, "stabilizedPolicyGroups", "Policy refreshes must adopt the controller's latest reported order instead of merging an earlier order");
 for (const mihomoConfigurationOrderContract of [
   "mihomoPolicyGroupsInConfigurationOrder(",
@@ -1032,7 +1448,7 @@ for (const mihomoConfigurationOrderContract of [
 ]) {
   assertIncludes(dashboardSessionModels, mihomoConfigurationOrderContract, `Mihomo policy groups must retain ${mihomoConfigurationOrderContract}`);
 }
-const proxyRootContent = sourceSection(proxyModel, "private var content:", "private var emptyState:");
+const proxyRootContent = sourceSection(proxyRoot, "private var content:", "private var emptyState:");
 assertIncludes(proxyRootContent, "LazyVStack", "Policy groups must render as one source-ordered vertical workspace");
 assertExcludes(proxyRootContent, "ScrollView(.horizontal)", "Policy groups must not force a horizontal canvas");
 assertIncludes(proxyPanels, "struct ProxyPolicyGroupPanel", "Policy groups must use the redesigned expandable panel");
@@ -1044,17 +1460,15 @@ assertIncludes(proxyPanels, "@State private var isHovered", "Node cells must pro
 assertIncludes(proxyPanels, "ProxyNodeFactSection", "Selected node details must group facts into readable sections");
 assertIncludes(proxyPanels, "ProxyNodeFactList", "Selected node details must present labeled values instead of a field-card wall");
 assertExcludes(proxyPanels, "ProxyNodeFactGrid", "Selected node details must not regress to the old field grid");
-assertIncludes(proxyModel, "updateExpandedGroups(groupIDs:", "Only expanded policy groups may materialize node indexes");
-assertIncludes(proxyModel, "expandedGroupIndexes", "Expanded policy groups must retain independent cached indexes");
-assertIncludes(proxyModel, "currentWorkspace.groupFilters[groupID]", "Each expanded group must retain an independent node filter");
-assertIncludes(proxies, "group.usageRank(for: member.name)", "SMART labels must come from controller-reported ranks");
-assertIncludes(proxies, "ProxyProjection.groupSearchText(", "Group search must include reported member names and metadata");
-assertIncludes(proxies, "@State private var projectionCache", "Proxy search must cache the current catalog index");
-assertIncludes(proxies, "@State private var expandedProjections", "Only expanded groups may publish node projections");
-assertIncludes(proxies, "canSelect: selectionActionAvailable && group.selectable", "Read-only policy groups must disable node switching without hiding members");
-assertIncludes(proxies, "struct ProxyMemberDetailProjection", "Proxy details must use a typed presentation projection");
+assertIncludes(proxyPresentation, "updateExpandedGroups(groupIDs:", "Only expanded policy groups may materialize node indexes");
+assertIncludes(proxyPresentation, "expandedGroupIndexes", "Expanded policy groups must retain independent cached indexes");
+assertIncludes(proxyRoot, "currentWorkspace.groupFilters[groupID]", "Each expanded group must retain an independent node filter");
+assertIncludes(proxyPresentation, "group.usageRank(for: member.name)", "SMART labels must come from controller-reported ranks");
+assertIncludes(proxyPresentation, "ProxyProjection.groupSearchText(", "Group search must include reported member names and metadata");
+assertIncludes(proxyPresentation, "canSelect: selectionActionAvailable && group.selectable", "Read-only policy groups must disable node switching without hiding members");
+assertIncludes(proxyPresentation, "struct ProxyMemberDetailProjection", "Proxy details must use a typed presentation projection");
 for (const proxyDetail of ["let alive: Bool?", "let fixed: String?", "let latestHistoryDelay: Int?", "let latestHistoryTime: String?"]) {
-  assertIncludes(proxies, proxyDetail, `Proxy details must retain ${proxyDetail}`);
+  assertIncludes(proxyPresentation, proxyDetail, `Proxy details must retain ${proxyDetail}`);
 }
 assertIncludes(dashboardSessionModels, "let transportCapabilities: [ProxyTransportCapabilityState]", "Proxy node projection must retain reported transport states");
 assertIncludes(dashboardSessionModels, "let reportedMetadata: [String: MihomoJSONValue]", "Proxy node projection must separate additional controller fields from known fields");
@@ -1065,12 +1479,12 @@ for (const reportedFieldContract of [
   ".sorted { $0.key < $1.key }",
   "reportedFields = ProxyReportedMetadataField.fields(",
 ]) {
-  assertIncludes(proxies, reportedFieldContract, `Selected proxy detail projection must retain ${reportedFieldContract}`);
+  assertIncludes(proxyPresentation, reportedFieldContract, `Selected proxy detail projection must retain ${reportedFieldContract}`);
 }
 assertIncludes(proxyPanels, "ProxyReportedMetadataField.fields(in: detail?.reportedMetadata", "Inline details must expose only uncategorized controller fields");
 assertIncludes(proxyPanels, "showsAdditionalFields", "Additional controller fields must remain folded until requested");
 assertExcludes(proxyPanels, "additionalMetadataText", "Proxy details must not collapse controller fields into one JSON value");
-assertExcludes(sourceSection(proxies, "enum ProxyWorkspaceProjection", "enum ProxyProjection"), "PolicyGroupUsageRank", "Local interaction state must not infer SMART rank");
+assertExcludes(sourceSection(proxyPresentation, "enum ProxyWorkspaceProjection", "enum ProxyProjection"), "PolicyGroupUsageRank", "Local interaction state must not infer SMART rank");
 assertExcludes(proxies, "revealLimit", "Proxy nodes must not return to manual reveal pagination");
 
 for (const stateCase of [
@@ -1097,6 +1511,19 @@ for (const browserContract of [
 ]) {
   assertIncludes(dataPages, browserContract, `Data browsers must retain ${browserContract}`);
 }
+assertIncludes(dataInteraction, "final class WorkbenchDataInteractionCoordinator", "Data interaction must own scroll and evaluation coordination");
+assertIncludes(dataPresentation, "enum WorkbenchDataState", "Data presentation must own controller-neutral state projection");
+assertIncludes(dataShared, "struct WorkbenchDataBrowserScaffold", "Data shared UI must own browser composition");
+for (const purePresentationSource of [
+  dataPresentation,
+  connectionsPresentation,
+  connectionCache,
+  logPresentation,
+  rulePresentation,
+  sourcePresentation,
+]) {
+  assertExcludes(purePresentationSource, "import SwiftUI", "Pure data presentation and cache sources must not depend on SwiftUI");
+}
 for (const file of dataBrowserTableFiles) {
   assert(
     (code(read(file)).match(/\bTable\(/g) ?? []).length === 1,
@@ -1111,10 +1538,10 @@ assertIncludes(liveSessionRuntime, "pendingConnectionMetricIndices", "Runtime mu
 assertIncludes(dashboardSessionModels, "enum LogsCatalogChange", "Logs must publish replacement versus delta changes");
 assertIncludes(dashboardSessionModels, "case delta(", "Logs must carry append/drop deltas to presentation");
 assert(count(dataPages, "filtered.sorted(using: sortOrder)") === 3, "Only Connections, Rules, and Sources may apply native presentation sorting");
-const logProjection = sourceSection(logsPage, "enum WorkbenchLogProjection", "struct WorkbenchLogProjectionCache");
+const logProjection = sourceSection(logPresentation, "enum WorkbenchLogProjection", "struct WorkbenchLogProjectionCache");
 assertExcludes(logProjection, ".sorted", "Logs must preserve incoming order");
 assertIncludes(logProjection, "return entries.map", "Log rows must retain incoming controller order");
-const logTableSource = sourceSection(logsPage, "private var logStream", "private func rebuildRows");
+const logTableSource = sourceSection(logsRoot, "private var logStream", "private func rebuildRows");
 for (const logColumnContract of [
   '"traffic.log_received_time"',
   '"traffic.log_level"',
@@ -1123,7 +1550,7 @@ for (const logColumnContract of [
 ]) {
   assertIncludes(logTableSource, logColumnContract, `Logs must retain the explicit event column ${logColumnContract}`);
 }
-const ruleTableSource = sourceSection(rulesPage, "private var ruleTable", "private func rebuildRows");
+const ruleTableSource = sourceSection(rulesRoot, "private var ruleTable", "private func rebuildRows");
 assertIncludes(ruleTableSource, "ruleStateCell(row)", "Rules must combine status and mutation into one scan column");
 assertIncludes(ruleTableSource, "ruleCompactSummary(row)", "Rules must retain a compact composite summary");
 assertIncludes(ruleTableSource, "ruleStackedRow(row)", "Rules must collapse to one complete stacked column");
@@ -1143,7 +1570,7 @@ assertExcludes(ruleTableSource, "WorkbenchStatusBadge(", "Rule scan rows must no
 for (const rulePathContract of [
   "enum WorkbenchRulePolicyTargetResolver",
   "struct WorkbenchRuleDecisionPathProjection",
-  "private struct WorkbenchRuleDecisionPathRail",
+  "struct WorkbenchRuleDecisionPathRail",
   "ProxyWorkspaceProjection.opening(",
   "destination = .proxies",
 ]) {
@@ -1165,11 +1592,10 @@ for (const connectionNavigationContract of [
     `Connection-to-rule and policy navigation must retain ${connectionNavigationContract}`,
   );
 }
-const sourcesPage = read("Sources/Mica/Features/Workbench/WorkbenchSources.swift");
-const sourceTableSource = sourceSection(sourcesPage, "private var sourceTable", "private func rebuildRows");
+const sourceTableSource = sourceSection(sourcesRoot, "private var sourceTable", "private func rebuildRows");
 assertIncludes(sourceTableSource, "sourceStatus(row)", "Sources must retain a quiet lifecycle state column");
 assertExcludes(sourceTableSource, "WorkbenchStatusBadge(", "Source scan rows must not render lifecycle state as a boxed badge");
-assertIncludes(sourcesPage, "private var lifecycleReadouts", "Selected sources must expose a compact lifecycle summary");
+assertIncludes(sourceDetails, "private var lifecycleReadouts", "Selected sources must expose a compact lifecycle summary");
 assertExcludes(connectionsPage, "closeCommand(for:", "Connections must not restore a per-row close command");
 assertExcludes(connectionsPage, 'TableColumn(MicaStrings.localizedKey("traffic.action"', "Connections must not restore an isolated action column");
 assertIncludes(connectionsPage, "WorkbenchConnectionDecisionPathRail", "Selected connections must expose a focus rail");
@@ -1193,10 +1619,21 @@ assertIncludes(connectionsPage, "struct WorkbenchConnectionAdditionalField", "Co
 assertIncludes(connectionsPage, "WorkbenchConnectionAdditionalFieldList", "Connection details must render additional fields structurally");
 assertExcludes(connectionsPage, "WorkbenchDataFormat.json(row.connection", "Connection details must not collapse additional fields into machine JSON");
 assertExcludes(connectionsPage, '"/connections"', "Connections UI must not expose controller API paths");
-assertExcludes(sourcesPage, "sourceActions(_", "Sources must not restore per-row action commands");
-assertExcludes(sourcesPage, 'TableColumn(MicaStrings.localizedKey("traffic.action"', "Sources must not restore an isolated action column");
-assertIncludes(sourcesPage, "private struct WorkbenchSourceFocusRail", "Selected sources must expose a lifecycle focus rail");
-assertExcludes(sourcesPage, "traffic.source_section_actions", "Source inspectors must not duplicate focus-rail actions");
+assertExcludes(sourcesRoot, "sourceActions(_", "Sources must not restore per-row action commands");
+assertExcludes(sourcesRoot, 'TableColumn(MicaStrings.localizedKey("traffic.action"', "Sources must not restore an isolated action column");
+assertIncludes(sourceDetails, "struct WorkbenchSourceFocusRail", "Selected sources must expose a lifecycle focus rail");
+assertExcludes(sourceDetails, "traffic.source_section_actions", "Source inspectors must not duplicate focus-rail actions");
+assertIncludes(connectionsPresentation, "enum WorkbenchConnectionProjection", "Connections presentation must own stable row projection");
+assertIncludes(connectionCache, "struct WorkbenchConnectionPulseProjection", "Connection cache must own high-frequency pulse projection");
+assertIncludes(connectionsRoot, "struct WorkbenchConnectionsView", "Connections root must own the native Table workspace");
+assertIncludes(connectionPulseView, "struct WorkbenchConnectionPulseStrip", "Connection pulse view must own pulse rendering");
+assertIncludes(connectionDetails, "struct WorkbenchConnectionInspector", "Connection details must own selection-driven inspection");
+assertIncludes(logPresentation, "struct WorkbenchLogProjectionCache", "Log presentation must own its stable row cache");
+assertIncludes(logsRoot, "struct WorkbenchLogsView", "Logs root must own Table rendering and follow interaction");
+assertIncludes(rulePresentation, "struct WorkbenchRuleProjectionCache", "Rule presentation must own its stable row cache");
+assertIncludes(ruleDetails, "struct WorkbenchRuleInspector", "Rule details must own selection-driven inspection");
+assertIncludes(sourcePresentation, "struct WorkbenchSourceProjectionCache", "Source presentation must own its stable row cache");
+assertIncludes(sourceDetails, "struct WorkbenchSourceInspector", "Source details must own selection-driven inspection");
 assertIncludes(dataPages, "struct WorkbenchLogProjectionCache", "Logs must cache source and filtered row projections");
 assertIncludes(dataPages, "replaceRowsByStableID", "Log updates must reuse stable-ID row projections when possible");
 assertIncludes(dataPages, "static let minimumInterval: TimeInterval = 0.2", "Follow Newest must be capped at five hertz");
@@ -1286,10 +1723,10 @@ const singBoxLogProjection = sourceSection(
 assertIncludes(singBoxLogProjection, "case SingBoxLogLevel.trace.rawValue:", "sing-box trace must be projected explicitly");
 assertIncludes(singBoxLogProjection, '"trace"', "sing-box trace must not be downgraded to debug");
 assertIncludes(dataPages, "ForEach(availableLogLevels)", "Logs must use backend-specific level choices");
-assertIncludes(logsPage, "enum WorkbenchLogSeverity", "Logs must project a stable semantic severity");
-assertIncludes(logsPage, "let severity: WorkbenchLogSeverity", "Log rows must carry projected severity");
-assertIncludes(logsPage, "private func severityRail", "Logs must render a fixed semantic severity rail");
-assertExcludes(logsPage, "WorkbenchStatusBadge(", "Logs must not restore colored severity badges");
+assertIncludes(logPresentation, "enum WorkbenchLogSeverity", "Logs must project a stable semantic severity");
+assertIncludes(logPresentation, "let severity: WorkbenchLogSeverity", "Log rows must carry projected severity");
+assertIncludes(logsRoot, "private func severityRail", "Logs must render a fixed semantic severity rail");
+assertExcludes(logsRoot, "WorkbenchStatusBadge(", "Logs must not restore colored severity badges");
 assertIncludes(appLanguage, 'case "trace":', "Trace logs must localize through the shared language boundary");
 
 for (const managementSurface of [
@@ -1297,111 +1734,149 @@ for (const managementSurface of [
   "struct WorkbenchConfigurationView",
   "struct WorkbenchActionsView",
   "struct WorkbenchDiagnosticsView",
-  "struct MicaSettingsSceneView",
 ]) {
   assertIncludes(management, managementSurface, `Management replacement must expose ${managementSurface}`);
 }
 assertExcludes(management, "struct WorkbenchSettingsView", "Settings must only exist in the native Settings scene");
-const controllersSource = sourceSection(management, "struct WorkbenchControllersView", "// MARK: - Configuration");
+assertExcludes(management, "struct MicaSettingsSceneView", "Native Settings must remain isolated from Workbench management pages");
+assertIncludes(settings, "struct MicaSettingsSceneView", "The dedicated Settings source must expose the native Settings scene");
+const controllersSource = controllersRoot;
 assertIncludes(controllersSource, "List(filteredProfiles, selection: managementSelectionBinding)", "Controllers must use a native virtualized selectable list");
 assertIncludes(controllersSource, "HSplitView", "Wide controller management must use native master-detail layout");
 assertIncludes(controllersSource, "VSplitView", "Compact controller management must keep list and detail in one window");
 const controllerRowSource = sourceSection(controllersSource, "private func controllerRow", "private var filteredProfiles");
-assertOrdered(
-  controllerRowSource,
-  [".frame(maxWidth: .infinity, alignment: .leading)", "HStack(spacing: 0)"],
-  "Controller edit and delete actions must remain at the far trailing edge",
+assertIncludes(controllerRowSource, ".contentShape(Rectangle())", "Controller list rows must expose a full-row selection target");
+for (const detailOnlyAction of [
+  "appModel.selectRouter(profile)",
+  "onEditController(profile)",
+  "moveSelection(",
+  "requestDelete(profile)",
+]) {
+  assertExcludes(controllerRowSource, detailOnlyAction, `Controller list rows must stay scan-only and exclude ${detailOnlyAction}`);
+}
+const controllerActionsSource = sourceSection(
+  controllersSource,
+  "private func controllerDetailActionButtons(_ profile: RouterProfile) -> some View {",
+  "private var commandBar: some View {",
 );
-const controllerListProjection = sourceSection(management, "enum WorkbenchControllerListProjection", "struct WorkbenchConnectionTestProjection");
+for (const detailAction of [
+  "appModel.selectRouter(profile)",
+  "onEditController(profile)",
+  "moveSelection(.up)",
+  "moveSelection(.down)",
+  "requestDelete(profile)",
+]) {
+  assertIncludes(controllerActionsSource, detailAction, `Controller detail must own ${detailAction}`);
+}
+assert(
+  count(controllersSource, "appModel.selectRouter(profile)") === 1,
+  "Only the explicit Use command may switch the active controller",
+);
+assertIncludes(controllerDetailSection, "deleteConfirmation(profile, confirmation: pendingDelete)", "Controller deletion confirmation must stay inline with the selected detail");
+assertExcludes(controllersSource, ".safeAreaInset(", "Controller deletion confirmation must not become a detached bottom bar");
+const controllerListProjection = sourceSection(controllerPresentation, "enum WorkbenchControllerListProjection", "struct WorkbenchConnectionTestProjection");
 assertIncludes(controllerListProjection, "guard !normalizedQuery.isEmpty else { return profiles }", "Empty controller search must preserve persisted order");
 assertExcludes(controllerListProjection, ".sorted", "Controllers must never reorder profiles automatically");
 assertIncludes(controllersSource, "appModel.selectRouter(profile)", "Only explicit Use may switch the active controller");
 assertIncludes(controllersSource, "appModel.moveRouter", "Controller order changes must use the persisted move operation");
 assertIncludes(controllersSource, "pendingDelete", "Controller deletion must confirm inline");
 assertIncludes(controllersSource, "profile.endpointURL", "Controllers must show the complete endpoint");
+assertIncludes(controllerPresentation, "struct WorkbenchControllerDeleteConfirmation", "Controller presentation must own session-bound delete intent");
+assertExcludes(controllerPresentation, "import SwiftUI", "Controller presentation must remain independent from SwiftUI");
+assertIncludes(controllersRoot, "struct WorkbenchControllersView", "Controllers root must own native management composition");
 for (const canvasMetric of [
   "static let formCanvasWidth: CGFloat = 1_040",
   "static let maximumCanvasWidth: CGFloat = 1_180",
-  "static let preferenceWindowWidth: CGFloat = 820",
 ]) {
   assertIncludes(management, canvasMetric, `Management pages must retain constrained canvas metric ${canvasMetric}`);
 }
-assertIncludes(management, ".frame(maxWidth: .infinity, alignment: .top)", "Management canvases must stay centered within wide windows");
-assertIncludes(management, "WorkbenchAnimatedDisclosure", "Diagnostics must use the shared animated disclosure treatment");
+assertIncludes(settings, "static let readingWidth: CGFloat = 820", "Native Settings must retain its approved reading width");
+assertIncludes(managementShared, "alignment: .topLeading", "Management canvases must remain bounded and leading-anchored in wide windows");
+assertIncludes(diagnosticsComponents, "struct WorkbenchDiagnosticsCanvas", "Diagnostics must own one full-width scroll canvas");
 assertExcludes(management, "Spacer(minLength: 0)\n\n                Form {", "Management forms must not return to centered spacer framing");
 assertIncludes(management, "appModel.updateControllerConfig", "Configuration must use typed AppModel writes");
-const configurationSource = sourceSection(management, "struct WorkbenchConfigurationView", "private struct WorkbenchPortField");
+const configurationSource = configurationPage;
 for (const stateKind of ["kind: .noController", "kind: .loading", "kind: .unsupported", "kind: .empty", "kind: .failed"]) {
   assertIncludes(configurationSource, stateKind, `Configuration must distinguish ${stateKind}`);
 }
+assertExcludes(configurationSource, '"overview.config_mode_options"', "Configuration must not repeat the mode picker as a read-only options row");
+assertIncludes(configurationSource, "appModel.capabilityMatrixRows.first", "Tailscale presentation must use the reported capability matrix");
+assertIncludes(configurationSource, '$0.id == "tailscale"', "Tailscale presentation must resolve the dedicated capability row");
+assertIncludes(configurationSource, "return status != .unavailable", "Unsupported Tailscale controls must remain absent");
+assertIncludes(configurationSource, "appModel.singBoxTailscaleStatus != nil", "Reported Tailscale status must remain visible before capability refresh completes");
+assertIncludes(configurationSource, "appModel.singBoxTailscaleError != nil", "Reported Tailscale failure must remain visible before capability refresh completes");
 assertIncludes(management, "appModel.performDiagnosticsRuntimeOperation", "Actions must use capability-gated AppModel operations");
-assertIncludes(management, "appModel.supportsUnifiedAction", "Actions must honor runtime capabilities");
-assertIncludes(management, "appModel.copyDiagnosticsReport", "Diagnostics must retain credential-safe report copying");
-assertIncludes(management, "appModel.copyEndpointResults", "Diagnostics must retain endpoint result copying");
-assertIncludes(management, "appModel.copyCheckResults", "Diagnostics must retain check-results copying");
-assertIncludes(management, "endpointWorkflowSection", "Diagnostics must expose the endpoint-check workflow in the main window");
-assertIncludes(management, "appModel.performEndpointCheckAction", "Endpoint-check recovery must use typed AppModel actions");
-for (const diagnosticsDetail of [
-  "appModel.checkResultRows",
-  "appModel.observabilityReadinessRows",
-  "appModel.diagnosticsReportSections",
-  "expandedPanels",
-  "WorkbenchAnimatedDisclosure",
-]) {
-  assertIncludes(management, diagnosticsDetail, `Diagnostics must retain same-window detail through ${diagnosticsDetail}`);
-}
-const diagnosticsSource = sourceSection(management, "private enum WorkbenchDiagnosticsPanel", "private struct WorkbenchEndpointCheckStepRow");
-for (const interactionContract of [
-  "withTransaction(",
-  "Transaction(animation: reduceMotion ? nil : WorkbenchMotion.expand)",
-  ".contentShape(Rectangle())",
-  ".rotationEffect(.degrees(isExpanded ? 90 : 0))",
-  ".overlay(alignment: .bottom)",
-  ".transition(",
-]) {
-  assertIncludes(diagnosticsSource, interactionContract, `Diagnostics disclosures must retain ${interactionContract}`);
-}
-for (const visibilityContract of [
-  "availableCapabilityRows",
-  "availableObservabilityRows",
-  "availableEndpointSteps",
-  "availableCheckResults",
-  "if !projection.capabilityRows.isEmpty",
-  "if !projection.coverageRows.isEmpty",
-  "if !projection.observabilityRows.isEmpty",
-]) {
-  assertIncludes(diagnosticsSource, visibilityContract, `Diagnostics must filter unsupported rows through ${visibilityContract}`);
-}
-assertExcludes(
-  diagnosticsSource,
-  "DisclosureGroup",
-  "Diagnostics must use one animated full-row disclosure implementation at both levels",
+assertIncludes(actionsPresentation, "input.capabilities.supports(action)", "Actions must honor runtime capabilities");
+assertIncludes(actionsRoot, "snapshot?.visibleOperationIDs", "Actions must invalidate confirmations when executable operations disappear");
+assertIncludes(actionsRoot, "inlineConfirmation(command)", "Dangerous actions must confirm beside the originating operation");
+assertExcludes(actionsRoot, ".safeAreaInset(", "Action confirmation must not become a detached bottom bar");
+assertIncludes(actionsPresentation, 'case "memory":', "Actions must classify the memory dispatcher explicitly");
+assertIncludes(actionsPresentation, "controllerType == .cmfaCompatible", "CMFA commands must retain their verified subset");
+assertExcludes(sourceSection(actionsPresentation, 'case "memory":', 'case "dns-flush":'), ".singBoxCompatible", "sing-box observation memory must not become a Mihomo command");
+assertIncludes(actionsPresentation, "WorkbenchControllerTargetScope", "Actions and diagnosis must share factual target scope");
+assertIncludes(actionsPresentation, "var hasWorkbenchRuntimeOperations", "Actions must keep runtime-row observation aligned with verified dispatcher families");
+const runtimeOperationRowsSource = read("Sources/Mica/App/AppModelDiagnosticsRuntimeOperations.swift");
+const actionsRuntimeRowsSource = sourceSection(
+  runtimeOperationRowsSource,
+  "var actionsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow] {",
+  "private var runtimeOperationRows: [DiagnosticsRuntimeOperationRow] {",
 );
-assertIncludes(diagnosticsSource, "diagnosisSummarySection", "Diagnostics must lead with a readable diagnosis summary");
-assertIncludes(diagnosticsSource, "diagnosticsDetailsSection", "Diagnostics details must share one continuous section");
-assertIncludes(diagnosticsSource, "WorkbenchDiagnosticsSummaryFact", "Diagnostics summary must use a compact fact layout instead of form rows");
-assertIncludes(diagnosticsSource, "WorkbenchDiagnosticsMetadataGrid", "Controller metadata must use an adaptive fact grid instead of a long form table");
-assertIncludes(diagnosticsSource, "WorkbenchDiagnosticStatusLabel", "Diagnostics rows must use restrained status signals instead of repeated filled badges");
-assertIncludes(diagnosticsSource, "controllerDetailsSection", "Controller metadata must live in the continuous diagnostics detail list");
-assertExcludes(diagnosticsSource, ".fill(MicaDesignTokens.contentFill)", "Diagnostics must remain an unframed outline instead of returning to opaque cards");
-assertExcludes(diagnosticsSource, "Text(verbatim: section.value)", "Raw diagnostics report values must stay out of the visible UI");
-assertExcludes(diagnosticsSource, "Text(verbatim: row.evidence)", "API evidence must stay out of the visible capability rows");
-assertExcludes(diagnosticsSource, "diagnostics.operation_source_backend_boundary", "Monitoring rows must not expose backend-boundary terminology");
-assertIncludes(management, "struct WorkbenchConnectionTestProjection", "Controller connection tests must retain complete typed reports");
+assertIncludes(actionsRuntimeRowsSource, "hasWorkbenchRuntimeOperations", "Actions runtime rows must be gated by verified dispatcher family");
+assertExcludes(actionsRuntimeRowsSource, "diagnosticsRuntimeOperationEvidence", "Actions runtime rows must not observe diagnostic evidence or session runtime");
+assertIncludes(runtimeOperationRowsSource, "evidence: \"\"", "Shared runtime command rows must remain evidence-free until Diagnostics enriches them");
+assertIncludes(tailscale, "struct WorkbenchSingBoxTailscaleSection", "Tailscale source must own sing-box Tailscale rendering");
+assertIncludes(diagnosticsRoot, "appModel.copyDiagnosticsReport", "Diagnostics must retain one credential-safe report command");
+assertExcludes(diagnosticsRoot, "appModel.copyEndpointResults", "Diagnostics must not restore a second endpoint-copy command");
+assertExcludes(diagnosticsRoot, "appModel.copyCheckResults", "Diagnostics must not restore a second check-result-copy command");
+assertIncludes(diagnosticsPresentation, "struct WorkbenchDiagnosticsInput", "Diagnostics must consume one pure typed input");
+assertIncludes(diagnosticsPresentation, "struct WorkbenchDiagnosticsSnapshot", "Diagnostics must expose one pure typed snapshot");
+assertIncludes(diagnosticsPresentation, "controllerAccessIssue", "Diagnostics must project controller-wide access failures");
+assertIncludes(diagnosticsPresentation, "endpointIsExpected", "Diagnostics must suppress unsupported endpoint failures by capability");
+assertIncludes(diagnosticsPresentation, "deduplicatedAndSorted", "Diagnostics must deduplicate and prioritize stable issue IDs");
+assertIncludes(diagnosticsPresentation, "reconciledSelection", "Diagnostics must reconcile issue selection by stable ID");
+assertIncludes(diagnosticsPresentation, "if !isChecking", "Diagnostics checking state must gate provisional failures");
+assertIncludes(diagnosticsPresentation, "guard input.lastSuccessAt != nil else { return [] }", "Diagnostics must not claim available areas before the first baseline");
+assertIncludes(diagnosticsPresentation, '"diagnostics.evidence_unavailable"', "Diagnostics must replace unsafe evidence with localized fallback copy");
+assertIncludes(diagnosticsRoot, "usesSplitLayout: contentWidth >= 900", "Diagnostics must choose master-detail from measured width");
+assertIncludes(diagnosticsComponents, "struct WorkbenchDiagnosticsIssueWorkspace", "Diagnostics must own one adaptive issue workspace");
+const diagnosticsIssueRowSource = sourceSection(
+  diagnosticsComponents,
+  "private struct WorkbenchDiagnosticsIssueRow: View {",
+  "private struct WorkbenchDiagnosticsIssueDetail: View {",
+);
+assertIncludes(diagnosticsIssueRowSource, ".accessibilityLabel(", "Diagnostics issue rows must expose an explicit accessible label");
+assertIncludes(diagnosticsIssueRowSource, "issue.severity.label", "Diagnostics issue rows must announce severity without relying on color or symbols");
+assertIncludes(diagnosticsComponents, "struct WorkbenchDiagnosticsAvailableAreas", "Diagnostics must expose current product areas without a success wall");
+assertIncludes(diagnosticsComponents, "struct WorkbenchDiagnosticsTechnicalDetails", "Diagnostics must retain one secondary technical disclosure");
+assert(count(diagnosticsPage, "ScrollView {") === 1, "Diagnostics must retain exactly one scroll owner");
+assert(count(diagnosticsPage, "DisclosureGroup") === 1, "Diagnostics must retain one native technical disclosure");
+assertExcludes(diagnosticsPage, "WorkbenchManagementCanvas", "Diagnostics must not inherit the bounded management reading canvas");
+assertExcludes(diagnosticsPage, ".glassEffect", "Diagnostics content must not add custom Liquid Glass");
+assertExcludes(diagnosticsPage, "MicaDesignTokens.contentFill", "Diagnostics must remain a flat unframed workspace");
+assertExcludes(diagnosticsRoot, "endpointCheckSteps", "Diagnostics must not mirror the endpoint workflow checklist");
+assertExcludes(diagnosticsRoot, "checkResultRows", "Diagnostics must not mirror historical check-result tables");
+assertExcludes(diagnosticsRoot, "capabilityMatrixRows", "Diagnostics must not mirror the capability matrix");
+assertExcludes(diagnosticsRoot, "performDiagnosticsRuntimeOperation", "Diagnostics must not execute remote maintenance commands");
+assertIncludes(chrome, "if destination != .diagnostics", "Diagnostics must hide the duplicate toolbar Test command");
+assertIncludes(routerEditorDiagnosis, "WorkbenchControllerTargetScope", "Router editor diagnosis must reuse factual target scope");
+assertIncludes(routerEditorDiagnosis, "target.loopback_recovery_detail", "Router editor diagnosis must explain loopback targets");
+const diagnosticsSource = diagnosticsPage;
+assertExcludes(diagnosticsSource, "diagnostics.operation_source_backend_boundary", "Visible diagnosis must not expose backend-boundary terminology");
+assertExcludes(diagnosticsPresentation, "import SwiftUI", "Diagnostics presentation must remain independent from SwiftUI");
+assertIncludes(diagnosticsRoot, "struct WorkbenchDiagnosticsView", "Diagnostics root must own page composition");
+assertIncludes(controllerPresentation, "struct WorkbenchConnectionTestProjection", "Controller connection tests must retain complete typed reports");
 assertIncludes(management, "report.steps", "Controller connection reports must expose every reported step");
 assertIncludes(management, "Link(destination: authenticationLinkURL)", "Tailscale authentication URLs must be actionable with a native Link");
 assertIncludes(management, "WorkbenchSingBoxTailscaleSection", "Configuration must retain in-window sing-box Tailscale state");
 assertIncludes(management, "DisclosureGroup", "Tailscale detail must expand in the same window");
-assertIncludes(management, "|| appModel.singBoxTailscaleStatus != nil", "Tailscale status must remain visible even without reported configuration fields");
-assertIncludes(management, "|| appModel.singBoxTailscaleError != nil", "Tailscale errors must remain visible even without reported configuration fields");
-assertIncludes(sourceSection(management, "struct WorkbenchActionsProjection", "struct WorkbenchActionsView"), ".reloadProfile", "Supported operations must include Surge profile reload");
+assertIncludes(actionsPresentation, ".reloadProfile", "Supported operations must include Surge profile reload");
 
 assertIncludes(surgeProjection, "static func surgeEventLogEntries", "Surge events must project into typed controller log entries");
 assertIncludes(surgeProjection, "static func surgeRecentRequestConnections", "Surge recent requests must project into retained closed connections");
 assertIncludes(liveSession, "DashboardSnapshot.surgeEventLogEntries", "Surge snapshots must stage event logs in the generation-owned log buffer");
 assertIncludes(surgeOperations, "DashboardSnapshot.surgeRecentRequestConnections", "Surge snapshots must publish recent requests");
 
-const settingsSource = sourceSection(management, "// MARK: - Settings", "// MARK: - Controllers");
+const settingsSource = settings;
 assertIncludes(settingsSource, "@EnvironmentObject private var preferences: AppPreferencesStore", "Settings must use the single persisted preference authority");
 assertIncludes(settingsSource, "set: { preferences.language = $0 }", "Language changes must persist immediately");
 assertIncludes(settingsSource, "preferences.appearance = $0", "Appearance changes must persist immediately");
@@ -1413,10 +1888,10 @@ assertIncludes(settingsSource, "Form {", "Native Settings must use a native Form
 assertIncludes(settingsSource, ".formStyle(.grouped)", "Native Settings must use grouped form styling");
 assertIncludes(settingsSource, ".scrollContentBackground(.hidden)", "Native Settings must share the workbench page background instead of drawing a mismatched form wall");
 assertExcludes(settingsSource, ".scrollIndicators(.hidden)", "Native Settings must retain the system on-demand scroll indicator");
-assertIncludes(settingsSource, "WorkbenchManagementMetrics.preferenceWindowWidth", "Native Settings must retain a centered reading width");
+assertIncludes(settingsSource, "MicaSettingsMetrics.readingWidth", "Native Settings must retain a centered reading width");
 assertExcludes(settingsSource, "preferenceCanvasWidth", "Settings must not return to the old fixed leading-width canvas");
 assertExcludes(settingsSource, "preferenceColumnMinimumWidth", "Settings must not return to an unbalanced two-column composition");
-assertIncludes(settingsSource, "min(\n                    geometry.size.width,\n                    WorkbenchManagementMetrics.preferenceWindowWidth", "Native Settings must cap the form at the approved reading width");
+assertIncludes(settingsSource, "min(\n                    geometry.size.width,\n                    MicaSettingsMetrics.readingWidth", "Native Settings must cap the form at the approved reading width");
 assertIncludes(settingsSource, "availableWidth: availableContentWidth", "Native Settings must resolve field layout from its actual form content width");
 assertIncludes(settingsSource, "struct WorkbenchPreferenceRow", "Settings must use a dedicated responsive preference row");
 assertIncludes(settingsSource, "WorkbenchPreferenceRow(titleKey, detailKey: detailKey)", "Settings controls must keep visible help while using the preference layout");
@@ -1427,6 +1902,9 @@ assertIncludes(settingsSource, "struct WorkbenchPreferenceMenu", "Settings choic
 assertIncludes(settingsSource, ".menuStyle(.borderlessButton)", "Settings menus must avoid boxed button chrome");
 assertIncludes(settingsSource, ".menuIndicator(.hidden)", "Settings menus must use one restrained disclosure indicator");
 assertExcludes(settingsSource, ".pickerStyle(.segmented)", "Settings must not restore rows of boxed segmented choices");
+assertExcludes(settingsSource, "LaunchAtLogin", "Native Settings must not add an unsupported launch-at-login preference");
+assertExcludes(settingsSource, "Shortcut", "Native Settings must not add a shortcut editor");
+assertExcludes(settingsSource, "About", "Native Settings must not add an About pane");
 assertExcludes(management, "LabeledContent", "Management fields must not restore the centered system value column");
 assertExcludes(management, "formControlMax, alignment: .trailing", "Management form controls must not be pushed to the trailing edge");
 assertExcludes(management, "@Environment(\\.dynamicTypeSize)", "Font preference must not select management page layout variants");
@@ -1448,9 +1926,8 @@ assertIncludes(appLanguage, "static var menuBarLanguage: AppLanguage", "Custom m
 assertIncludes(micaApp, ".defaultSize(width: 880, height: 700)", "Native Settings must open at a practical size for larger interface text");
 assertIncludes(visualSystem, "content\n                .frame(maxWidth: .infinity, maxHeight: .infinity)\n                .background(MicaDesignTokens.pageFill)", "Every page content root must paint the shared page fill");
 assertIncludes(dataPages, ".background(MicaDesignTokens.pageFill)", "Data browser loading and empty states must use the shared page fill");
-assertExcludes(diagnosticsSource, ".animation(disclosureAnimation, value: isExpanded)", "Expanded diagnostics must not attach a persistent animation transaction to the full subtree");
-assertIncludes(diagnosticsSource, ".transition(.opacity)", "Diagnostics must retain a lightweight expansion transition");
-assertIncludes(visualSystem, "static let groupedPageFill = pageFill", "Management surfaces must share the window page fill");
+assertExcludes(diagnosticsSource, ".animation(", "Diagnostics must not attach persistent animation to the live issue subtree");
+assertIncludes(designSystem, "static let groupedPageFill = pageFill", "Management surfaces must share the window page fill");
 assertIncludes(appAppearance, "application.appearance = nsAppearance", "Appearance must update the application");
 assertIncludes(appAppearance, "window.appearance = nsAppearance", "Appearance must update existing windows");
 assertIncludes(preferenceEnvironment, ".dynamicTypeSize(fontScale.dynamicTypeSize)", "Font scale must use Dynamic Type");
@@ -1481,7 +1958,6 @@ for (const testContract of [
   "trafficTimelineUsesOnlyReceivedSamplesAndEnforcesCapacity",
   "proxyGroupsPreserveControllerOrderAndAppendVisibleGlobalLast",
   "policyRefreshUsesLatestMihomoConfigurationAndMemberOrder",
-  "proxyMasterDetailWidthsStayWithinApprovedBounds",
   "proxyOpenPathsStayInControllerOrderAndOnlyActiveMembersProject",
   "latencyDistributionUsesReportedOrderAndHealthBuckets",
   "nodeDetailSeparatesKnownFieldsFromAdditionalControllerFields",
@@ -1525,9 +2001,15 @@ for (const testContract of [
   "nonSelectableSingBoxGroupKeepsMembersAndTestsAvailable",
   "proxyMemberDetailsPreserveReportedStatusFixedAndHistory",
   "retainsCompleteLatestReportForEachProfile",
-  "diagnosticsCheckResultProjectionKeepsUserFacingValuesInDisplayOrder",
-  "diagnosticsProjectionOmitsEmptyAndMachineFacingValues",
-  "diagnosticsVisibilityRemovesUnsupportedItemsFromBothLevels",
+  "actionsRecoveryDoesNotCountDisabledRefresh",
+  "actionsProjectionUsesVerifiedControllerDispatchers",
+  "actionsExecutableCountTracksTransientReadinessWithoutLosingInventory",
+  "targetScopeDistinguishesThisMacNetworkAndExplicitMacLocal",
+  "diagnosticsControllerFailureSuppressesDuplicateEndpointFailures",
+  "diagnosticsProjectionOmitsMachineFacingEvidence",
+  "diagnosticsUsesCapabilitiesToSuppressUnsupportedFailures",
+  "diagnosticsMapsExpectedEndpointFailuresToProductAreas",
+  "diagnosticsSelectionReconcilesByStableIssueID",
   "updateAllPreservesSourceOrderSkipsReadOnlyProvidersAndRefreshesOnce",
   "controllerChangeCancelsAndResetsBatchWithoutStalePublication",
   "providerProjectionPreservesTestURLAndSubscriptionInformation",
@@ -1586,7 +2068,12 @@ for (const key of [
   "operation.connection_closed_refresh_failed",
   "operation.connections_closed_refresh_failed",
   "operation.policy_group_not_selectable",
-  "diagnostics.runtime_operations_count %lld",
+  "actions.executable_count %lld",
+  "diagnostics.verdict_ready",
+  "diagnostics.needs_attention",
+  "diagnostics.technical_details",
+  "target.scope_this_mac",
+  "target.loopback_recovery_detail",
   "routing.activate_group",
   "routing.choose_group",
   "routing.close_group",

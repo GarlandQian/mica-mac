@@ -12,32 +12,106 @@ compatibility requirement.
 The directory contains exactly:
 
 - `WorkbenchChrome.swift`
+- `WorkbenchWindow.swift`
+- `WorkbenchSidebar.swift`
+- `WorkbenchStatusBar.swift`
 - `WorkbenchControllerSelector.swift`
 - `WorkbenchWorkspaceView.swift`
 - `WorkbenchWorkspaceStore.swift`
+- `WorkbenchDesignSystem.swift`
 - `WorkbenchVisualSystem.swift`
 - `WorkbenchDashboard.swift`
+- `WorkbenchOverviewTelemetry.swift`
 - `WorkbenchOverviewEditor.swift`
 - `WorkbenchOverviewPersonalization.swift`
+- `WorkbenchOverviewLayoutStore.swift`
+- `WorkbenchOverviewWindowCoordinator.swift`
 - `WorkbenchOverviewProjection.swift`
 - `WorkbenchOverviewRuntimes.swift`
 - `WorkbenchOverviewTopology.swift`
+- `WorkbenchOverviewTopologyView.swift`
 - `WorkbenchProxyGroupPanels.swift`
+- `WorkbenchProxyInteraction.swift`
+- `WorkbenchProxyPresentation.swift`
 - `WorkbenchProxies.swift`
+- `WorkbenchDataInteraction.swift`
+- `WorkbenchDataPresentation.swift`
 - `WorkbenchDataShared.swift`
 - `WorkbenchConnections.swift`
+- `WorkbenchConnectionCache.swift`
 - `WorkbenchConnectionsView.swift`
+- `WorkbenchConnectionPulseView.swift`
 - `WorkbenchConnectionDetails.swift`
+- `WorkbenchRulePresentation.swift`
 - `WorkbenchRules.swift`
+- `WorkbenchRuleDetails.swift`
+- `WorkbenchSettings.swift`
+- `WorkbenchSourcePresentation.swift`
 - `WorkbenchSources.swift`
+- `WorkbenchSourceDetails.swift`
+- `WorkbenchLogPresentation.swift`
 - `WorkbenchLogs.swift`
 - `WorkbenchManagement.swift`
+- `WorkbenchControllerPresentation.swift`
+- `WorkbenchControllers.swift`
+- `WorkbenchConfiguration.swift`
+- `WorkbenchActionsPresentation.swift`
+- `WorkbenchActions.swift`
+- `WorkbenchTailscale.swift`
+- `WorkbenchDiagnosticsPresentation.swift`
+- `WorkbenchDiagnostics.swift`
+- `WorkbenchDiagnosticsComponents.swift`
 
-Files follow ownership and update frequency: chrome/workspace, Overview,
-Proxies, each high-density data destination, and management remain separate.
-Connections is the one split data destination: projection/cache, live Table,
-and selection-driven details have different update rates. Do not add
-compatibility files or recreate one-file-per-small-component sprawl.
+Files follow ownership and update frequency. The shell keeps destination/root
+lifecycle in `WorkbenchChrome.swift`, window/editor coordination in
+`WorkbenchWindow.swift`, navigation in `WorkbenchSidebar.swift`, and session or
+operation status in `WorkbenchStatusBar.swift`. `WorkbenchDesignSystem.swift`
+owns tokens, typography, bounds, and motion; `WorkbenchVisualSystem.swift` owns
+shared SwiftUI primitives. Data interaction/scroll coordination,
+controller-neutral presentation helpers, and shared data-browser SwiftUI
+composition remain separate in `WorkbenchDataInteraction.swift`,
+`WorkbenchDataPresentation.swift`, and `WorkbenchDataShared.swift`.
+
+Overview keeps root/module composition in
+`WorkbenchDashboard.swift`, instrument/telemetry and chart composition in
+`WorkbenchOverviewTelemetry.swift`, topology geometry/cache in
+`WorkbenchOverviewTopology.swift`, and topology SwiftUI/Canvas rendering in
+`WorkbenchOverviewTopologyView.swift`. Its layout model, persistence actor, and
+window draft/conflict coordinator live in `WorkbenchOverviewPersonalization.swift`,
+`WorkbenchOverviewLayoutStore.swift`, and
+`WorkbenchOverviewWindowCoordinator.swift` respectively.
+
+Connections keeps row/intent/navigation projection in
+`WorkbenchConnections.swift`, high-frequency pulse/cache/cadence logic in
+`WorkbenchConnectionCache.swift`, the live Table workspace in
+`WorkbenchConnectionsView.swift`, pulse rendering in
+`WorkbenchConnectionPulseView.swift`, and selection-driven details in
+`WorkbenchConnectionDetails.swift`. Logs, Rules, and Sources each split pure
+presentation/cache logic from their root Table view; Rules and Sources also keep
+selection-driven detail UI in `WorkbenchRuleDetails.swift` and
+`WorkbenchSourceDetails.swift`.
+
+`WorkbenchManagement.swift` owns only primitives shared by management
+destinations. Controller list/test projections live in
+`WorkbenchControllerPresentation.swift`; `WorkbenchControllers.swift` owns the
+native management workspace. Actions separates its pure availability,
+dispatcher, target-scope, and command projection from root composition across
+`WorkbenchActionsPresentation.swift` and `WorkbenchActions.swift`; sing-box
+Tailscale rendering remains in `WorkbenchTailscale.swift`. Diagnostics separates
+pure issue projection, root composition, and reusable workspace components across `WorkbenchDiagnosticsPresentation.swift`,
+`WorkbenchDiagnostics.swift`, and `WorkbenchDiagnosticsComponents.swift`.
+Proxies keeps root composition, page state, and AppModel intents in
+`WorkbenchProxies.swift`; active group/node UI in
+`WorkbenchProxyGroupPanels.swift`; catalog and scroll scheduling in
+`WorkbenchProxyInteraction.swift`; and pure presentation, indexing, cache, and
+workspace reconciliation in `WorkbenchProxyPresentation.swift`. Do not add
+compatibility files or recreate one-file-per-small-component sprawl. Cross-file
+family entry points plus genuinely shared presentation primitives may be
+module-internal; leaf views remain `private`. A source move must update
+this exact list, the corresponding per-file aggregates and ownership assertions
+in the source verifier, and any test that reads a file by name in the same
+change. This keeps ownership checks meaningful instead of weakening them after
+a split.
 
 ## Navigation And Chrome
 
@@ -51,8 +125,10 @@ compatibility files or recreate one-file-per-small-component sprawl.
   remains on Controllers. Controller identity is not repeated in the toolbar;
   the native navigation title owns that space without a custom capsule.
 - Normal work happens in the main window. Controller editing, proxy expansion,
-  member selection, filters, tests, inspectors, and operation results do not use
-  popovers, context menus, sheets, or modal dialogs. A native confirmation is
+  member selection, filters, tests, inspectors, and operation results do not
+  depend on popovers, context menus, sheets, or modal dialogs. The topology
+  canvas may mirror its direct canvas and keyboard selection commands in one native context menu;
+  no business data or command may exist only there. A native confirmation is
   reserved for destructive/high-risk actions or a dirty-window close.
 - The inline switcher observes only profiles, selected ID, and the controller
   fields it renders. Traffic/log frames must not rebuild the expanded list.
@@ -81,7 +157,9 @@ compatibility files or recreate one-file-per-small-component sprawl.
 - Overview is a monitoring canvas: three primary real-time charts for upload,
   download, and active connections, followed by complete topology and network
   facts. Charts expose selection, cursor, pause, and same-window drill-in
-  instead of acting as decoration.
+  instead of acting as decoration. The monitoring canvas fills the remaining
+  content width after page padding; it does not inherit the bounded reading
+  width used by management forms.
 - Connections, Logs, Rules, and Sources are data browsers: one native `Table`,
   toolbar search/filter/sort controls, stable rows, and an optional same-window
   inspector. Loading and empty states occupy the table region without changing
@@ -89,12 +167,12 @@ compatibility files or recreate one-file-per-small-component sprawl.
 - Proxies is an ordered selection workspace: controller-reported groups remain
   in order, expand inline, and expose node selection and filtering without a
   modal. Selection hierarchy matters more than dashboard metrics.
-- Controllers detail, Configuration, and Actions use the same bounded native
-  grouped-form canvas. Controls follow their explanation, while command buttons
-  align to the trailing edge and keep visible titles. These pages do not become
-  full-width dashboards. The Controllers list remains a native split-view list,
-  and the native Settings scene keeps its own bounded grouped form outside
-  Workbench navigation.
+- Controllers detail and Configuration use the same bounded native grouped-form
+  canvas. Actions is a state-aware command workspace: checking/recovery uses a
+  compact unframed target/status composition, while ready/partial uses bounded
+  flat command groups in two measured-width columns or one compact column.
+  The Controllers list remains a native split-view list, and the native Settings
+  scene keeps its own bounded grouped form outside Workbench navigation.
 - `WorkbenchFormRow` owns the only visible label for every management field.
   Embedded text fields, secure fields, pickers, toggles, and nested configuration
   controls inherit hidden native labels from that shared row instead of adding
@@ -105,9 +183,9 @@ compatibility files or recreate one-file-per-small-component sprawl.
   `WorkbenchFormRow` owns the only visible field label, so embedded native
   controls hide their own Form labels. Cancel, Test, and Save retain visible
   titles under horizontal compression instead of collapsing to isolated icons.
-- Diagnostics is a status band plus hierarchical outline. Use progressive
-  disclosure for advanced checks and reserve technical payloads for the copied
-  report.
+- Diagnostics is an action-first triage workspace. It uses an unframed verdict,
+  adaptive issue master-detail, Available Now domains, and one secondary
+  technical disclosure; the copied report remains the complete support payload.
 - Before redesigning an archetype, review the corresponding current Apple HIG
   component and one current native macOS reference. Record any deliberate
   exception here before introducing a second layout model.
@@ -156,7 +234,22 @@ compatibility files or recreate one-file-per-small-component sprawl.
   traffic columns plus a full connection row, and narrow layouts stack them.
   Each panel keeps a substantial plot, one current or selected value, and the
   shared cursor, pin, stepping, pause, and return-live state. Memory appears as
-  context on the connection panel instead of a fourth chart.
+  context on the connection panel instead of a fourth chart. Plot height follows
+  effective panel width within a stable 240-to-300-point range, so the three
+  charts remain the first visual layer across narrow, medium, and wide windows.
+  Overview section titles use 34-point low-opacity semantic marks and metric
+  titles use 28-point marks. Section/category marks consistently use the
+  informational cyan role; mint, amber, red, and violet remain reserved for
+  actual healthy, warning, failure, debug/trace, or data-series meaning. Both
+  use hierarchical native SF Symbols; dense rows keep unbacked monochrome
+  symbols so the marks do not become decorative cards.
+  The telemetry
+  header has exactly two width-driven compositions: regular keeps title, state,
+  commands, and the segmented timeline mode on one row; compact keeps every
+  command while placing title/state and timeline controls on stable wrapped rows.
+  Font preference never chooses the composition directly. Transient hover
+  updates chart readouts and indicators but does not change the header from
+  Live to Selected; only a pinned sample owns that chrome state.
 - Radius is 8 points or less except native system controls. Badges may be pills.
 - Command summaries, section headings, and metric labels render SF Symbols
   through the shared `WorkbenchSymbol` primitive with monochrome rendering, a
@@ -281,7 +374,7 @@ compatibility files or recreate one-file-per-small-component sprawl.
   not a fabricated edge. Each layer owns a distinct node identity, nodes sort by
   reported name within that layer, and aggregated edges retain their real count
   while display width uses `log10(count + 1) * 10`. The width-fitted Sankey uses
-  15-point node bars, 4-point gaps, curved gradient ribbons, and full-trajectory
+  20-point node bars, 8-point gaps, curved gradient ribbons, and full-trajectory
   hover/pin highlighting. Hover and explicit pause freeze only the presented
   snapshot; ingestion continues and resume catches up to the latest real frame.
   Inline expansion, complete accessible path rows, and navigation to Connections
@@ -289,27 +382,246 @@ compatibility files or recreate one-file-per-small-component sprawl.
   vertically with its densest column. Visible node bars win hit testing first,
   ribbons win over overlapping invisible node padding, and bounded label-adjacent
   node targets use a local 28-point acquisition size while ribbons use a
-  10-point baseline tolerance. Never index a
-  node label target across the complete distance to the next column.
-- Diagnostics leads with an unframed compact status band containing the
-  localized conclusion, selected controller, connection state, compatibility,
-  last check, and recommended action. It then uses one flat same-window outline
-  for controller metadata and all detailed checks; never wrap either region in
-  an opaque card or nest cards inside disclosures. Controller metadata uses a
-  compact adaptive fact grid instead of a long form table. Diagnostic row states
-  and counts use restrained text signals rather than repeated filled badges.
-  Visible rows use user-facing
-  feature names and outcomes; API paths, adapter evidence, machine key/value
-  summaries, credentials, and raw response or stream bodies stay out of the
-  page. The Copy Report command retains the credential-safe technical report.
-  Every disclosure header owns its complete row hit region and uses the same
-  animated chevron and lightweight opacity transition at both levels. Keep
-  animation in the toggle transaction rather than attaching it to the expanded
-  subtree, and avoid nested lazy containers for these bounded row sets. Filter
-  `.unavailable` controller capabilities before rendering nested rows; omit a
-  top-level section when no supported rows remain.
+  10-point baseline tolerance. Hover/pin detail occupies a readable 80-point
+  reserved graph header inset, so appearing, clearing, or changing selection
+  never moves node/ribbon geometry or the current scroll position. It remains
+  unframed: idle state shows the real connection and unavailable-path counts;
+  full label and description lead after selection, a pin symbol appears only
+  for a fixed selection, and the only visible command is eligible Connections
+  navigation. Pause and full-path commands share the section heading row, and
+  no second topology icon/summary repeats the section identity. Do not turn
+  this inset into a nested card or path toolbar. The graph is one native focusable
+  surface: direction keys step through complete paths, Escape clears local
+  selection, and a native context menu mirrors path stepping, pin/unpin, clear,
+  and eligible Connections navigation. Accessible path controls announce
+  pinned state instead of treating transient hover as selection. Ordered path
+  IDs and their index map are built with the topology index so each path-step
+  lookup stays constant-time during hover. Canvas labels resolve the complete
+  reported node name at the active Mica font scale and clip it to the local
+  label rectangle; never rewrite reported names with fixed character-count truncation,
+  and never index a node label target across the complete distance to the next
+  column. Sparse topology keeps a width-responsive 680-to-920-point minimum
+  flow area; dense columns may continue growing beyond it.
+- Actions availability is the intersection of current controller identity and
+  generation, session readiness, controller capability, operation readiness,
+  and an adapter-appropriate dispatcher. Static support, observed runtime state,
+  disabled commands, and unresolved probes do not enter the executable count.
+  Auto Detect exposes only recovery while unresolved; sing-box memory remains an
+  observation and never becomes a Mihomo memory command. mihomo, Nikki,
+  OpenClash, CMFA, Stash, sing-box, Surge, unknown, and unsupported profiles each
+  receive only their verified subset. Reusing a Mihomo HTTP client is not proof
+  that every Mihomo maintenance command is valid: Stash keeps its verified read
+  and reload subset but must not inherit Mihomo DNS flush. Destructive lifecycle commands remain in
+  one full-width final group and capture controller ID plus generation for inline
+  confirmation.
+- Actions recovery shows controller, visible target, factual target scope,
+  current reason, at most one primary Test command, Edit Controller, and Open
+  Diagnostics. It never shows a disabled Refresh or a capability count. Ready
+  and partial states use one outer scroll owner; wide content uses two flat
+  columns and compact content uses the same ordered groups in one column. A
+  controller with few standalone commands links to its real owning workspaces
+  instead of fabricating operations. Projection computes command groups from
+  raw availability and then derives one effective availability; recovery copy,
+  target correction, executable count, related destinations, and canvas choice
+  all consume that effective state. Related workspaces appear only for
+  unsupported or at-most-two-command compositions, never as filler beneath a
+  complete command workspace.
+- Diagnostics leads with an unframed verdict containing controller, target,
+  current availability, freshness, stable last-check time, and retained/paused
+  meaning. Controller-wide root causes suppress duplicate endpoint failures;
+  capability false means inherently unsupported and never becomes an issue.
+  Historical command outcomes and diagnostics-copy state do not drive current
+  health. Stable issues contain severity, impact, safe evidence, and at most one
+  typed action: Recheck, Resume Presentation, Edit Controller, or same-window
+  navigation. Diagnostics never performs remote reload, update, flush, close,
+  restart, or upgrade commands.
+- Diagnostics has one full-width outer scroll owner. At 900 points of content
+  width or more, bounded issue rows and selected detail share one master-detail
+  row; below it the same selected issue expands inline. A resolved issue keeps
+  selection by stable ID or moves deterministically to the first remaining
+  issue. Healthy state omits the issue workspace and shows only the concise
+  verdict plus real Available Now product domains. One native technical
+  disclosure groups Controller, Session, and safe Evidence; API paths, machine
+  assignments, credentials, authorization, subscription URLs, Keychain values,
+  and raw response/stream bodies stay out of visible UI. Copy Report is the only
+  complete report command. Checking is a projection gate: before the first
+  committed baseline it produces no adapter/endpoint/domain issue and no
+  Available Now claim. A controller-wide access issue suppresses its derived
+  endpoint/domain failures even when retained data exists. Every free-form
+  evidence value rejected by `displayableText` becomes the localized
+  `diagnostics.evidence_unavailable` string, never the rejected raw value.
+- `localhost`, IPv4 loopback, and IPv6 loopback are presented factually as This
+  Mac in Actions, Diagnostics evidence, and RouterEditor diagnosis. A failed
+  remote/router target explains that a device LAN IP or hostname, matching API
+  port, and matching credential are required. Explicit Surge mac-local profiles
+  permit loopback. Target presentation never discovers devices or modifies a
+  profile, router, service, firewall, OpenWrt, or controller.
 - Provider diagnostics choose the newest real command across individual Update
   and Update All records rather than assuming only one action exists.
+
+## Scenario: Audited Diagnostics And Actions Projection
+
+### 1. Scope / Trigger
+
+Apply this scenario when changing Diagnostics issue projection, Actions command
+inventory, controller runtime-row observation, or their SwiftUI composition. It
+prevents provisional health claims, unsafe evidence fallback, contradictory
+Actions states, and high-frequency session data from entering management views.
+
+### 2. Signatures
+
+- `WorkbenchDiagnosticsProjection.snapshot(_ input: WorkbenchDiagnosticsInput) -> WorkbenchDiagnosticsSnapshot`
+- `WorkbenchActionsProjection.snapshot(_ input: WorkbenchActionsInput) -> WorkbenchActionsSnapshot`
+- `AppModel.actionsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow]`
+- `UnifiedControllerType.hasWorkbenchRuntimeOperations: Bool`
+
+### 3. Contracts
+
+- Neither typed input contains connection rows, log entries, traffic timelines,
+  catalog snapshots, credentials, or raw response/stream bodies.
+- Diagnostics derives one `isChecking` gate before issues. Until
+  `lastSuccessAt != nil`, Available Now is empty. Rejected free-form evidence is
+  replaced with localized safe fallback copy.
+- A controller-access issue is the causal root and suppresses endpoint/domain
+  derivatives; `lastSuccessAt` changes freshness only.
+- Actions derives `rawAvailability`, groups, then `effectiveAvailability`.
+  Recovery, target correction, count, related destinations, and rendering use
+  only the effective value.
+- Runtime command rows are evidence-free and dispatcher-family-gated before
+  entering Actions. Diagnostics enriches its separate rows with evidence.
+- Issue buttons expose localized severity plus title as their accessibility
+  label, affected count as value, and native selected trait as selection state.
+
+### 4. Validation & Error Matrix
+
+| Input condition | Required projection |
+| --- | --- |
+| Connecting or first-baseline health checking | `.checking`, no issues, no Available Now |
+| Controller access failed, no baseline | Controller-access only, blocked, unavailable freshness |
+| Controller access failed after success | Controller-access only, needs attention, retained freshness |
+| Free-form evidence contains assignment/API path | Localized evidence-unavailable value |
+| Ready/partial but no verified command group | Effective `.unsupported` plus unsupported recovery |
+| More than two verified commands | No related-workspace filler |
+| Controller family has no runtime dispatcher | Empty `actionsRuntimeOperationRows` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: retained controller failure keeps retained freshness and one causal issue.
+- Base: a live sing-box controller shows its real Refresh command plus compact
+  owning-workspace navigation, without Mihomo runtime commands.
+- Bad: checking displays an adapter failure, an API path reappears as evidence,
+  or an unsupported snapshot carries ready/partial recovery copy.
+
+### 6. Tests Required
+
+- `WorkbenchManagementProjectionTests`: checking gate, first-baseline areas,
+  retained causal dedup, safe evidence, effective Actions state, compact related
+  destinations, and dispatcher-family runtime observation.
+- `RuntimeMemoryTests`: full Diagnostics rows still expose current authoritative
+  runtime evidence after Actions rows become evidence-free.
+- `verify-real-controller-source.mjs`: typed inputs exclude stream payloads;
+  Actions uses the evidence-free property; issue rows expose severity semantics.
+
+### 7. Wrong vs Correct
+
+```swift
+// Wrong: final availability and recovery are derived from different states.
+let availability = availability(for: input)
+let recovery = recovery(for: input, availability: availability)
+let final = groups.isEmpty ? .unsupported : availability
+
+// Correct: derive one effective state, then use it everywhere downstream.
+let rawAvailability = availability(for: input)
+let groups = commandGroups(for: input, availability: rawAvailability)
+let effectiveAvailability = groups.isEmpty && rawAvailability.isCommandState
+    ? .unsupported
+    : rawAvailability
+let recovery = recovery(for: input, availability: effectiveAvailability)
+```
+
+## Scenario: High-Cardinality Data Projection
+
+### 1. Scope / Trigger
+
+Apply this scenario when changing Connections, Logs, Rules, or Sources row
+projection/search, or the corresponding offline benchmark cases. These paths
+may process thousands of complete controller-reported rows; fixed-size
+Diagnostics, Actions, Controllers, and Configuration projections do not use
+this scenario without separate evidence.
+
+### 2. Signatures
+
+- `WorkbenchDataSearch.contains(_ query: String, in searchText: String) -> Bool`
+- `WorkbenchConnectionProjection.rows(activeConnections:closedConnections:scope:language:) -> [WorkbenchConnectionRow]`
+- `WorkbenchConnectionProjection.updatingMetrics(in:from:formatter:forceFormatting:) -> WorkbenchConnectionRow`
+- Release cases: `connection-initial-cache-projection`,
+  `connection-search-projection`, `log-search-projection`,
+  `rule-connection-index-and-counts`, `rule-row-projection`,
+  `rule-search-projection`, `source-row-projection`,
+  `source-search-projection`, `proxy-catalog-index-projection`, and
+  `proxy-expanded-groups-projection`.
+
+### 3. Contracts
+
+- Each caller converts a blank query to nil before filtering. A nil query keeps
+  the page's existing unfiltered fast path and ordering semantics.
+- Data-browser search calls the shared Foundation `NSString` case-insensitive
+  range matcher against the row's cached raw search blob. Do not retain a
+  second folded/lowercased full blob or use localized matching independently in
+  each high-cardinality projection.
+- Search remains case-insensitive and Unicode-aware for the same characters,
+  but does not remove diacritics. `mÜnchen` matches `München`; `munchen` does
+  not. Search does not mutate controller order, stable identity, selection, or
+  inspector values.
+- Connection structural projection resolves the localized unavailable value
+  once per language/projection. Direct summary interpolation is allowed only
+  after every component has been normalized with `dataNonEmpty` and assigned a
+  non-empty fallback. Metrics-only updates preserve structural search text and
+  identity.
+- Comparable performance reports keep case name, fixture count, checksum, and
+  reported work units equal. Retain an optimization only after two Release runs
+  improve the target median by at least 10% without an unrelated case
+  consistently regressing by more than 10%.
+
+### 4. Validation & Error Matrix
+
+| Input or change | Required result |
+| --- | --- |
+| Blank or whitespace query | Existing unfiltered rows/order; no matcher work |
+| Same text with different case | Match |
+| Same accented text with different case | Match |
+| Query removes an accent | No implicit diacritic-insensitive match |
+| Missing connection metric/timestamp | One localized unavailable fallback |
+| Metrics-only connection frame | Stable ID/search text; only changed metrics update |
+| Report checksum or work units differ | Reject comparison and optimization claim |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a 10,000-row prepared search uses `WorkbenchDataSearch`, returns the
+  same rows, and crosses the repeated retention threshold.
+- Base: a refresh-driven provider catalog projects complete reported fields;
+  its synthetic stress cost alone does not justify another cache state model.
+- Bad: every row folds and stores a second full search blob, a SwiftUI body
+  formats search text, or a faster report silently evaluates fewer rows.
+
+### 6. Tests Required
+
+- `WorkbenchDataProjectionTests`: shared ASCII/Unicode case behavior, retained
+  diacritics, row output, identity, sorting, and metrics-only updates.
+- `MicaPerformanceBenchmarkTests`: prepared search setup, stress fixture sizes,
+  checksum, and reported work units.
+- Run two comparable Release reports when product hot-path code changes; unit
+  tests alone do not establish a performance improvement.
+
+### 7. Wrong vs Correct
+
+```swift
+// Wrong: every high-cardinality page chooses and pays for its own matcher.
+row.searchText.localizedCaseInsensitiveContains(query)
+
+// Correct: query normalization stays at the page boundary; matching is shared.
+WorkbenchDataSearch.contains(query, in: row.searchText)
+```
 
 ## Performance Boundaries
 
@@ -317,6 +629,12 @@ compatibility files or recreate one-file-per-small-component sprawl.
   read the field-granular `controllerSessionPresentation` state so timeline and
   stream-buffer mutations cannot invalidate views that only need state,
   generation, controls, identity, or runtime.
+- Actions consumes evidence-free `AppModel.actionsRuntimeOperationRows` only
+  for Mihomo, Nikki, OpenClash, and CMFA, the controller families with verified
+  runtime dispatchers. Surge, sing-box, Stash, probing, unknown, and unsupported
+  states do not construct diagnostic runtime rows. Full diagnostic evidence may
+  read authoritative session runtime, but that evidence is enriched only after
+  the shared command rows are built and is never passed into Actions.
 - Overview telemetry, summaries, grouped network facts, and topology are
   separate invalidation subtrees. A traffic sample rebuilds the telemetry
   subtree only.
@@ -363,6 +681,22 @@ compatibility files or recreate one-file-per-small-component sprawl.
   authoritative snapshot. Logs with unique controller IDs consume append/drop
   deltas instead of rescanning or reformatting the full ring, with the same
   missed-revision fallback.
+- Connections resolves localized unavailable copy once per structural
+  projection and directly composes only summaries whose components already have
+  non-empty fallbacks. Connections, Logs, Rules, and Sources use
+  `WorkbenchDataSearch` for high-cardinality cached search blobs. Pre-folding a
+  second complete blob and Swift `String.range` are measured regressions; do not
+  reintroduce either without new two-run evidence.
+- Offline performance reports compare matching case name and fixture count,
+  preserve checksum and reported work units, and require two comparable Release
+  runs. A shared hot-path optimization is retained only when both runs improve
+  the target median by at least 10% and unrelated cases do not consistently
+  regress by more than 10%. The attempted lazy/fast-path
+  `WorkbenchStableRowIdentityBuilder` slice improved the 10,000-row connection
+  median by only 6.38% and 4.71%, so it is intentionally reverted. Do not
+  reintroduce that complexity without new evidence. Keep the prepared-state
+  `log-steady-state-delta-projection` case so initialization cost cannot hide
+  steady delta behavior; retain the older end-to-end log case for comparison.
 - Connections places one compact pulse strip above its native Table. It
   aggregates only the current activity/closed scope and current search result:
   visible/total count, reported upload/download/total bytes, the first three
@@ -382,6 +716,9 @@ compatibility files or recreate one-file-per-small-component sprawl.
   bands vertically.
 - Expensive presentation work may be deferred during scrolling, chart dragging,
   or filter typing, but one latest result must survive the interaction window.
+  For Proxies, a deferrable catalog update remains pending while any proxy
+  scroll region is active, even after the ordinary deferral deadline, and the
+  latest result is published when scrolling becomes idle.
   Errors, destructive confirmations, and mutation outcomes bypass deferral.
 - Byte formatting renders zero as `0 B` and `0 B/s`; never expose locale output
   such as `Zero KB` inside another interface language.
@@ -431,11 +768,10 @@ capability/pause/busy gates as their command-bar actions.
 - Management pages use one bounded column anchored to the leading edge. Never
   center a `Form` between spacer columns or let settings stretch across the
   remaining workspace.
-- Configuration and native Settings use grouped `Form`; Actions uses shared
-  management surfaces. Diagnostics uses an unframed status
-  band followed by a continuous outline with hairline separators and indented
-  detail guides. These are operational rows, not Liquid Glass or decorative
-  cards.
+- Configuration and native Settings use grouped `Form`. Actions and Diagnostics
+  use dedicated flat operational workspaces with hairline separators, one scroll
+  owner each, and width-driven composition. They are not Liquid Glass,
+  decorative cards, dashboards, or nested panel walls.
 - Preference rows keep their existing help strings visible beneath the field
   label. At regular width the explanation consumes the available line and the
   control remains trailing-aligned; at compact width they stack without changing
