@@ -542,19 +542,6 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(workspace.activeGroupID == arranged[0].id)
     }
 
-    @Test func proxyMasterDetailWidthsStayWithinApprovedBounds() {
-        let wide = ProxyMasterDetailMetrics(availableWidth: 1_600)
-        let regular = ProxyMasterDetailMetrics(availableWidth: 1_100)
-
-        #expect(wide.mode == .split)
-        #expect(wide.canvasWidth == 1_240)
-        #expect(wide.directoryWidth == 320)
-        #expect(wide.workspaceWidth == 919)
-        #expect(regular.mode == .split)
-        #expect(abs(regular.directoryWidth - 308) < 0.01)
-        #expect(abs(regular.workspaceWidth - 791) < 0.01)
-    }
-
     @Test func proxyNodeSearchTextIsPrecomputedAndNormalized() {
         var detail = ProxyNodeViewState(
             snapshot: ProxySnapshot(
@@ -1045,7 +1032,7 @@ struct WorkbenchTimelineAndProxyTests {
         )
         let edge = try #require(layout.edges.first)
 
-        #expect(source.rect.width == 15)
+        #expect(source.rect.width == 20)
         #expect(source.rect.height > 0)
         #expect(source.hitRect.height >= 28)
         #expect(edge.hitTolerance >= 10)

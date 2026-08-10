@@ -174,13 +174,7 @@ struct RouterEditorView: View {
     }
 
     private var editorHeaderDetail: String {
-        let unconfigured = MicaStrings.localizedKey(
-            "editor.target_not_configured",
-            language: appLanguage
-        )
-        return localizedVisibleControllerTargetLabel == unconfigured
-            ? draft.controllerKind.micaLabel(language: appLanguage)
-            : localizedVisibleControllerTargetLabel
+        draft.controllerKind.micaLabel(language: appLanguage)
     }
 
     var validationError: String? {

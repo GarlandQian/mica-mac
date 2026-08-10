@@ -209,11 +209,13 @@ final class OverviewTopologyHighlightCache {
 struct OverviewTopologyInteractionSnapshot: Equatable, Sendable {
     let activeSelection: OverviewTopologySelection?
     let isHovering: Bool
+    let isPinned: Bool
     let highlight: OverviewTopologyHighlight
 
     static let empty = OverviewTopologyInteractionSnapshot(
         activeSelection: nil,
         isHovering: false,
+        isPinned: false,
         highlight: .empty
     )
 }
@@ -240,6 +242,12 @@ final class OverviewTopologyInteractionState {
         guard self.structure != structure else { return }
         self.structure = structure
         self.index = index
+        hoveredSelection = hoveredSelection.flatMap { selection in
+            index.contains(selection) ? selection : nil
+        }
+        pinnedSelection = pinnedSelection.flatMap { selection in
+            index.contains(selection) ? selection : nil
+        }
         publishSnapshot()
     }
 
@@ -268,6 +276,47 @@ final class OverviewTopologyInteractionState {
         togglePinnedSelection(.path(pathID))
     }
 
+    func clearSelection() {
+        guard hoveredSelection != nil || pinnedSelection != nil else { return }
+        hoveredSelection = nil
+        pinnedSelection = nil
+        publishSnapshot()
+    }
+
+    func canMovePath(by offset: Int) -> Bool {
+        guard offset != 0, let index, index.pathCount > 0 else { return false }
+        guard case .path(let pathID) = snapshot.activeSelection,
+              let currentIndex = index.pathIndex(id: pathID) else {
+            return true
+        }
+        return (0..<index.pathCount).contains(currentIndex + offset)
+    }
+
+    func movePathSelection(by offset: Int) {
+        guard canMovePath(by: offset), let index else { return }
+
+        let nextIndex: Int
+        if case .path(let pathID) = snapshot.activeSelection,
+           let currentIndex = index.pathIndex(id: pathID) {
+            nextIndex = min(
+                max(currentIndex + offset, 0),
+                index.pathCount - 1
+            )
+        } else if let relatedPathID = offset < 0
+            ? snapshot.highlight.paths.last?.id
+            : snapshot.highlight.paths.first?.id,
+            let relatedIndex = index.pathIndex(id: relatedPathID) {
+            nextIndex = relatedIndex
+        } else {
+            nextIndex = offset < 0 ? index.pathCount - 1 : 0
+        }
+
+        guard let pathID = index.pathID(at: nextIndex) else { return }
+        hoveredSelection = nil
+        pinnedSelection = .path(pathID)
+        publishSnapshot()
+    }
+
     private func publishSnapshot() {
         let activeSelection = hoveredSelection ?? pinnedSelection
         let highlight: OverviewTopologyHighlight
@@ -283,6 +332,7 @@ final class OverviewTopologyInteractionState {
         let next = OverviewTopologyInteractionSnapshot(
             activeSelection: activeSelection,
             isHovering: hoveredSelection != nil,
+            isPinned: activeSelection != nil && pinnedSelection == activeSelection,
             highlight: highlight
         )
         guard snapshot != next else { return }
@@ -309,6 +359,8 @@ struct OverviewTopologyIndex: Sendable {
     private let pathByID: [
         ConnectionTopology.ConnectionOccurrenceID: ConnectionTopology.PathRecord
     ]
+    private let pathIndexByID: [ConnectionTopology.ConnectionOccurrenceID: Int]
+    private let orderedPathIDs: [ConnectionTopology.ConnectionOccurrenceID]
     let accessibilityGroups: [AccessibilityGroup]
     let operationCounts: OperationCounts
 
@@ -330,13 +382,21 @@ struct OverviewTopologyIndex: Sendable {
             ConnectionTopology.ConnectionOccurrenceID: ConnectionTopology.PathRecord
         ] = [:]
         pathByID.reserveCapacity(topology.paths.count)
-        for path in topology.paths {
+        var pathIndexByID: [ConnectionTopology.ConnectionOccurrenceID: Int] = [:]
+        pathIndexByID.reserveCapacity(topology.paths.count)
+        var orderedPathIDs: [ConnectionTopology.ConnectionOccurrenceID] = []
+        orderedPathIDs.reserveCapacity(topology.paths.count)
+        for (pathIndex, path) in topology.paths.enumerated() {
             pathByID[path.id] = path
+            pathIndexByID[path.id] = pathIndex
+            orderedPathIDs.append(path.id)
         }
 
         self.nodeByID = nodeByID
         self.edgeByID = edgeByID
         self.pathByID = pathByID
+        self.pathIndexByID = pathIndexByID
+        self.orderedPathIDs = orderedPathIDs
         accessibilityGroups = stride(
             from: topology.paths.startIndex,
             to: topology.paths.endIndex,
@@ -367,6 +427,30 @@ struct OverviewTopologyIndex: Sendable {
 
     func path(id: ConnectionTopology.ConnectionOccurrenceID) -> ConnectionTopology.PathRecord? {
         pathByID[id]
+    }
+
+    var pathCount: Int {
+        orderedPathIDs.count
+    }
+
+    func pathIndex(id: ConnectionTopology.ConnectionOccurrenceID) -> Int? {
+        pathIndexByID[id]
+    }
+
+    func pathID(at index: Int) -> ConnectionTopology.ConnectionOccurrenceID? {
+        guard orderedPathIDs.indices.contains(index) else { return nil }
+        return orderedPathIDs[index]
+    }
+
+    func contains(_ selection: OverviewTopologySelection) -> Bool {
+        switch selection {
+        case .node(let id):
+            nodeByID[id] != nil
+        case .edge(let id):
+            edgeByID[id] != nil
+        case .path(let id):
+            pathByID[id] != nil
+        }
     }
 
     func highlight(for selection: OverviewTopologySelection?) -> OverviewTopologyHighlight {
@@ -555,6 +639,8 @@ struct OverviewTopologyLayout: Sendable {
     }
 
     static let renderBandHeight: CGFloat = 352
+    static let columnHeaderHeight: CGFloat = 40
+    static let selectionDetailHeight: CGFloat = 80
     fileprivate static let hitCellSize: CGFloat = 96
 
     let size: CGSize
@@ -639,11 +725,12 @@ enum OverviewTopologyFlowScale {
 enum OverviewTopologyLayoutBuilder {
     private static let edgeHitTolerance: CGFloat = 10
     private static let minimumNodeAcquisitionSize: CGFloat = 28
-    private static let sankeyNodeWidth: CGFloat = 15
-    private static let sankeyNodeGap: CGFloat = 4
+    private static let sankeyNodeWidth: CGFloat = 20
+    private static let sankeyNodeGap: CGFloat = 8
+    private static let nodeLabelGap: CGFloat = 8
     private static let sankeyCurveness: CGFloat = 0.5
     private static let minimumFlowPixelsPerUnit: CGFloat = 2.4
-    private static let minimumReadableNodeHeight: CGFloat = 16
+    private static let minimumReadableNodeHeight: CGFloat = 20
     private static let minimumFlowAreaHeight: CGFloat = 352
     /// The graph always connects adjacent columns. Eight subdivisions keep the
     /// polyline approximation comfortably inside the pointer hit corridor and
@@ -706,9 +793,10 @@ enum OverviewTopologyLayoutBuilder {
         availableWidth: CGFloat,
         minimumFlowHeight: CGFloat
     ) async throws -> OverviewTopologyLayout {
-        let topInset: CGFloat = 40
-        let sideInset: CGFloat = 16
-        let bottomInset: CGFloat = 24
+        let topInset = OverviewTopologyLayout.columnHeaderHeight
+            + OverviewTopologyLayout.selectionDetailHeight
+        let sideInset: CGFloat = 20
+        let bottomInset: CGFloat = 32
         let graphWidth = max(availableWidth.rounded(.down), 1)
 
         var workCount = 0
@@ -820,13 +908,16 @@ enum OverviewTopologyLayoutBuilder {
                 )
                 let isTerminalColumn = columnIndex == columnPlans.count - 1
                 let labelWidth = columnPlans.count > 1
-                    ? max(columnStep - sankeyNodeWidth - 12, 8)
-                    : max(graphWidth - sideInset * 2 - sankeyNodeWidth - 6, 8)
-                let labelHeight = max(min(nodeHeight, 24), 14)
+                    ? max(columnStep - sankeyNodeWidth - nodeLabelGap * 2, 12)
+                    : max(
+                        graphWidth - sideInset * 2 - sankeyNodeWidth - nodeLabelGap,
+                        12
+                    )
+                let labelHeight = max(min(nodeHeight, 28), 18)
                 let labelRect = CGRect(
                     x: isTerminalColumn
-                        ? max(rect.minX - labelWidth - 6, 0)
-                        : rect.maxX + 6,
+                        ? max(rect.minX - labelWidth - nodeLabelGap, 0)
+                        : rect.maxX + nodeLabelGap,
                     y: rect.midY - labelHeight / 2,
                     width: labelWidth,
                     height: labelHeight
@@ -868,7 +959,7 @@ enum OverviewTopologyLayoutBuilder {
                         hitRect: hitRect,
                         drawingPath: Path(
                             roundedRect: rect,
-                            cornerRadius: min(3, nodeHeight / 2)
+                            cornerRadius: min(4, nodeHeight / 2)
                         )
                     )
                 )

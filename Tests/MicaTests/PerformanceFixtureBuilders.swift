@@ -71,4 +71,66 @@ enum MicaPerformanceFixtures {
             )
         }
     }
+
+    static func rules(count: Int) -> [RuleViewState] {
+        (0..<count).map { index in
+            RuleViewState(
+                id: "rule-\(index)",
+                index: index,
+                type: "RuleSet",
+                payload: "fixture-\(index % 101)",
+                proxy: "policy-\(index % 17)",
+                size: index % 1_024,
+                disabled: false,
+                hitCount: index * 3,
+                hitAt: "2026-07-29T08:\(String(format: "%02d", index % 60)):00Z",
+                missCount: index,
+                missAt: "2026-07-29T09:\(String(format: "%02d", index % 60)):00Z"
+            )
+        }
+    }
+
+    static func sources(count: Int) -> [ProxyProviderViewState] {
+        (0..<count).map { index in
+            ProxyProviderViewState(
+                kind: index.isMultiple(of: 3) ? .rule : .proxy,
+                name: "provider-\(index)",
+                type: index.isMultiple(of: 2) ? "HTTP" : "File",
+                behavior: "domain",
+                format: "yaml",
+                vehicleType: index.isMultiple(of: 2) ? "HTTP" : "File",
+                updatedAt: "2026-07-29T08:\(String(format: "%02d", index % 60)):00Z",
+                updatable: index.isMultiple(of: 2),
+                testURL: "https://provider-\(index).example.test/health",
+                itemCount: index * 11
+            )
+        }
+    }
+
+    static func proxyCatalog(
+        groupCount: Int,
+        membersPerGroup: Int
+    ) -> PolicyGroupCatalogSnapshot {
+        let groups = (0..<groupCount).map { groupIndex in
+            let groupID = groupIndex == groupCount / 2
+                ? "GLOBAL"
+                : "Group \(groupIndex)"
+            let members = (0..<membersPerGroup).map {
+                "Node \(groupIndex)-\($0)"
+            }
+            let delays = Dictionary(
+                uniqueKeysWithValues: members.enumerated().map { index, member in
+                    (member, 20 + (index % 1_200))
+                }
+            )
+            return ProxyGroupViewState(
+                id: groupID,
+                type: "Selector",
+                selected: members.first ?? "",
+                options: members,
+                delays: delays
+            )
+        }
+        return PolicyGroupCatalogSnapshot(mode: "Global", groups: groups)
+    }
 }

@@ -49,6 +49,7 @@ extension RouterEditorView {
                 value: localizedVisibleControllerTargetLabel,
                 monospaced: true
             )
+            targetScopeRows
         case .report(let report):
             WorkbenchManagementInlineState(
                 systemImage: testState.iconName,
@@ -58,11 +59,6 @@ extension RouterEditorView {
                 ),
                 tint: testState.foregroundStyle
             )
-            previewRow(
-                "editor.hs_url",
-                value: localizedReportTargetLabel(report),
-                monospaced: true
-            )
             ForEach(report.steps) { step in
                 handshakeRow(
                     localizedReportStepTitle(step),
@@ -70,6 +66,7 @@ extension RouterEditorView {
                     state: step.state
                 )
             }
+            targetScopeRows
             Label {
                 Text(verbatim: MicaStrings.relocalizedText(report.nextStep, language: appLanguage))
                     .fixedSize(horizontal: false, vertical: true)
@@ -80,6 +77,37 @@ extension RouterEditorView {
         }
     }
 
+    @ViewBuilder
+    private var targetScopeRows: some View {
+        let scope = WorkbenchControllerTargetScope(host: draft.host)
+        WorkbenchFormRow("diagnostics.technical_target_scope") {
+            WorkbenchFormValue(
+                value: MicaStrings.localizedKey(scope.titleKey, language: appLanguage)
+            )
+        }
+
+        if scope == .thisMac && !draftPermitsThisMacTarget {
+            Label {
+                Text(
+                    MicaStrings.localizedKey(
+                        "target.loopback_recovery_detail",
+                        language: appLanguage
+                    )
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(MicaDesignTokens.signalAmber)
+            }
+            .micaFont(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var draftPermitsThisMacTarget: Bool {
+        draft.controllerKind == .surgeCompatible && draft.surgePlatform == .macLocal
+    }
+
     func testConnection() {
         showsValidation = true
         guard validationError == nil else { return }
@@ -88,10 +116,6 @@ extension RouterEditorView {
             let report = await appModel.testConnection(draft: draft)
             testState = .report(report)
         }
-    }
-
-    private func localizedReportTargetLabel(_ report: ConnectionTestReport) -> String {
-        MicaStrings.relocalizedText(report.targetURL, language: appLanguage)
     }
 
     private func localizedReportStepTitle(_ step: ConnectionCheckStep) -> String {

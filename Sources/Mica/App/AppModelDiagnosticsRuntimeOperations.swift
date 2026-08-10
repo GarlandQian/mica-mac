@@ -3,6 +3,23 @@ import MicaCore
 
 extension AppModel {
     var diagnosticsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow] {
+        var rows = runtimeOperationRows
+        for index in rows.indices {
+            rows[index].evidence = diagnosticsRuntimeOperationEvidence(
+                id: rows[index].id,
+                sourceKey: rows[index].sourceKey,
+                status: rows[index].status
+            )
+        }
+        return rows
+    }
+
+    var actionsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow] {
+        guard selectedUnifiedControllerType.hasWorkbenchRuntimeOperations else { return [] }
+        return runtimeOperationRows
+    }
+
+    private var runtimeOperationRows: [DiagnosticsRuntimeOperationRow] {
         let rowsByID = Dictionary(uniqueKeysWithValues: capabilityMatrixRows.map { ($0.id, $0) })
 
         return [
@@ -204,7 +221,7 @@ extension AppModel {
             requiresConfirmation: requiresConfirmation,
             confirmationMessageKey: confirmationMessageKey,
             isDestructive: isDestructive,
-            evidence: diagnosticsRuntimeOperationEvidence(id: id, sourceKey: sourceKey, status: status)
+            evidence: ""
         )
     }
 
@@ -238,40 +255,41 @@ extension AppModel {
         sourceKey: String,
         status: CapabilityStatus
     ) -> String {
+        let runtime = controllerSession.runtime
         switch id {
         case "configuration-reload":
-            if controllerSession.runtime.configurationReloadCount > 0 {
-                return localized("diagnostics.operation_configuration_reload_evidence \(controllerSession.runtime.configurationReloadCount)")
+            if runtime.configurationReloadCount > 0 {
+                return localized("diagnostics.operation_configuration_reload_evidence \(runtime.configurationReloadCount)")
             }
         case "geo-resources":
-            if controllerSession.runtime.geoDataUpdateCount > 0 {
-                return localized("diagnostics.operation_geo_update_evidence \(controllerSession.runtime.geoDataUpdateCount)")
+            if runtime.geoDataUpdateCount > 0 {
+                return localized("diagnostics.operation_geo_update_evidence \(runtime.geoDataUpdateCount)")
             }
         case "memory":
-            if controllerSession.runtime.memoryInUseBytes != nil || controllerSession.runtime.memoryLimitBytes != nil {
+            if runtime.memoryInUseBytes != nil || runtime.memoryLimitBytes != nil {
                 return localized(
-                    "diagnostics.operation_memory_evidence \(formatRuntimeMemoryBytes(controllerSession.runtime.memoryInUseBytes)) \(formatRuntimeMemoryBytes(controllerSession.runtime.memoryLimitBytes))"
+                    "diagnostics.operation_memory_evidence \(formatRuntimeMemoryBytes(runtime.memoryInUseBytes)) \(formatRuntimeMemoryBytes(runtime.memoryLimitBytes))"
                 )
             }
         case "dns-flush":
-            if controllerSession.runtime.dnsFlushCount > 0 {
-                return localized("diagnostics.operation_dns_flush_evidence \(controllerSession.runtime.dnsFlushCount)")
+            if runtime.dnsFlushCount > 0 {
+                return localized("diagnostics.operation_dns_flush_evidence \(runtime.dnsFlushCount)")
             }
         case "cache-flush":
-            if controllerSession.runtime.fakeIPFlushCount > 0 {
-                return localized("diagnostics.operation_fakeip_flush_evidence \(controllerSession.runtime.fakeIPFlushCount)")
+            if runtime.fakeIPFlushCount > 0 {
+                return localized("diagnostics.operation_fakeip_flush_evidence \(runtime.fakeIPFlushCount)")
             }
         case "core-lifecycle":
-            if controllerSession.runtime.coreRestartCount > 0 || controllerSession.runtime.coreUpgradeCount > 0 {
-                return localized("diagnostics.operation_core_lifecycle_evidence \(controllerSession.runtime.coreRestartCount) \(controllerSession.runtime.coreUpgradeCount)")
+            if runtime.coreRestartCount > 0 || runtime.coreUpgradeCount > 0 {
+                return localized("diagnostics.operation_core_lifecycle_evidence \(runtime.coreRestartCount) \(runtime.coreUpgradeCount)")
             }
         case "core-restart":
-            if controllerSession.runtime.coreRestartCount > 0 {
-                return localized("diagnostics.operation_core_restart_evidence \(controllerSession.runtime.coreRestartCount)")
+            if runtime.coreRestartCount > 0 {
+                return localized("diagnostics.operation_core_restart_evidence \(runtime.coreRestartCount)")
             }
         case "core-upgrade":
-            if controllerSession.runtime.coreUpgradeCount > 0 {
-                return localized("diagnostics.operation_core_upgrade_evidence \(controllerSession.runtime.coreUpgradeCount)")
+            if runtime.coreUpgradeCount > 0 {
+                return localized("diagnostics.operation_core_upgrade_evidence \(runtime.coreUpgradeCount)")
             }
         default:
             break

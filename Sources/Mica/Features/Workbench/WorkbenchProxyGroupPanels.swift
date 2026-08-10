@@ -22,6 +22,7 @@ struct ProxyPolicyGroupPanel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let presentation: ProxyExpandedGroupPresentation
+    let scrollInteractionTracker: ProxyScrollInteractionTracker
     let commandsEnabled: Bool
     let canSelect: Bool
     let canTestGroup: Bool
@@ -295,6 +296,7 @@ struct ProxyPolicyGroupPanel: View {
                     ForEach(presentation.members) { member in
                         ProxyPolicyNodeTile(
                             member: member,
+                            scrollInteractionTracker: scrollInteractionTracker,
                             isInspected: presentation.inspectedMemberID
                                 == member.id,
                             commandsEnabled: commandsEnabled,
@@ -367,6 +369,7 @@ private struct ProxyPolicyNodeTile: View {
     @State private var isHovered = false
 
     let member: ProxyNodeRowProjection
+    let scrollInteractionTracker: ProxyScrollInteractionTracker
     let isInspected: Bool
     let commandsEnabled: Bool
     let canSelect: Bool
@@ -506,8 +509,17 @@ private struct ProxyPolicyNodeTile: View {
                 lineWidth: member.isControllerSelected ? 1.5 : 1
             )
         }
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .onHover { hovering in
+            guard !hovering || !scrollInteractionTracker.isScrolling,
+                  isHovered != hovering else { return }
+            isHovered = hovering
+        }
+        .animation(
+            scrollInteractionTracker.isScrolling
+                ? nil
+                : .easeOut(duration: 0.12),
+            value: isHovered
+        )
     }
 
     private var tileFill: Color {
@@ -931,6 +943,18 @@ private struct ProxyNodeFactList: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private extension ProxyLatencyDistributionBucket {
+    var tint: Color {
+        switch kind {
+        case .fast: MicaDesignTokens.signalOK
+        case .normal: MicaDesignTokens.signalCyan
+        case .slow: MicaDesignTokens.signalWarning
+        case .timeout: MicaDesignTokens.signalError
+        case .unavailable: MicaDesignTokens.separator
+        }
     }
 }
 

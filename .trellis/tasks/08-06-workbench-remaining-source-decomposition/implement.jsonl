@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Defines the exact Workbench file architecture, ownership, navigation, full-data visibility, ordering, state, accessibility and performance contracts that the split must preserve."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Defines SwiftUI component composition and reuse boundaries used to avoid one-component-per-file fragmentation while separating durable owners."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Defines state ownership and data-flow constraints; declaration moves must not introduce new observable models or relocate runtime state semantics."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Defines controller generation, pause/stale, capability, endpoint refresh and mutation safety that all moved Workbench intents must preserve."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Defines controller-reported order, optionality, raw values and capability invariants consumed by the moved presentation/cache layers."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Guides ownership extraction and helper reuse so the refactor does not duplicate logic or create speculative abstractions."}

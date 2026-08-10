@@ -5,6 +5,16 @@ extension RouterEditorView {
     @ViewBuilder
     var controllerFormContent: some View {
         Section {
+            WorkbenchFormRow("editor.name") {
+                TextField("", text: $draft.displayName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+                    .help(MicaStrings.localizedKey("editor.help_name", language: appLanguage))
+                    .accessibilityLabel(
+                        MicaStrings.localizedKey("editor.acc_name", language: appLanguage)
+                    )
+            }
+
             WorkbenchFormRow("editor.controller_family") {
                 Picker(
                     MicaStrings.localizedKey(
@@ -61,22 +71,17 @@ extension RouterEditorView {
                 }
             }
 
-            WorkbenchFormRow("editor.name") {
-                TextField(
-                    MicaStrings.localizedKey("editor.name", language: appLanguage),
-                    text: $draft.displayName
-                )
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: .infinity)
-                .help(MicaStrings.localizedKey("editor.help_name", language: appLanguage))
-                .accessibilityLabel(
-                    MicaStrings.localizedKey("editor.acc_name", language: appLanguage)
-                )
-            }
         } header: {
             RouterEditorSectionHeader(
                 titleKey: "editor.controller_family_section",
                 systemImage: draft.controllerKind.editorSymbol
+            )
+        } footer: {
+            Text(
+                MicaStrings.localizedKey(
+                    "editor.controller_family_footer",
+                    language: appLanguage
+                )
             )
         }
 
@@ -99,7 +104,7 @@ extension RouterEditorView {
 
             WorkbenchFormRow("editor.host") {
                 TextField(
-                    MicaStrings.localizedKey("editor.host", language: appLanguage),
+                    "",
                     text: $draft.host,
                     prompt: Text(
                         MicaStrings.localizedKey(
@@ -110,7 +115,7 @@ extension RouterEditorView {
                 )
                 .textFieldStyle(.roundedBorder)
                 .textContentType(.URL)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
                 .help(MicaStrings.localizedKey("editor.help_host", language: appLanguage))
                 .accessibilityLabel(
                     MicaStrings.localizedKey("editor.acc_host", language: appLanguage)
@@ -118,10 +123,7 @@ extension RouterEditorView {
             }
 
             WorkbenchFormRow("editor.port") {
-                TextField(
-                    MicaStrings.localizedKey("editor.port", language: appLanguage),
-                    text: $draft.portText
-                )
+                TextField("", text: $draft.portText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)
                 .help(MicaStrings.localizedKey("editor.help_port", language: appLanguage))
@@ -134,17 +136,6 @@ extension RouterEditorView {
                 titleKey: "editor.device_link",
                 systemImage: "link"
             )
-        } footer: {
-            if hasConfiguredTarget {
-                Label {
-                    Text(verbatim: localizedVisibleControllerTargetLabel)
-                        .micaFont(.caption, design: .monospaced)
-                        .textSelection(.enabled)
-                } icon: {
-                    Image(systemName: "link")
-                }
-                .foregroundStyle(.secondary)
-            }
         }
 
         Section {
@@ -153,20 +144,9 @@ extension RouterEditorView {
                     ? "editor.replace_secret"
                     : "editor.controller_secret"
             ) {
-                SecureField(
-                    draft.hasStoredSecret
-                        ? MicaStrings.localized(
-                            "editor.replace_secret",
-                            language: appLanguage
-                        )
-                        : MicaStrings.localized(
-                            "editor.controller_secret",
-                            language: appLanguage
-                        ),
-                    text: $draft.secret
-                )
+                SecureField("", text: $draft.secret)
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
                 .help(MicaStrings.localizedKey("editor.help_secret", language: appLanguage))
                 .accessibilityLabel(
                     MicaStrings.localizedKey("editor.acc_secret", language: appLanguage)
@@ -219,12 +199,6 @@ extension RouterEditorView {
         }
     }
 
-    private var hasConfiguredTarget: Bool {
-        localizedVisibleControllerTargetLabel != MicaStrings.localizedKey(
-            "editor.target_not_configured",
-            language: appLanguage
-        )
-    }
 }
 
 struct RouterEditorSectionHeader: View {

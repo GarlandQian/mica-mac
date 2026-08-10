@@ -28,6 +28,12 @@ struct MicaPerformanceBenchmarkTests {
         let cases: [BenchmarkCase]
     }
 
+    private struct LogDeltaBenchmarkState {
+        var buffer: BoundedLogBuffer
+        var cache: WorkbenchLogProjectionCache
+        var revision: UInt64
+    }
+
     private enum BenchmarkError: Error {
         case missingOutputPath
     }
@@ -56,6 +62,69 @@ struct MicaPerformanceBenchmarkTests {
                 }
             )
         }
+
+        let fullConnectionCount = 10_000
+        let fullConnections = MicaPerformanceFixtures.connections(
+            count: fullConnectionCount
+        )
+        cases.append(
+            measure(
+                name: "connection-initial-cache-projection",
+                fixtureCount: fullConnectionCount,
+                sampleCount: 7
+            ) {
+                var cache = WorkbenchConnectionProjectionCache()
+                cache.project(
+                    activeConnections: fullConnections,
+                    closedConnections: [],
+                    scope: .active,
+                    structureRevision: 1,
+                    metricsRevision: 1,
+                    closedRevision: 0,
+                    query: "",
+                    sortOrder: [],
+                    language: .english
+                )
+                return cache.allRows.count
+                    &+ cache.visibleRows.count
+                    &+ cache.closeGroups.count
+            }
+        )
+        cases.append(
+            measurePrepared(
+                name: "connection-search-projection",
+                fixtureCount: fullConnectionCount,
+                reportedWorkUnits: fullConnectionCount,
+                prepare: {
+                    var cache = WorkbenchConnectionProjectionCache()
+                    cache.project(
+                        activeConnections: fullConnections,
+                        closedConnections: [],
+                        scope: .active,
+                        structureRevision: 1,
+                        metricsRevision: 1,
+                        closedRevision: 0,
+                        query: "",
+                        sortOrder: [],
+                        language: .english
+                    )
+                    return cache
+                }
+            ) { cache in
+                cache.project(
+                    activeConnections: fullConnections,
+                    closedConnections: [],
+                    scope: .active,
+                    structureRevision: 1,
+                    metricsRevision: 1,
+                    closedRevision: 0,
+                    query: "host-9999.example.test",
+                    sortOrder: [],
+                    language: .english
+                )
+                return cache.visibleRows.count &+ cache.filterProjectionCount
+            }
+        )
 
         let keyedConnectionCount = 10_000
         var keyedConnections = MicaPerformanceFixtures.connections(
@@ -158,6 +227,217 @@ struct MicaPerformanceBenchmarkTests {
                     )
                 }
                 return cache.formattedRowCount &+ cache.deltaProjectionCount
+            }
+        )
+
+        cases.append(
+            measurePrepared(
+                name: "log-steady-state-delta-projection",
+                fixtureCount: logs.count,
+                reportedWorkUnits: 32,
+                prepare: {
+                    let buffer = BoundedLogBuffer(entries: logs)
+                    var cache = WorkbenchLogProjectionCache()
+                    cache.project(
+                        entries: buffer.entries,
+                        revision: 1,
+                        level: .all,
+                        query: "",
+                        language: .english,
+                        change: .replace
+                    )
+                    return LogDeltaBenchmarkState(
+                        buffer: buffer,
+                        cache: cache,
+                        revision: 1
+                    )
+                }
+            ) { state in
+                for index in 0..<32 {
+                    let mutation = state.buffer.append(
+                        ControllerLogEntry(
+                            id: "steady-delta-\(index)",
+                            receivedAt: Date(
+                                timeIntervalSince1970: 1_950_000_000 + Double(index)
+                            ),
+                            message: LogMessage(
+                                type: "info",
+                                payload: "steady delta fixture \(index)"
+                            )
+                        )
+                    )
+                    state.revision &+= 1
+                    state.cache.project(
+                        entries: state.buffer.entries,
+                        revision: state.revision,
+                        level: .all,
+                        query: "",
+                        language: .english,
+                        change: .delta(
+                            droppedEntryIDs: mutation.droppedEntryIDs,
+                            appendedEntries: mutation.appendedEntries
+                        )
+                    )
+                }
+                return state.cache.formattedRowCount &+ state.cache.deltaProjectionCount
+            }
+        )
+
+        cases.append(
+            measurePrepared(
+                name: "log-search-projection",
+                fixtureCount: logs.count,
+                reportedWorkUnits: logs.count,
+                prepare: {
+                    var cache = WorkbenchLogProjectionCache()
+                    cache.project(
+                        entries: logs,
+                        revision: 1,
+                        level: .all,
+                        query: "",
+                        language: .english,
+                        change: .replace
+                    )
+                    return cache
+                }
+            ) { cache in
+                cache.project(
+                    entries: logs,
+                    revision: 1,
+                    level: .all,
+                    query: "route=policy-12",
+                    language: .english
+                )
+                return cache.visibleRows.count &+ cache.filterEvaluationCount
+            }
+        )
+        let ruleCount = 10_000
+        let rules = MicaPerformanceFixtures.rules(count: ruleCount)
+        let ruleConnections = MicaPerformanceFixtures.connections(count: ruleCount)
+        cases.append(
+            measure(
+                name: "rule-connection-index-and-counts",
+                fixtureCount: ruleCount,
+                reportedWorkUnits: ruleConnections.count &+ rules.count
+            ) {
+                let index = WorkbenchRuleConnectionIndex(
+                    connections: ruleConnections
+                )
+                return rules.reduce(into: 0) { count, rule in
+                    count &+= index.count(for: rule)
+                }
+            }
+        )
+        let ruleConnectionIndex = WorkbenchRuleConnectionIndex(
+            connections: ruleConnections
+        )
+        cases.append(
+            measure(
+                name: "rule-row-projection",
+                fixtureCount: ruleCount,
+                sampleCount: 7
+            ) {
+                WorkbenchRuleProjection.rows(
+                    from: rules,
+                    connectionIndex: ruleConnectionIndex,
+                    language: .english
+                ).count
+            }
+        )
+        let projectedRuleRows = WorkbenchRuleProjection.rows(
+            from: rules,
+            connectionIndex: ruleConnectionIndex,
+            language: .english
+        )
+        cases.append(
+            measure(
+                name: "rule-search-projection",
+                fixtureCount: ruleCount,
+                reportedWorkUnits: ruleCount
+            ) {
+                WorkbenchRuleProjection.visibleRows(
+                    from: projectedRuleRows,
+                    query: "fixture-100",
+                    sortOrder: []
+                ).count
+            }
+        )
+        let sourceCount = 1_000
+        let sources = MicaPerformanceFixtures.sources(count: sourceCount)
+        cases.append(
+            measure(
+                name: "source-row-projection",
+                fixtureCount: sourceCount,
+                sampleCount: 7
+            ) {
+                WorkbenchSourceProjection.rows(
+                    from: sources,
+                    language: .english
+                ).count
+            }
+        )
+        let projectedSourceRows = WorkbenchSourceProjection.rows(
+            from: sources,
+            language: .english
+        )
+        cases.append(
+            measure(
+                name: "source-search-projection",
+                fixtureCount: sourceCount,
+                reportedWorkUnits: sourceCount
+            ) {
+                WorkbenchSourceProjection.visibleRows(
+                    from: projectedSourceRows,
+                    kind: .all,
+                    query: "provider-999",
+                    sortOrder: []
+                ).count
+            }
+        )
+        let proxyCatalog = MicaPerformanceFixtures.proxyCatalog(
+            groupCount: 100,
+            membersPerGroup: 1_000
+        )
+        let proxyRevision = ProxyCatalogRevision(
+            controllerID: nil,
+            generation: nil,
+            value: 1
+        )
+        cases.append(
+            measure(
+                name: "proxy-catalog-index-projection",
+                fixtureCount: 100_000,
+                sampleCount: 5,
+                reportedWorkUnits: 100_000
+            ) {
+                let index = ProxyGroupCatalogIndex(
+                    catalog: proxyCatalog,
+                    visibility: .followMode,
+                    revision: proxyRevision
+                )
+                return index.records.count &+ index.directoryItems.count
+            }
+        )
+        cases.append(
+            measurePrepared(
+                name: "proxy-expanded-groups-projection",
+                fixtureCount: 2_000,
+                sampleCount: 7,
+                reportedWorkUnits: 2_000,
+                prepare: {
+                    var cache = ProxyCatalogProjectionCache()
+                    cache.updateCatalog(
+                        proxyCatalog,
+                        revision: proxyRevision,
+                        visibility: .followMode
+                    )
+                    return cache
+                }
+            ) { cache in
+                cache.updateExpandedGroups(
+                    groupIDs: cache.groupIndex.arrangedGroups.prefix(2).map(\.id)
+                )
+                return cache.workCounts.memberRowsBuilt
             }
         )
 
@@ -337,6 +617,45 @@ struct MicaPerformanceBenchmarkTests {
         for _ in 0..<sampleCount {
             let start = DispatchTime.now().uptimeNanoseconds
             checksum &+= await operation()
+            let elapsed = DispatchTime.now().uptimeNanoseconds - start
+            samples.append(Double(elapsed) / 1_000_000)
+        }
+
+        let sorted = samples.sorted()
+        return BenchmarkCase(
+            name: name,
+            fixtureCount: fixtureCount,
+            samples: samples.count,
+            medianMilliseconds: percentile(0.5, sorted: sorted),
+            p95Milliseconds: percentile(0.95, sorted: sorted),
+            minimumMilliseconds: sorted.first ?? 0,
+            maximumMilliseconds: sorted.last ?? 0,
+            checksum: checksum,
+            reportedWorkUnits: reportedWorkUnits
+        )
+    }
+
+    private func measurePrepared<State>(
+        name: String,
+        fixtureCount: Int,
+        warmupCount: Int = 2,
+        sampleCount: Int = 9,
+        reportedWorkUnits: Int? = nil,
+        prepare: () -> State,
+        operation: (inout State) -> Int
+    ) -> BenchmarkCase {
+        var checksum = 0
+        for _ in 0..<warmupCount {
+            var state = prepare()
+            checksum &+= operation(&state)
+        }
+
+        var samples: [Double] = []
+        samples.reserveCapacity(sampleCount)
+        for _ in 0..<sampleCount {
+            var state = prepare()
+            let start = DispatchTime.now().uptimeNanoseconds
+            checksum &+= operation(&state)
             let elapsed = DispatchTime.now().uptimeNanoseconds - start
             samples.append(Double(elapsed) / 1_000_000)
         }

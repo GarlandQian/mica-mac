@@ -8,7 +8,7 @@ The native macOS/SwiftUI/HIG skills (`macos-app-design`, `apple-hig-expert`, `sw
 
 - Build the usable controller workbench as the first screen; do not add a marketing or command-home layer.
 - Use native sidebar navigation, toolbar search/actions, keyboard commands, SF Symbols, and same-window inspectors.
-- Ordinary policy browsing, node selection, latency testing, source inspection, and connection inspection stay inline. Sheets, popovers, context menus, and confirmation dialogs are reserved for platform-required or destructive flows.
+- Ordinary policy browsing, node selection, latency testing, source inspection, and connection inspection stay inline and never depend on a menu. The topology canvas may mirror its direct canvas and keyboard selection commands in one native context menu; no business data or command exists only there. Sheets, popovers, other context menus, and confirmation dialogs remain reserved for platform-required or destructive flows.
 - The sidebar starts with a collapsed inline controller switcher above the ten destinations. It expands in place to show controllers in persisted order plus Add and Manage actions; the complete management view stays in Controllers. Application preferences appear only in the native Settings scene opened from the app menu, never as a duplicate sidebar destination. Do not repeat controller identity in the toolbar or cover the native navigation title with a custom capsule. Keep the inline switcher in an observation boundary that reads only profiles, selected ID, and displayed controller fields so traffic, log, memory, and connection frames cannot churn it. Row selection on Controllers manages a profile, while explicit Use or a quick-switch row changes the active live session. Recent history updates for every explicit controller change and never reorders the saved list.
 - Policy groups use one bounded, controller-ordered vertical workspace with a single scroll owner. Each group has a compact identity/current-selection header, a real latency distribution, and an inline disclosure. Mihomo ordinary groups follow matching names in `GLOBAL.all`, then unlisted groups in `/proxies` order; Surge and sing-box preserve their reported sequence. Filtering and interaction never reorder the result, and visible `GLOBAL` stays last. Group members preserve each group's reported order.
 - Multiple groups may stay expanded. Build and cache member indexes only for expanded groups, with independent filters and inspected-member state; prune indexes when groups close. Closing the active group prefers the next open source-order group, then the previous group.
@@ -28,14 +28,12 @@ The native macOS/SwiftUI/HIG skills (`macos-app-design`, `apple-hig-expert`, `sw
   above the Table. Only an exact case-sensitive visible policy-group target is
   a navigation action; DIRECT, REJECT, node names, and unknown targets remain
   plain reported values.
-- Management pages use one bounded content column. Controllers detail,
-  Configuration, Actions, controller add/edit, and the native Settings scene use
-  grouped `Form` sections; Diagnostics uses adaptive elevated rows on the shared
-  page fill, never the system white disclosure background.
-  Diagnostic disclosure headers are full-width buttons with animated chevrons
-  and lightweight opacity transitions. Expanded content uses ordinary stacks
-  so scrolling remains smooth. Unsupported controller capabilities are removed
-  at both the section and nested-row levels.
+- Management pages use one bounded, leading-anchored content column. Controllers
+  detail, Configuration, controller add/edit, and the native Settings scene use
+  grouped `Form` sections. Actions uses a state-aware flat command workspace;
+  Diagnostics uses one continuous action-first triage canvas with an adaptive
+  issue workspace and one secondary technical disclosure. Both keep one outer
+  scroll owner on the shared page fill rather than raised or nested cards.
 - Every controller-management field uses `WorkbenchFormRow`: a 176-point leading label
   column at regular width and a leading stacked layout at compact width.
   It owns the only visible field label; embedded text fields, secure fields,
@@ -60,11 +58,20 @@ The native macOS/SwiftUI/HIG skills (`macos-app-design`, `apple-hig-expert`, `sw
   AppKit confirmation. Saving disables every editor-replacement path.
 - The Controllers page uses a native persisted-order `List` plus a same-window
   grouped-form detail. Wide layouts use `HSplitView`; compact layouts use
-  `VSplitView`. Each row shows the complete selectable endpoint and keeps compact
-  Edit/Delete commands at the far trailing edge; explicit Use in the detail
-  region changes the active controller. Actions uses the same grouped-form
-  section rhythm and trailing titled commands, but capability gating still hides
-  unsupported operations rather than showing disabled placeholders.
+  `VSplitView`. Each row shows the complete selectable endpoint and remains
+  scan-only; Use, Test, Edit, Delete, and manual reordering live in the detail
+  region, and only explicit Use changes the active controller. Actions uses the
+  effective controller/session state: checking and recovery show target context
+  plus Test, Edit, and Diagnostics; ready/partial shows only verified commands.
+  Full command inventories do not add related-workspace filler, while a real
+  at-most-two-command controller may link to its owning workspaces. Capability
+  gating hides unsupported operations rather than showing disabled placeholders.
+- Diagnostics treats checking as a gate: before the first successful baseline
+  it shows neither provisional failures nor Available Now. Controller-wide
+  failures suppress derived endpoint errors even when prior data is retained,
+  and rejected machine-facing evidence becomes localized unavailable copy.
+  Issue rows announce localized severity, title, affected count, and native
+  selected state; color and SF Symbols remain supplemental.
 - The bottom session bar is always present with a stable, unscaled native minimum height. It shows controller, unified live state, and last success; while presentation is paused it shows the fixed pause instant instead of a moving network timestamp. Temporary operations replace only the status summary, and larger Dynamic Type reflows through the provided variants instead of multiplying bar geometry.
 - Test remains available while presentation is paused. Refresh, rule/source reload, and provider update are disabled everywhere through the same AppModel capability. Endpoint failures retain the last successful rows and add a stale marker; never-loaded endpoints alone use an error empty state.
 
@@ -103,7 +110,7 @@ Native system materials belong to windows, sidebars, toolbars, the controller se
 
 Management pages use a centered responsive canvas rather than a fixed-width block anchored to the leading edge. The canvas grows to an 1180-point reading limit and form-heavy pages grow to 1040 points. The standalone native Settings window uses one centered grouped `Form` up to 820 points; it has no duplicate Workbench route, repeated title, or unbalanced category column. Data tables, timelines, topology, policy workspaces, and logs remain width-filling because their scan and interaction density benefits from the available canvas.
 
-Overview does not repeat the selected-controller/session header. Its default layout contains three equal-weight real-time charts for upload, download, and active connections, followed by the complete active route topology and grouped network information. Wide layouts use three chart columns, medium layouts use two traffic columns plus a full connection row, and narrow layouts stack all three. Every chart shares real timestamps, hover/single-click pin selection, keyboard stepping, pause, and return-to-live; memory is contextual metadata on the connection chart rather than a fourth plot. Zero-value and one-sample timelines remain visible through a presentation-only padded scale and a latest-real-sample point; this never fabricates samples. The instrument rail and operational summaries remain optional personalization modules but are hidden by default. The complete topology is always a full-row module. Overview does not contain retained closed data, a raw connection selector, or the full connection inspector. Reset removes the controller override and keeps inheriting the latest global default; edits remain window-local until a persistence-first Done transaction succeeds.
+Overview does not repeat the selected-controller/session header. Its width-filling default layout contains three equal-weight real-time charts for upload, download, and active connections, followed by the complete active route topology and grouped network information. Wide layouts use three chart columns, medium layouts use two traffic columns plus a full connection row, and narrow layouts stack all three. Plot height follows effective panel width within a stable 240-to-300-point range, while sparse topology keeps a width-responsive 680-to-920-point minimum flow area and dense topology may grow further. Overview section titles use consistent informational-cyan 34-point marks and metric titles use 28-point marks tied to real series meaning, both with hierarchical native SF Symbols; category icons never borrow mint healthy or violet debug roles, and dense rows retain unbacked monochrome symbols. The topology uses 20-point node bars with 8-point gaps and callout labels. Its pause/list commands share the section heading row, while the fixed 80-point detail inset shows real connection and unavailable-path counts when idle and selection details without moving graph geometry. Every chart shares real timestamps, hover/single-click pin selection, keyboard stepping, pause, and return-to-live; hover updates only readouts and indicators, while only a pinned sample changes the header to Selected. Memory is contextual metadata on the connection chart rather than a fourth plot. Zero-value and one-sample timelines remain visible through a presentation-only padded scale and a latest-real-sample point; this never fabricates samples. The instrument rail and operational summaries remain optional personalization modules but are hidden by default. The complete topology is always a full-row module. Overview does not contain retained closed data, a raw connection selector, or the full connection inspector. Reset removes the controller override and keeps inheriting the latest global default; edits remain window-local until a persistence-first Done transaction succeeds.
 
 Workbench views observe `controllerSessionPresentation`, `controllerMetadata`, and domain catalogs instead of the broad `controllerSession` or `dashboard` aggregates. Each window root registers one stable destination-demand token; the selected generation publishes the union required by all windows through one runtime. Logs/traffic/connections/memory publish at 5/4/2/1 Hz and hidden domains flush once on entry when pause/baseline gates permit. Timeline updates stay inside the telemetry subtree; they do not rebuild sidebar switching, configuration, policy/rule projections, network facts, or topology. Render zero byte values deterministically as `0 B` / `0 B/s`, not locale text such as `Zero KB`.
 
@@ -126,7 +133,7 @@ Workbench views observe `controllerSessionPresentation`, `controllerMetadata`, a
   Use area plus linear line rendering, hover/click/keyboard sample selection,
   and explicit presentation pause. Pausing never stops ingestion; resuming
   catches up to the latest retained sample.
-- System Swift Charts implements the received timelines. Overview owns the only scroll axis. The native `Canvas`/`Path` topology is a width-fitted Sankey: every active connection and reported chain hop remains present, same names remain distinct across layers, nodes sort by reported name, real edge counts drive detail text, and `log10(count + 1) * 10` drives ribbon width. Hover or pin highlights the complete trajectory; hover and manual pause freeze only presentation. The graph has no internal scroll, supports same-window expansion and Connections navigation, and exposes every route through an accessible fallback. A mature Swift-native chart package may replace or supplement these tools only when it provides a required capability or measurable performance/maintenance benefit that the system frameworks cannot deliver cleanly, after the repository dependency review in `docs/DEVELOPMENT.md`.
+- System Swift Charts implements the received timelines. Overview owns the only scroll axis. The native `Canvas`/`Path` topology is a width-fitted Sankey: every active connection and reported chain hop remains present, same names remain distinct across layers, nodes sort by reported name, real edge counts drive detail text, and `log10(count + 1) * 10` drives ribbon width. Hover or pin highlights the complete trajectory; hover and manual pause freeze only presentation. The graph has no internal scroll and is one focusable surface: direction keys step through complete paths and Escape clears selection. Its compact unframed detail strip keeps only the complete label/description, pinned symbol, and eligible same-window Connections navigation; path stepping, pin/unpin, and clear remain available through direct canvas interaction, keyboard, accessible path controls, and the native context menu without becoming permanent toolbar chrome. A mature Swift-native chart package may replace or supplement these tools only when it provides a required capability or measurable performance/maintenance benefit that the system frameworks cannot deliver cleanly, after the repository dependency review in `docs/DEVELOPMENT.md`.
 - Topology hit testing prioritizes visible node bars, then visible ribbons, then bounded label-adjacent pointer padding. Nodes use a local 28-point acquisition size and ribbons use a 10-point baseline tolerance; targets stay near rendered content and never span the entire gap to the next Sankey column.
 - Current-state aggregates may render as category charts (distribution histograms, share bars, rankings) whose X axis is a category — latency grade, rule type, connection name — never a fabricated timestamp.
 - Every chart carries an accessibility label plus a numeric/tabular fallback (`accessibilityValue` or equivalent) so values stay reachable without the visual.

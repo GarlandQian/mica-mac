@@ -74,9 +74,15 @@ struct WorkbenchWorkspaceView: View {
             case .configuration:
                 WorkbenchConfigurationView()
             case .actions:
-                WorkbenchActionsView()
+                WorkbenchActionsView(
+                    destination: $destination,
+                    onEditController: onEditController
+                )
             case .diagnostics:
-                WorkbenchDiagnosticsView()
+                WorkbenchDiagnosticsView(
+                    destination: $destination,
+                    onEditController: onEditController
+                )
             }
         }
     }

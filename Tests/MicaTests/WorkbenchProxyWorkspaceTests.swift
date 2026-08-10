@@ -648,7 +648,7 @@ struct WorkbenchProxyWorkspaceTests {
         )
     }
 
-    @Test func interactionSchedulerKeepsLatestUpdateWithoutRestartingDeadline() throws {
+    @Test func interactionSchedulerKeepsLatestScrollUpdateUntilIdle() throws {
         let start = Date(timeIntervalSince1970: 1_000)
         let baseCatalog = PolicyGroupCatalogSnapshot(
             mode: "Rule",
@@ -697,24 +697,47 @@ struct WorkbenchProxyWorkspaceTests {
             ) == nil
         )
         #expect(
-            scheduler.takePendingUpdateIfDue(at: deadline) == second
+            scheduler.takePendingUpdateIfDue(at: deadline) == nil
         )
-        #expect(scheduler.pendingUpdate == nil)
+        #expect(scheduler.pendingUpdate == second)
 
-        let deferredAfterDeadline = scheduler.deferIfInteracting(
-            first,
-            at: deadline.addingTimeInterval(0.01)
-        )
-        #expect(deferredAfterDeadline)
         scheduler.endScrolling(
             in: .nodes,
-            at: deadline.addingTimeInterval(0.02)
+            at: deadline.addingTimeInterval(0.01)
         )
         #expect(
             scheduler.takePendingUpdateIfIdle(
-                at: deadline.addingTimeInterval(0.02)
-            ) == first
+                at: deadline.addingTimeInterval(0.01)
+            ) == second
         )
+        #expect(scheduler.pendingUpdate == nil)
+    }
+
+    @Test func interactionSchedulerStillBoundsTransientDeferral() throws {
+        let start = Date(timeIntervalSince1970: 2_000)
+        let update = ProxyCatalogUpdate(
+            revision: ProxyCatalogRevision(
+                controllerID: nil,
+                generation: nil,
+                value: 1
+            ),
+            catalog: PolicyGroupCatalogSnapshot(
+                mode: "Rule",
+                groups: [Self.group(id: "Proxy", selected: "Node A")]
+            )
+        )
+        var scheduler = ProxyCatalogPresentationScheduler()
+
+        scheduler.beginTransientInteraction(at: start)
+        let deferred = scheduler.deferIfInteracting(update, at: start)
+        #expect(deferred)
+        let deadline = try #require(scheduler.pendingDeadline)
+        #expect(
+            scheduler.takePendingUpdateIfDue(
+                at: deadline.addingTimeInterval(-0.001)
+            ) == nil
+        )
+        #expect(scheduler.takePendingUpdateIfDue(at: deadline) == update)
     }
 
     @Test func criticalUserOperationWindowBypassesInteractionDeferral() {

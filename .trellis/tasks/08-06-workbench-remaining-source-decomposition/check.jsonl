@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Verify the exact file list, per-file ownership, destination/sidebar/table/detail contracts and all existing Workbench behavior assertions after decomposition."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify Swift build/tests, source contracts, localization integrity and repository cleanliness using the project quality gate."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Review moved intents and presentation paths for unchanged generation validation, stale/pause behavior and capability gating."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Review that controller source order, optional data and reported values remain intact across all moved projections and caches."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace shared state through projection/cache and SwiftUI consumers to catch incomplete declaration moves or ownership-only verifier gaps."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check that access-level fixes reuse a single owner and do not duplicate helpers or introduce unjustified abstractions."}
