@@ -9,6 +9,14 @@
 # Keep AGENTS.md as the primary project instruction file.
 project_doc_fallback_filenames = ["AGENTS.md"]
 
+[mcp_servers]
+
+[mcp_servers.apple-docs-mcp]
+type = "stdio"
+command = "npx"
+args = ["-y", "@kimsungwhee/apple-docs-mcp@latest"]
+startup_timeout_sec = 60
+
 # Codex hooks (`hooks.json` in this directory) only fire when the user
 # has enabled them in their USER-level config: `[features].hooks = true`
 # in ~/.codex/config.toml (Codex 0.129+; legacy name: `codex_hooks = true`,
