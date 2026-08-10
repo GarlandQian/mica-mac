@@ -295,3 +295,24 @@ Completed and archived the native Logs, Rules, and Sources data-browser phase wh
 ### Next Steps
 
 - Continue the parent Workbench task with the controller-management workspace phase.
+
+
+## Session 9: Workbench 原生工作台与性能审计收尾
+
+**Date**: 2026-08-10
+**Task**: Workbench 原生工作台与性能审计收尾
+**Branch**: `main`
+
+### Summary
+
+完成 Diagnostics/Actions 重构、Workbench 源码职责拆分与离线热点审计；保留 Connections 格式化和共享搜索优化，313 项测试及构建/源码合同/localization/Trellis 校验通过。未运行 Mica 或真实 controller；技能/MCP 配置脏改动保持排除。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `84d929d` | (see git log) |
+
+### Status
+
+[OK] **Completed**
