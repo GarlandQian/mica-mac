@@ -19,7 +19,15 @@
   "pr_url": null,
   "subtasks": [],
   "children": [
-    "08-03-connections-native-visual-rebuild"
+    "08-03-connections-native-visual-rebuild",
+    "08-04-workbench-shell-settings-foundation",
+    "08-04-overview-native-monitoring-workspace",
+    "08-04-logs-rules-sources-native-browsers",
+    "08-04-controller-management-native-workspace",
+    "08-05-overview-charts-topology-polish",
+    "08-06-proxies-source-decomposition",
+    "08-06-workbench-remaining-source-decomposition",
+    "08-09-diagnostics-workspace-redesign"
   ],
   "parent": null,
   "relatedFiles": [
@@ -28,6 +36,6 @@
     "Sources/Mica/App/MicaApp.swift",
     "Sources/Mica/Resources/Localizable.xcstrings"
   ],
-  "notes": "Parent planning and integration task. Existing connections-native-visual-rebuild is linked as a child.",
+  "notes": "Parent planning and integration task. Phase 0 child connections-native-visual-rebuild passed its quality gate and was archived. Phase 1 child workbench-shell-settings-foundation extracted native Settings ownership, unified shared chrome, added full-row keyboard sidebar navigation, and passed its quality gate. Phase 2 child overview-native-monitoring-workspace completed the existing Overview with a continuous three-chart telemetry surface, complete topology, compact real network facts, and reduced scroll/chart animation churn. Phase 3 child logs-rules-sources-native-browsers completed the three native data browsers with explicit event/decision columns, quiet lifecycle status, preserved ordering and operation contracts. Phase 4 child controller-management-native-workspace split the management source by ownership and completed Controllers, RouterEditor, Configuration, Actions, and Diagnostics while preserving explicit controller switching, persisted order, FileSecretStore, capability gates, and generation safety. Source verification, focused tests, Swift build, and all 299 tests across 27 suites passed on 2026-08-05. No runtime smoke or controller access was performed. Phase 5 cross-surface acceptance remains pending.",
   "meta": {}
 }
