@@ -9,7 +9,7 @@
 - On 2026-08-10 the user adopted and authorized the post-implementation correctness audit plus measured full-Workbench performance scope. Correctness fixes and the measured product optimization pass are implemented.
 - Full-Workbench before/after reports now cover the real high-cardinality projection boundaries. Connection row/cache/search and shared data-browser search changes crossed the repeated 10% retention threshold; rejected alternatives were removed.
 - Verified on 2026-08-10: focused 37-test projection suite, `swift build`, 313-test full suite, source contract, localization JSON, four-report fidelity/threshold comparison, `git diff --check`, and task validation all pass.
-- Staging, commit, archival, and runtime smoke remain intentionally deferred because the working tree contains overlapping pre-existing work and this audit must not contact a controller or launch Mica.
+- Workbench source, tests, documentation, durable contract, and the four completed task records were committed as `84d929d`; skill/MCP configuration changes and unrelated task archives remained excluded. Runtime smoke and controller contact were intentionally not run.
 
 ## Execution Rules
 
@@ -118,10 +118,10 @@ python3 ./.trellis/scripts/task.py validate 08-09-diagnostics-workspace-redesign
 
 ## Phase 8. Finish And Commit
 
-- [ ] 加载 `trellis-update-spec`，确认新 Diagnostics + Actions durable contract 已完整进入 frontend spec，且没有无关 spec churn。
-- [ ] 检查 task-scoped diff 与当前 dirty tree，确认没有带入无关用户修改。
-- [ ] 只 stage 本任务拥有的精确文件；若 overlapping untracked/dirty 内容无法安全归属，停止提交并向用户说明，不覆盖或回退它们。
-- [ ] 按 Phase 3.4 创建任务 commit，然后运行 `/trellis:finish-work` 流程。
+- [x] 加载 `trellis-update-spec`，确认新 Diagnostics + Actions durable contract 已完整进入 frontend spec，且没有无关 spec churn。
+- [x] 检查 task-scoped diff 与当前 dirty tree，确认技能/MCP 配置和无关归档未进入提交。
+- [x] 因 Workbench 拆分与后续功能改动已经交织，向用户展示完整批次及排除项并取得一次明确确认后暂存可构建的整体 Workbench 文件集。
+- [x] 按 Phase 3.4 创建工作提交 `84d929d`，随后进入 `trellis-finish-work` 归档与 journal 流程。
 
 ## Phase 9. Post-Audit Pre-Development Gate
 
@@ -181,16 +181,16 @@ python3 ./.trellis/scripts/task.py validate 08-09-diagnostics-workspace-redesign
 ## Phase 13. Durable Closeout
 
 - [x] 加载 `trellis-update-spec`，已将状态门、evidence、effective Actions state、观察边界和性能停止规则写入 durable frontend contract。
-- [x] 检查精确 task diff 与 overlapping dirty files；相关 tracked/untracked 文件叠加此前重构，无法安全隔离本轮增量，按保护规则不 stage、不 commit、不归档，也不覆盖或回退用户修改。
-- [ ] 按 Trellis Phase 3.4 创建任务 commit；随后执行 `/trellis:finish-work`，归档 task 并记录 journal。
-- [ ] 最终向用户报告功能缺陷修复、两组 before/after 指标、保留或回退了哪些性能 slice、全部自动验证结果，以及未运行的 runtime/真实 controller 验收。
+- [x] 检查精确 task diff 与 overlapping dirty files；单任务 hunk 无法形成独立可构建提交，因此只在用户确认后纳入交织的完整 Workbench 批次，并继续排除技能/MCP 配置与无关归档。
+- [x] 按 Trellis Phase 3.4 创建工作提交 `84d929d`；随后执行 `trellis-finish-work` 归档任务并记录 journal。
+- [x] 已向用户报告功能缺陷修复、两组 before/after 指标、保留或回退的性能 slice、全部自动验证结果，以及未运行的 runtime/真实 controller 验收。
 
 ## Final Review Gate
 
-- [ ] 用户已审核并明确批准最新 PRD、design 和 implement 总结。
-- [ ] 规划阶段只修改 task artifacts 与生成离线 baseline；批准前不修改产品源码或测试。
-- [ ] `task.py validate 08-09-diagnostics-workspace-redesign` 在实施前通过。
-- [ ] 实施完成后向用户明确说明自动检查结果、未运行 runtime smoke，以及真实 controller 视觉验收项。
+- [x] 用户已审核并明确批准最新 PRD、design、implement 与最终提交计划。
+- [x] 规划阶段只修改 task artifacts 与生成离线 baseline；批准前不修改产品源码或测试。
+- [x] `task.py validate 08-09-diagnostics-workspace-redesign` 在实施前与收尾时均通过。
+- [x] 实施完成后已向用户明确说明自动检查结果、未运行 runtime smoke，以及真实 controller 视觉验收项。
 
 ## Phase 14. Full Workbench Measured Hotspot Audit
 
@@ -209,4 +209,4 @@ python3 ./.trellis/scripts/task.py validate 08-09-diagnostics-workspace-redesign
 - [x] 加载并执行 `trellis-check`，核对 spec、数据流、复用、Swift 6.2 并发/类型、测试和 benchmark fidelity。
 - [x] 运行 focused projection tests、最终两轮 Release 报告核对、source verifier、localization JSON、`swift build`、完整 `swift test`、`git diff --check` 与 task validation。
 - [x] 确认没有启动 Mica、接触 controller、访问 9090 或执行任何远端动作；runtime/Instruments 未运行。
-- [x] 检查 overlapping dirty files；因无法安全隔离而不 stage、不 commit、不归档任务，最终结果明确说明。
+- [x] 检查 overlapping dirty files；用户确认完整 Workbench 提交边界后创建 `84d929d`，排除技能/MCP 配置并进入任务归档。
