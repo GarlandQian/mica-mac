@@ -338,6 +338,7 @@ const requiredFiles = [
   "Sources/Mica/App/DashboardSurgeProjectionModels.swift",
   "Sources/Mica/App/DashboardSessionControls.swift",
   "Sources/Mica/App/DashboardSessionModels.swift",
+  "Sources/Mica/App/Info.plist",
   "Sources/Mica/App/SessionBuffers.swift",
   "Sources/Mica/App/LiveSessionRefreshModels.swift",
   "Sources/Mica/App/LiveSessionRuntime.swift",
@@ -415,6 +416,7 @@ for (const removedPath of [
 
 const packageManifest = read("Package.swift");
 const agentsRules = read("AGENTS.md");
+const appInfoPlist = read("Sources/Mica/App/Info.plist");
 const workbenchContract = read(".trellis/spec/frontend/workbench-ui-contract.md");
 const controllerContract = read(".trellis/spec/backend/controller-data-contract.md");
 const liveSessionContract = read(".trellis/spec/frontend/live-session-controller-contract.md");
@@ -563,6 +565,36 @@ assertLocalizationFormatSignatures(strings);
 assertIncludes(packageManifest, '.macOS("27.0")', "Mica must retain the macOS 27 deployment target");
 assertIncludes(packageManifest, '.executable(name: "Mica"', "Package must expose the native Mica executable");
 assertExcludes(packageManifest, "WebKit", "The native frontend must not add WebKit");
+const appTransportSecurity = sourceSection(
+  appInfoPlist,
+  "<key>NSAppTransportSecurity</key>",
+  "<key>NSHumanReadableCopyright</key>",
+);
+assertIncludes(
+  appTransportSecurity,
+  "<key>NSAllowsLocalNetworking</key>",
+  "Mica must declare local-network ATS access for user-configured controller IP addresses",
+);
+assertIncludes(
+  appTransportSecurity,
+  "<true/>",
+  "Mica local-network ATS access must remain enabled",
+);
+assertIncludes(
+  appInfoPlist,
+  "<key>NSLocalNetworkUsageDescription</key>",
+  "Mica must explain direct local-network controller access in its embedded Info.plist",
+);
+assertIncludes(
+  appInfoPlist,
+  "Mica uses the local network",
+  "The local-network usage description must retain English copy",
+);
+assertIncludes(
+  appInfoPlist,
+  "Mica 使用本地网络",
+  "The local-network usage description must retain Simplified Chinese copy",
+);
 assertIncludes(agentsRules, "Keep controller-reported business data visible and selectable in active UI", "Repository rules must keep active data fully visible");
 assertIncludes(agentsRules, "tmp/codex/", "Repository rules must keep scratch output in the repository");
 assertIncludes(agentsRules, "Add a Swift package only for a verified material benefit", "Repository rules must retain the evidence-based dependency policy");
