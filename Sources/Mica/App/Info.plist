@@ -18,8 +18,15 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>27.0</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 Mica contributors.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Mica uses the local network to connect to controller APIs on routers and other devices you configure. Mica 使用本地网络连接你配置的路由器和其他设备上的控制器 API。</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

@@ -46,6 +46,11 @@ var canTogglePresentationPause: Bool
   the complete reconnect baseline validates.
 - Auto Detect resolves the Clash-compatible HTTP family before the sing-box StartedService fallback. A successful HTTP probe returns immediately; a conclusive refused, missing, or unavailable port does not wait for sing-box `waitForReady`. Only an unrecognized or ambiguous HTTP result falls through to sing-box.
 - Controller editor and Controllers-page connection tests use the resolved runtime kind: Mihomo-family profiles call the HTTP version endpoint, Surge profiles call the Surge snapshot API, and sing-box profiles call StartedService `GetVersion` over gRPC. An Auto Detect result must never fall back to the wrong transport, and sing-box failures must not be presented as JSON-decoding failures.
+- Because controller profiles accept direct LAN IPv4/IPv6 targets, the embedded
+  `Info.plist` declares `NSAppTransportSecurity.NSAllowsLocalNetworking = true`
+  and a non-empty English/Simplified-Chinese
+  `NSLocalNetworkUsageDescription`. Keep the narrow local-network declaration;
+  do not replace it with the global `NSAllowsArbitraryLoads` exception.
 - Fast, medium, and slow REST lanes run at 2, 5, and 30 seconds. Mihomo WebSocket streams, Surge near-live polling, and sing-box StartedService streams remain part of the same selected generation.
 - One `LiveSessionRuntime` actor owns high-frequency raw traffic, memory,
   active-connection count, connection rows, closed-history, and log mutations
@@ -118,6 +123,7 @@ var canTogglePresentationPause: Bool
 | Async result has old controller ID or generation | Drop it without mutating visible or pending state. |
 | HTTP probe succeeds | Start the resolved HTTP session without waiting for an unrelated sing-box or Surge probe. |
 | HTTP probe reports a conclusive unavailable port | Surface the transient failure and let the bounded probe retry run; do not wait for the sing-box readiness timeout. |
+| A profile targets a LAN IP over HTTP | The app bundle permits local networking and provides the system privacy explanation before URLSession contacts the configured controller. |
 | Several Mihomo live channels fail together | Keep one retry task and one backoff increment for the failure wave. |
 | Lane request already in flight | Set one follow-up flag; do not start another request. |
 | Endpoint fails after success | Keep last value, mark endpoint/surface stale, preserve `lastSuccessAt`. |
@@ -145,8 +151,10 @@ var canTogglePresentationPause: Bool
 ## 5. Good / Base / Bad Cases
 
 - Good: medium refresh fails after policy data loaded; the existing cards remain visible with a stale warning, while fast traffic continues.
+- Good: `http://192.168.x.x:<port>` uses the user-configured endpoint with the
+  narrow local-network ATS declaration and system privacy explanation.
 - Base: no controller exists; no generation or network task starts and command capabilities are false.
-- Bad: a refresh failure clears `dashboard`, starts another polling loop, changes selected controller, or exposes a user-facing Sync/Start Live mode.
+- Bad: a refresh failure clears `dashboard`, starts another polling loop, changes selected controller, or exposes a user-facing Sync/Start Live mode. Removing the local-network declarations makes loopback appear healthy while a valid LAN IP can be blocked by macOS before reaching the controller.
 
 ## 6. Tests Required
 
@@ -182,6 +190,10 @@ var canTogglePresentationPause: Bool
 - Confirmed-write/refresh-failure transactions for mode, policy selection, fixed-selection clear, and connection termination.
 - Blank-ID rejection at the Workbench projection, AppModel operation, and Mihomo client boundary.
 - Source verification for shared command capabilities, window close guard, removed live/sync paths, and no AppKit content views.
+- Source verification that the embedded `Info.plist` retains
+  `NSAllowsLocalNetworking` plus a bilingual
+  `NSLocalNetworkUsageDescription`; `plutil -lint` and `swift build` verify the
+  source plist and linker embedding path.
 
 ## 7. Wrong vs Correct
 
@@ -202,4 +214,21 @@ requestImmediateSessionRefresh(isUserInitiated: true)
 
 // Correct: every surface consumes the shared capability.
 .disabled(!appModel.canRefreshSelectedRouter)
+```
+
+```xml
+<!-- Wrong: direct LAN HTTP profiles are supported, but the app declares no local access. -->
+<dict>
+    <key>CFBundleName</key>
+    <string>Mica</string>
+</dict>
+
+<!-- Correct: keep the exception local and explain the system permission prompt. -->
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+</dict>
+<key>NSLocalNetworkUsageDescription</key>
+<string>Mica uses the local network … Mica 使用本地网络…</string>
 ```
