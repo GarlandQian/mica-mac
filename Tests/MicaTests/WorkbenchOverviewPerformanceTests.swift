@@ -228,6 +228,57 @@ struct WorkbenchOverviewPerformanceTests {
         ))
     }
 
+    @Test func timelineProjectionCacheRejectsSameIdentityWithNewReceiptTimes() {
+        let generation = UUID(uuidString: "A5EA65E5-E30F-4197-A3E4-0BE5DA178F44")!
+        let cache = OverviewTimelineProjectionCache()
+        let initial = [
+            TrafficTimeline.Sample(
+                id: 0,
+                receivedAt: Date(timeIntervalSince1970: 100),
+                upload: 10,
+                download: 20
+            ),
+            TrafficTimeline.Sample(
+                id: 1,
+                receivedAt: Date(timeIntervalSince1970: 101),
+                upload: 30,
+                download: 40
+            ),
+        ]
+        let replacement = [
+            TrafficTimeline.Sample(
+                id: 0,
+                receivedAt: Date(timeIntervalSince1970: 200),
+                upload: 50,
+                download: 60
+            ),
+            TrafficTimeline.Sample(
+                id: 1,
+                receivedAt: Date(timeIntervalSince1970: 201),
+                upload: 70,
+                download: 80
+            ),
+        ]
+
+        _ = cache.resolve(
+            generation: generation,
+            window: .fiveMinutes,
+            traffic: initial,
+            memory: [],
+            connections: []
+        )
+        let resolved = cache.resolve(
+            generation: generation,
+            window: .fiveMinutes,
+            traffic: replacement,
+            memory: [],
+            connections: []
+        )
+
+        #expect(resolved.trafficSamples == replacement)
+        #expect(cache.statistics.trafficProjectionCount == 2)
+    }
+
     @MainActor
     @Test func timelineInteractionKeepsHoverAndPinOutsideProjectionState() {
         let dates = (0..<4).map {
@@ -741,11 +792,10 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(sourceNodes.map(\.node.name) == ["Source A", "Source B"])
         #expect(sourceNodes.allSatisfy { $0.rect.width == 20 })
         #expect(OverviewTopologyLayout.columnHeaderHeight == 40)
-        #expect(OverviewTopologyLayout.selectionDetailHeight == 80)
         #expect(
             layout.nodes.allSatisfy {
                 $0.rect.minY >= OverviewTopologyLayout.columnHeaderHeight
-                    + OverviewTopologyLayout.selectionDetailHeight
+                    + 12
             }
         )
 
@@ -755,6 +805,10 @@ struct WorkbenchOverviewPerformanceTests {
         let sourceB = try #require(
             sourceNodes.first { $0.node.name == "Source B" }
         )
+        #expect(layout.nodeGeometry(id: sourceA.node.id)?.rect == sourceA.rect)
+        #expect(layout.nodeGeometry(id: sourceB.node.id)?.rect == sourceB.rect)
+        #expect(layout.nodeGeometry(id: "missing-node") == nil)
+        #expect(layout.hudObstacles.count == layout.nodes.count * 2)
         let edgeA = try #require(
             layout.edges.first { $0.edge.sourceName == "Source A" }
         )
@@ -799,7 +853,7 @@ struct WorkbenchOverviewPerformanceTests {
             availableWidth: 520,
             minimumFlowHeight: 640
         )
-        #expect(expanded.size.height >= 704)
+        #expect(expanded.size.height >= 724)
     }
 
     @Test func topologyRenderBandsAndAccessibilityCoverCompleteTopology() async throws {
@@ -893,277 +947,148 @@ struct WorkbenchOverviewPerformanceTests {
 
     @Test func overviewSourceSeparatesVerticalAndInteractionOwnership() throws {
         let dashboardSource = try workbenchSource(named: "WorkbenchDashboard.swift")
-        let telemetrySource = try workbenchSource(named: "WorkbenchOverviewTelemetry.swift")
-        let topologyViewSource = try workbenchSource(named: "WorkbenchOverviewTopologyView.swift")
-        let source = [dashboardSource, telemetrySource, topologyViewSource].joined(separator: "\n")
-        let dashboardCanvas = try sourceSection(
+        let editorSource = try workbenchSource(named: "WorkbenchOverviewEditor.swift")
+        let preferencesSource = try workbenchSource(
+            named: "WorkbenchOverviewPreferences.swift"
+        )
+        let runtimeSource = try workbenchSource(
+            named: "WorkbenchOverviewWindowRuntime.swift"
+        )
+        let visualSource = try workbenchSource(
+            named: "WorkbenchOverviewVisualSystem.swift"
+        )
+        let telemetrySource = try workbenchSource(
+            named: "WorkbenchOverviewTelemetry.swift"
+        )
+        let topologySource = try workbenchSource(
+            named: "WorkbenchOverviewTopology.swift"
+        )
+        let topologyViewSource = try workbenchSource(
+            named: "WorkbenchOverviewTopologyView.swift"
+        )
+        let source = [
             dashboardSource,
-            from: "private struct OverviewDashboardCanvas",
-            to: "private struct OverviewDashboardResponsiveRow"
-        )
-        #expect(occurrenceCount(of: "ScrollView {", in: dashboardCanvas) == 1)
-        #expect(dashboardCanvas.contains("LazyVStack(alignment: .leading"))
-        #expect(dashboardCanvas.contains("OverviewDashboardRowPacker.rows("))
-        #expect(!dashboardCanvas.contains("min(availableWidth, 1_180)"))
-        #expect(
-            dashboardCanvas.contains(
-                ".frame(maxWidth: .infinity, alignment: .topLeading)"
-            )
-        )
-        let responsiveRow = try sourceSection(
+            editorSource,
+            preferencesSource,
+            runtimeSource,
+            visualSource,
+            telemetrySource,
+            topologySource,
+            topologyViewSource,
+        ].joined(separator: "\n")
+
+        let fixedCanvas = try sourceSection(
             dashboardSource,
-            from: "private struct OverviewDashboardResponsiveRow",
-            to: "private struct OverviewDashboardSpanLayout"
+            from: "private struct OverviewFixedCanvas",
+            to: "struct OverviewSymbolMark"
         )
-        #expect(!responsiveRow.contains("appeared"))
-        #expect(!responsiveRow.contains(".opacity("))
-        #expect(!responsiveRow.contains(".offset("))
-        #expect(!responsiveRow.contains(".animation("))
-        #expect(!source.contains("OverviewSessionHeader"))
-        #expect(!source.contains("OverviewMetricModule"))
-        #expect(dashboardSource.contains("OverviewInstrumentRailSection("))
-        #expect(dashboardSource.contains("OverviewTelemetrySection("))
-        #expect(dashboardSource.contains("OverviewTopologySection("))
-        #expect(!dashboardSource.contains("struct OverviewInstrumentRailSection"))
-        #expect(!dashboardSource.contains("struct OverviewTelemetrySection"))
-        #expect(!dashboardSource.contains("struct OverviewTopologySection"))
-        #expect(telemetrySource.contains("struct OverviewInstrumentRailSection"))
-        #expect(telemetrySource.contains("private struct OverviewTelemetryPanel"))
-        #expect(telemetrySource.contains("chartLayout("))
-        #expect(telemetrySource.contains(".background(MicaStyle.contentFill)"))
-        #expect(telemetrySource.contains("if availableWidth >= 960"))
-        #expect(telemetrySource.contains("else if availableWidth >= 700"))
-        #expect(telemetrySource.contains("private var plotHeight: CGFloat"))
-        #expect(
-            telemetrySource.contains(
-                "return min(max(panelWidth * 0.60, 240), 300)"
-            )
+        #expect(occurrenceCount(of: "ScrollView {", in: fixedCanvas) == 1)
+        #expect(fixedCanvas.contains("LazyVStack(alignment: .leading"))
+        #expect(fixedCanvas.contains("OverviewTelemetrySection("))
+        #expect(fixedCanvas.contains("OverviewTopologySection("))
+        #expect(fixedCanvas.contains("ForEach(visibleOptionalModules)"))
+        #expect(fixedCanvas.contains(".micaObserveScrollPerformance()"))
+        let telemetryPosition = try #require(
+            fixedCanvas.range(of: "OverviewTelemetrySection(")
         )
-        #expect(telemetrySource.contains(".frame(height: plotHeight)"))
-        #expect(!telemetrySource.contains(".frame(height: 144)"))
-        #expect(!source.contains("OverviewMemoryBaseChart"))
-        #expect(dashboardSource.contains("OverviewProjection.networkFactGroups("))
+        let topologyPosition = try #require(
+            fixedCanvas.range(of: "OverviewTopologySection(")
+        )
+        let optionalPosition = try #require(
+            fixedCanvas.range(of: "ForEach(visibleOptionalModules)")
+        )
+        #expect(telemetryPosition.lowerBound < topologyPosition.lowerBound)
+        #expect(topologyPosition.lowerBound < optionalPosition.lowerBound)
+
+        #expect(preferencesSource.contains("struct OverviewPreferences"))
+        #expect(preferencesSource.contains("final class OverviewPreferencesStore"))
+        #expect(preferencesSource.contains("mica.overview.fixed-core.v1"))
+        #expect(preferencesSource.contains("visibleMetrics"))
+        #expect(preferencesSource.contains("timelineWindow"))
+        #expect(preferencesSource.contains("visibleOptionalModules"))
+        #expect(runtimeSource.contains("final class OverviewWindowRuntime"))
+        #expect(runtimeSource.contains("let liveSessionWindowDemandID"))
+        #expect(runtimeSource.contains("let registry = OverviewRuntimeRegistry()"))
+
+        #expect(editorSource.contains("struct OverviewPreferencesBar"))
+        #expect(editorSource.contains("ForEach(OverviewMetricID.allCases)"))
+        #expect(editorSource.contains("ForEach(OverviewOptionalModuleID.allCases)"))
+        #expect(editorSource.contains("store.setTimelineWindow"))
+        #expect(editorSource.contains("store.reset()"))
+        #expect(!editorSource.contains("UndoManager"))
+        #expect(!editorSource.contains("DropDelegate"))
 
         let telemetrySection = try sourceSection(
             telemetrySource,
             from: "struct OverviewTelemetrySection",
             to: "private enum OverviewTelemetryControlsLayout"
         )
-        let telemetryControls = try sourceSection(
-            telemetrySource,
-            from: "private struct OverviewTelemetryControls",
-            to: "private struct OverviewSessionStateReadout"
-        )
+        #expect(telemetrySection.contains("visibleMetrics"))
+        #expect(telemetrySection.contains("OverviewMetricID.allCases.filter"))
+        #expect(telemetrySection.contains(".overviewCyberSurface(.telemetry)"))
         #expect(telemetrySection.contains("ViewThatFits(in: .horizontal)"))
-        #expect(telemetrySection.contains("layout: .regular"))
-        #expect(telemetrySection.contains("layout: .compact"))
-        #expect(telemetryControls.contains("case .regular:"))
-        #expect(telemetryControls.contains("case .compact:"))
-        #expect(telemetryControls.contains(".pickerStyle(.segmented)"))
-        #expect(telemetryControls.contains("} else if snapshot.isPinned {"))
-        #expect(!telemetryControls.contains("snapshot.selectedDate != nil"))
-        #expect(!source.contains("overview.real_samples_count"))
-        #expect(
-            topologyViewSource.contains(
-                "private func minimumFlowHeight(for availableWidth: Int)"
-            )
-        )
-        #expect(
-            topologyViewSource.contains(
-                "return Int(min(max(scaledHeight, 680), 920).rounded())"
-            )
-        )
-
-        let overviewFlatSection = try sourceSection(
-            dashboardSource,
-            from: "struct OverviewFlatSection",
-            to: "private struct OverviewHighlightsSection"
-        )
-        let overviewSymbolMark = try sourceSection(
-            dashboardSource,
-            from: "struct OverviewSymbolMark",
-            to: "struct OverviewFlatSection"
-        )
-        #expect(overviewSymbolMark.contains(".symbolRenderingMode(.hierarchical)"))
-        #expect(overviewSymbolMark.contains("case .section: 34"))
-        #expect(overviewSymbolMark.contains("case .metric: 28"))
-        #expect(overviewFlatSection.contains("OverviewSymbolMark("))
-        #expect(overviewFlatSection.contains("size: .section"))
-        #expect(overviewFlatSection.contains(".micaFont(.title3, weight: .semibold)"))
-        #expect(telemetrySection.contains("systemName: \"chart.line.uptrend.xyaxis\""))
-        #expect(telemetrySection.contains("size: .section"))
-        #expect(telemetrySection.contains(".micaFont(.title3, weight: .semibold)"))
-
-        let highlightsSection = try sourceSection(
-            dashboardSource,
-            from: "private struct OverviewHighlightsSection",
-            to: "private struct OverviewSummaryColumn"
-        )
-        let networkSection = try sourceSection(
-            dashboardSource,
-            from: "private struct OverviewNetworkFactsSection",
-            to: "private struct OverviewNetworkFactGroupHeader"
-        )
-        let topologySection = try sourceSection(
-            topologyViewSource,
-            from: "struct OverviewTopologySection",
-            to: "private struct OverviewTopologyWorkspace"
-        )
-        #expect(overviewFlatSection.contains("tint: Color = MicaStyle.signalCyan"))
-        #expect(!highlightsSection.contains("tint: MicaStyle.signalViolet"))
-        #expect(!networkSection.contains("tint: MicaStyle.signalMint"))
-        #expect(!topologySection.contains("tint: MicaStyle.signalViolet"))
-        #expect(topologySection.contains("accessory: {"))
-        #expect(topologySection.contains("OverviewTopologyHeaderControls("))
-        #expect(!topologyViewSource.contains("WorkbenchCommandSummary("))
-        #expect(!topologyViewSource.contains("private func topologySummary"))
-
-        let telemetryPanel = try sourceSection(
-            telemetrySource,
-            from: "private struct OverviewTelemetryPanel",
-            to: "private struct OverviewTelemetryEmptyPlot"
-        )
-        #expect(telemetryPanel.contains("OverviewSymbolMark("))
-        #expect(telemetryPanel.contains("size: .metric"))
-        #expect(telemetryPanel.contains(".micaFont(.callout, weight: .semibold)"))
+        #expect(telemetrySection.contains("return min(max(panelWidth * 0.60, 240), 300)"))
+        #expect(telemetrySource.contains("OverviewLatestSampleMark("))
+        #expect(telemetrySource.contains("PointMark("))
+        #expect(telemetrySource.contains("AreaPlot("))
+        #expect(telemetrySource.contains("LinePlot("))
+        #expect(visualSource.contains(".phaseAnimator("))
+        #expect(visualSource.contains("static func resolve("))
+        #expect(source.contains("OverviewMotionState.resolve("))
 
         let topologyViewport = try sourceSection(
             topologyViewSource,
             from: "private struct OverviewTopologyViewport",
-            to: "private struct OverviewTopologySelectionDetail"
+            to: "private struct OverviewTopologyHUDOverlay"
         )
-        #expect(!topologyViewport.contains("ScrollView(.horizontal)"))
         #expect(topologyViewport.contains("LazyVStack"))
-        #expect(topologyViewport.contains(".frame(maxWidth: .infinity, alignment: .center)"))
-        #expect(topologyViewport.contains(".overlay(alignment: .topLeading)"))
-        #expect(topologyViewport.contains(".focusable()"))
+        #expect(!topologyViewport.contains("ScrollView(.horizontal)"))
+        #expect(topologyViewport.contains(".overviewCyberSurface(.topology)"))
+        #expect(topologyViewport.contains("OverviewTopologyHUDOverlay("))
         #expect(topologyViewport.contains(".onMoveCommand(perform: movePathSelection)"))
         #expect(topologyViewport.contains(".onExitCommand"))
         #expect(topologyViewport.contains(".contextMenu"))
-        #expect(
-            topologyViewport.contains(
-                ".padding(.top, OverviewTopologyLayout.columnHeaderHeight)"
-            )
-        )
-        let graphStart = try #require(topologyViewport.range(of: "private var topologyGraph"))
-        let selectionDetail = try #require(
-            topologyViewport.range(
-                of: "OverviewTopologySelectionDetail(",
-                range: graphStart.upperBound..<topologyViewport.endIndex
-            )
-        )
-        #expect(graphStart.lowerBound < selectionDetail.lowerBound)
-        #expect(!source.contains("ScrollView([.horizontal, .vertical])"))
 
-        let topologySelectionDetail = try sourceSection(
+        let hudOverlay = try sourceSection(
             topologyViewSource,
-            from: "private struct OverviewTopologySelectionDetail",
-            to: "private struct OverviewTopologyPathRows"
+            from: "private struct OverviewTopologyHUDOverlay",
+            to: "private struct OverviewTopologyHUDAnchor"
         )
-        #expect(
-            topologySelectionDetail.contains(
-                "height: OverviewTopologyLayout.selectionDetailHeight"
-            )
-        )
-        #expect(topologySelectionDetail.contains("snapshot.isPinned"))
-        #expect(topologySelectionDetail.contains("systemName: \"pin.fill\""))
-        #expect(topologySelectionDetail.contains("frameSize: 20"))
-        #expect(topologySelectionDetail.contains("OverviewTopologyIdleSummary("))
-        #expect(occurrenceCount(of: "WorkbenchIconCommand(", in: topologySelectionDetail) == 1)
-        #expect(!topologySelectionDetail.contains("overview.topology_previous_path"))
-        #expect(!topologySelectionDetail.contains("overview.topology_clear_selection"))
-        #expect(!topologySelectionDetail.contains("interaction.movePathSelection"))
-        #expect(!topologySelectionDetail.contains(".background("))
-        #expect(!topologySelectionDetail.contains("RoundedRectangle"))
+        #expect(hudOverlay.contains("revision: appModel.policyGroupCatalogRevision"))
+        #expect(hudOverlay.contains("catalog: appModel.policyGroupCatalog"))
+        #expect(hudOverlay.contains("layout.nodeGeometry(id:"))
+        #expect(hudOverlay.contains("obstacles: layout.hudObstacles"))
+        #expect(hudOverlay.contains("OverviewPolicyHUDPlacementResolver.resolve("))
+        #expect(hudOverlay.contains(".position(x: placement.frame.midX"))
+        #expect(hudOverlay.contains("OverviewHolographicHUD("))
+        #expect(hudOverlay.contains("interaction.clearSelection"))
 
-        let topologyIdleSummary = try sourceSection(
+        let energyBand = try sourceSection(
             topologyViewSource,
-            from: "private struct OverviewTopologyIdleSummary",
-            to: "private struct OverviewTopologyPathRows"
+            from: "private struct OverviewTopologyEnergyBand",
+            to: "private struct OverviewRouteEnergyTrigger"
         )
-        #expect(topologyIdleSummary.contains("overview.connection_count"))
-        #expect(topologyIdleSummary.contains("overview.topology_unavailable_paths"))
-        #expect(topologyIdleSummary.contains("design: .monospaced"))
-        #expect(!topologyIdleSummary.contains("WorkbenchSymbol("))
-        #expect(!topologyIdleSummary.contains(".background("))
+        #expect(energyBand.contains(".phaseAnimator("))
+        #expect(energyBand.contains("request.revision"))
+        #expect(energyBand.contains("interaction.snapshot.activeSelection"))
+        #expect(!energyBand.contains("TimelineView"))
 
-        let trafficChart = try sourceSection(
-            telemetrySource,
-            from: "private struct OverviewTrafficChart",
-            to: "private struct OverviewTrafficBaseChart"
-        )
-        let connectionChart = try sourceSection(
-            telemetrySource,
-            from: "private struct OverviewConnectionChart",
-            to: "private struct OverviewConnectionBaseChart"
-        )
-        for chart in [trafficChart, connectionChart] {
-            #expect(chart.contains(".accessibilityLabel("))
-            #expect(chart.contains(".accessibilityValue("))
-            #expect(!chart.contains(".accessibilityElement(children: .ignore)"))
-        }
+        #expect(topologySource.contains("private let nodeGeometryByID"))
+        #expect(topologySource.contains("func nodeGeometry(id: String)"))
+        #expect(topologySource.contains("OverviewTopologyLayout.columnHeaderHeight + 12"))
+        #expect(!source.contains("TimelineView"))
+        #expect(!source.contains(".glassEffect"))
+        #expect(!source.contains("GlassEffectContainer"))
 
-        let trafficBase = try sourceSection(
-            telemetrySource,
-            from: "private struct OverviewTrafficBaseChart",
-            to: "private struct OverviewConnectionChart"
-        )
-        let connectionBase = try sourceSection(
-            telemetrySource,
-            from: "private struct OverviewConnectionBaseChart",
-            to: "private struct OverviewTrafficSelectionIndicator"
-        )
-        for baseChart in [trafficBase, connectionBase] {
-            #expect(baseChart.contains("AreaPlot("))
-            #expect(baseChart.contains("LinePlot("))
-            #expect(baseChart.contains("PointPlot("))
-            #expect(baseChart.contains(".chartXScale(domain: dateDomain)"))
-            #expect(baseChart.contains(".chartYScale(domain: scale.domain)"))
-            #expect(!baseChart.contains("interaction"))
-            #expect(!baseChart.contains("snapshot"))
-            #expect(!baseChart.contains("RuleMark"))
-            #expect(!baseChart.contains("PointMark"))
-            #expect(!baseChart.contains(".animation("))
-        }
-
-        let topologyBase = try sourceSection(
-            topologyViewSource,
-            from: "private struct OverviewTopologyBaseBand",
-            to: "private struct OverviewTopologyHighlightBand"
-        )
-        let topologyHighlight = try sourceSection(
-            topologyViewSource,
-            from: "private struct OverviewTopologyHighlightBand",
-            to: "private struct OverviewTopologyHitBand"
-        )
-        let topologyHit = try sourceSection(
-            topologyViewSource,
-            from: "private struct OverviewTopologyHitBand",
-            to: "private struct OverviewTopologyAccessibilityRepresentation"
-        )
         let topologyAccessibility = try sourceSection(
             topologyViewSource,
             from: "private struct OverviewTopologyAccessibilityRepresentation",
             to: "private enum OverviewTopologyDrawing"
         )
-        #expect(topologyBase.contains("rendersAsynchronously: true"))
-        #expect(!topologyBase.contains("interaction"))
-        #expect(!topologyBase.contains("snapshot"))
-        #expect(topologyHighlight.contains("interaction.snapshot"))
-        #expect(topologyHit.contains("layout.hitTest"))
-        #expect(topologyAccessibility.contains("LazyVStack"))
-        #expect(topologyAccessibility.contains("ForEach(groups)"))
+        #expect(topologyAccessibility.contains("OverviewTopologyAccessibilityNodes("))
+        #expect(topologyAccessibility.contains("ForEach(nodes)"))
         #expect(topologyAccessibility.contains("ForEach(paths[pathRange])"))
         #expect(topologyAccessibility.contains(".accessibilityAddTraits(isPinned ? .isSelected : [])"))
-
-        let topologyDrawing = try sourceSuffix(
-            topologyViewSource,
-            from: "private enum OverviewTopologyDrawing"
-        )
-        #expect(topologyDrawing.contains("Text(verbatim: node.node.name)"))
-        #expect(topologyDrawing.contains("label.measure("))
-        #expect(topologyDrawing.contains("labelContext.clip(to: Path(node.labelRect))"))
-        #expect(!topologyDrawing.contains("displayLabel"))
     }
 
     @Test func overviewRouteOwnsTheOnlyOverviewViewInstantiation() throws {

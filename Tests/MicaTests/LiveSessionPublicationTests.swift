@@ -264,6 +264,7 @@ struct LiveSessionPublicationTests {
         )
         let initialMetadata = model.controllerMetadata
         let initialGroups = model.policyGroupCatalog
+        let initialGroupRevision = model.policyGroupCatalogRevision
         let initialConnections = model.connectionsCatalog
         let initialLogs = model.logsCatalog
 
@@ -275,12 +276,35 @@ struct LiveSessionPublicationTests {
 
         #expect(model.controllerMetadata == initialMetadata)
         #expect(model.policyGroupCatalog == initialGroups)
+        #expect(model.policyGroupCatalogRevision == initialGroupRevision)
         #expect(model.connectionsCatalog == initialConnections)
         #expect(model.logsCatalog == initialLogs)
         #expect(model.routingCatalog == RoutingCatalogSnapshot(dashboard: model.dashboard))
         #expect(model.insightCatalog == model.dashboard.insight)
         #expect(model.insightCatalog.ruleCount == 1)
         #expect(model.insightCatalog.providerCount == 1)
+    }
+
+    @MainActor
+    @Test func policyCatalogRevisionChangesOnlyWithPublishedCatalogData() {
+        let model = makeModel()
+        let initialRevision = model.policyGroupCatalogRevision
+        let group = ProxyGroupViewState(
+            id: "Auto",
+            type: "URLTest",
+            selected: "Tokyo",
+            options: ["Tokyo"]
+        )
+
+        model.mutateSessionDashboard(publishing: [.policyGroups]) { dashboard in
+            dashboard.groups = [group]
+        }
+        #expect(model.policyGroupCatalogRevision == initialRevision &+ 1)
+
+        model.mutateSessionDashboard(publishing: [.policyGroups]) { dashboard in
+            dashboard.groups = [group]
+        }
+        #expect(model.policyGroupCatalogRevision == initialRevision &+ 1)
     }
 
     @MainActor
@@ -948,6 +972,56 @@ struct LiveSessionPublicationTests {
         #expect(model.memoryTimeline.samples.map(\.receivedAt) == [firstReceivedAt, latestReceivedAt])
         #expect(model.controllerSession.pendingMemorySample == nil)
         #expect(model.controllerSession.pendingPresentation.isEmpty)
+    }
+
+    @MainActor
+    @Test func surgeConnectionsPublicationExposesNearLiveRatesAndTimelines() {
+        let profile = RouterProfile(
+            displayName: "Surge",
+            host: "127.0.0.1",
+            controllerKind: .surgeCompatible
+        )
+        let model = makeModel(
+            routers: [profile],
+            selectedRouterID: profile.id
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        let receivedAt = Date(timeIntervalSince1970: 300)
+        let request = SurgeActiveRequest(
+            id: "request-1",
+            url: "https://example.com",
+            policy: "Proxy",
+            uploadSpeed: 1_024,
+            downloadSpeed: 2_048
+        )
+        let snapshot = SurgeControlSnapshot(
+            activeRequests: SurgeActiveRequestsResponse(requests: [request]),
+            traffic: SurgeTrafficResponse(upload: 300, download: 600),
+            checkedAt: receivedAt
+        )
+        model.controllerSession.trafficTimeline.append(
+            upload: snapshot.traffic.upload,
+            download: snapshot.traffic.download,
+            receivedAt: receivedAt
+        )
+        model.stageSurgeSnapshot(
+            snapshot,
+            receivedAt: receivedAt,
+            includesCompleteBaseline: false
+        )
+
+        model.publishStagedSurgePresentation(
+            router: profile,
+            domains: [.connections]
+        )
+
+        #expect(model.trafficTimeline.samples.last?.upload == 300)
+        #expect(model.trafficTimeline.samples.last?.download == 600)
+        #expect(model.connectionCountTimeline.samples.last?.activeCount == 1)
+        #expect(model.liveTrafficRate == TrafficSnapshot(upload: 300, download: 600))
+        #expect(model.liveStreamUpdatedAt == receivedAt)
+        #expect(model.connectionsCatalog.traffic == TrafficSnapshot(upload: 300, download: 600))
+        #expect(model.connectionsCatalog.connections.count == 1)
     }
 
     @MainActor

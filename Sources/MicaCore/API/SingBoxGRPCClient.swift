@@ -91,6 +91,7 @@ public final class SingBoxGRPCClient: SingBoxGRPCClientProtocol, Sendable {
     private let service: SingBoxStartedServiceAdapter<GeneratedClient>
 
     public init(profile: RouterProfile, credential: String?) throws {
+        _ = try profile.baseURL()
         let transport = try Transport(
             target: .dns(host: profile.host, port: profile.port),
             transportSecurity: Self.transportSecurity(for: profile)

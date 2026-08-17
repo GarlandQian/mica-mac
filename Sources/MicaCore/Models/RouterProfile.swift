@@ -38,6 +38,23 @@ public enum SurgeControllerPlatform: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public enum RouterProfileEndpointError: Error, LocalizedError, Equatable, Sendable {
+    case invalidHost
+    case invalidPort(Int)
+    case invalidURL
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidHost:
+            "The controller host is empty or contains a scheme, path, or whitespace."
+        case .invalidPort(let port):
+            "The controller port \(port) is outside the valid 1...65535 range."
+        case .invalidURL:
+            "The controller host and port do not form a valid URL."
+        }
+    }
+}
+
 public enum ControllerKind: String, Codable, CaseIterable, Sendable {
     case autoDetect = "auto-detect"
     case mihomoCompatible = "mihomo-compatible"
@@ -167,16 +184,41 @@ public struct RouterProfile: Identifiable, Codable, Equatable, Sendable {
         lastConnectedAt = try container.decodeIfPresent(Date.self, forKey: .lastConnectedAt)
         controllerKind = try container.decodeIfPresent(ControllerKind.self, forKey: .controllerKind) ?? .autoDetect
         surgePlatform = try container.decodeIfPresent(SurgeControllerPlatform.self, forKey: .surgePlatform) ?? .remoteMac
+
+        do {
+            _ = try baseURL()
+        } catch {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "Invalid controller endpoint in persisted router profile.",
+                    underlyingError: error
+                )
+            )
+        }
     }
 
-    public var baseURL: URL {
+    public func baseURL() throws -> URL {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedHost.isEmpty,
+              normalizedHost == host,
+              !normalizedHost.contains("://"),
+              !normalizedHost.contains("/"),
+              normalizedHost.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            throw RouterProfileEndpointError.invalidHost
+        }
+        guard (1...65_535).contains(port) else {
+            throw RouterProfileEndpointError.invalidPort(port)
+        }
+
         var components = URLComponents()
         components.scheme = scheme.rawValue
-        components.host = host
+        components.host = normalizedHost
         components.port = port
 
-        guard let url = components.url else {
-            preconditionFailure("Invalid router profile URL: \(scheme.rawValue)://\(host):\(port)")
+        guard let url = components.url,
+              url.host?.isEmpty == false else {
+            throw RouterProfileEndpointError.invalidURL
         }
 
         return url

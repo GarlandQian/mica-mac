@@ -2,6 +2,51 @@ import XCTest
 @testable import MicaCore
 
 final class SurgeHttpAPIClientTests: XCTestCase {
+    func testDirectTransportCancellationRemainsCancellation() async throws {
+        let profile = RouterProfile(
+            displayName: "Cancelled Surge",
+            host: "controller.example",
+            port: 6171,
+            controllerKind: .surgeCompatible
+        )
+        let client = SurgeHttpAPIClient(profile: profile) { _ in
+            throw CancellationError()
+        }
+
+        do {
+            _ = try await client.outbound()
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // The client must not reclassify cancellation as a network outage.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testSnapshotPropagatesCancellationFromOptionalEndpoint() async throws {
+        let profile = RouterProfile(
+            displayName: "Cancelled Surge Snapshot",
+            host: "controller.example",
+            port: 6171,
+            controllerKind: .surgeCompatible
+        )
+        let fixture = SurgeSnapshotCancellationFixture()
+        let client = SurgeHttpAPIClient(profile: profile) { request in
+            try await fixture.load(request)
+        }
+
+        do {
+            _ = try await client.snapshot()
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            let paths = await fixture.recordedPaths()
+            XCTAssertEqual(paths.last, "/v1/requests/recent")
+            XCTAssertFalse(paths.contains("/v1/rules"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     private let decoder = JSONDecoder()
 
     func testSelectPolicyUsesOfficialMethodPathAndBody() async throws {
@@ -263,4 +308,37 @@ private actor SurgeHTTPFixture {
 
 private enum SurgeHTTPFixtureError: Error {
     case invalidResponse
+}
+
+private actor SurgeSnapshotCancellationFixture {
+    private var paths: [String] = []
+
+    func load(_ request: URLRequest) throws -> (Data, URLResponse) {
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                  url: url,
+                  statusCode: 200,
+                  httpVersion: "HTTP/1.1",
+                  headerFields: ["Content-Type": "application/json"]
+              ) else {
+            throw SurgeHTTPFixtureError.invalidResponse
+        }
+
+        paths.append(url.path)
+        let data: Data
+        switch url.path {
+        case "/v1/events": data = Data(#"{"events":[]}"#.utf8)
+        case "/v1/outbound": data = Data(#"{"mode":"rule"}"#.utf8)
+        case "/v1/policies": data = Data(#"{"policies":[]}"#.utf8)
+        case "/v1/policy_groups": data = Data(#"{"groups":[]}"#.utf8)
+        case "/v1/requests/active": data = Data("[]".utf8)
+        case "/v1/requests/recent": throw CancellationError()
+        default: data = Data("{}".utf8)
+        }
+        return (data, response)
+    }
+
+    func recordedPaths() -> [String] {
+        paths
+    }
 }

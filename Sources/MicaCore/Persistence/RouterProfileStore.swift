@@ -40,6 +40,10 @@ public actor JSONRouterProfileStore: RouterProfileStore {
     }
 
     public func saveProfiles(_ profiles: [RouterProfile]) async throws {
+        for profile in profiles {
+            _ = try profile.baseURL()
+        }
+
         let directoryURL = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: directoryURL,

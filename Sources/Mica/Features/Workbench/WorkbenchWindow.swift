@@ -7,14 +7,12 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppModel.self) private var appModel
     @EnvironmentObject private var preferences: AppPreferencesStore
-    @Environment(\.undoManager) private var undoManager
     @SceneStorage("workbenchDestination") private var destinationRawValue = WorkbenchDestination.overview.rawValue
 
-    private let overviewLayoutStore: OverviewDashboardLayoutStore
+    private let overviewPreferencesStore: OverviewPreferencesStore
 
     @State private var editor: RouterEditorPresentation?
     @State private var pendingIntent: PendingEditorIntent?
-    @State private var pendingOverviewIntent: PendingOverviewIntent?
     @State private var discardRequestID = 0
     @State private var addControllerRequestID = 0
     @State private var editControllerRequestID = 0
@@ -23,16 +21,10 @@ struct ContentView: View {
     @State private var didRegisterMainWindow = false
     @State private var closeGuard = MainWindowCloseGuard()
     @State private var workspaceStore = WorkbenchWorkspaceStore()
-    @State private var overviewCoordinator: OverviewDashboardWindowCoordinator
-    @State private var knownOverviewControllerIDs: Set<RouterProfile.ID>?
+    @State private var overviewRuntime = OverviewWindowRuntime()
 
-    init(overviewLayoutStore: OverviewDashboardLayoutStore) {
-        self.overviewLayoutStore = overviewLayoutStore
-        _overviewCoordinator = State(
-            wrappedValue: OverviewDashboardWindowCoordinator(
-                layoutStore: overviewLayoutStore
-            )
-        )
+    init(overviewPreferencesStore: OverviewPreferencesStore) {
+        self.overviewPreferencesStore = overviewPreferencesStore
     }
 
     private var destination: Binding<WorkbenchDestination> {
@@ -55,15 +47,10 @@ struct ContentView: View {
             }
             .task {
                 appModel.loadPersistedState()
-                synchronizeOverviewControllerOwnership()
-                reconcileOverviewCoordinator()
             }
             .onAppear {
                 registerMainWindowIfNeeded()
                 applyPresentationLanguage()
-                overviewCoordinator.attachUndoManager(undoManager)
-                synchronizeOverviewControllerOwnership()
-                reconcileOverviewCoordinator()
             }
             .onDisappear {
                 if didRegisterMainWindow {
@@ -98,38 +85,13 @@ struct ContentView: View {
             .onChange(of: preferences.language) { _, _ in
                 applyPresentationLanguage()
             }
-            .onChange(of: undoManager) { _, undoManager in
-                overviewCoordinator.attachUndoManager(undoManager)
-            }
-            .onChange(of: appModel.routers) { _, _ in
-                synchronizeOverviewControllerOwnership()
-                reconcileOverviewCoordinator()
-            }
-            .onChange(of: appModel.didFinishLoadingPersistedState) { _, finished in
-                guard finished else { return }
-                synchronizeOverviewControllerOwnership()
-            }
-            .onChange(of: appModel.selectedRouterID) {
-                reconcileOverviewCoordinator()
-            }
-            .onChange(of: overviewCoordinator.hasDirtyDraft) {
-                updateCombinedCloseGuard()
-            }
-            .onChange(of: overviewCoordinator.isCommitting) {
-                updateCombinedCloseGuard()
-            }
-            .onChange(of: overviewCoordinator.isEditing) { _, isEditing in
-                if !isEditing {
-                    pendingOverviewIntent = nil
-                }
-            }
     }
 
     private var configuredContent: some View {
         navigationContent
             .navigationSplitViewStyle(.balanced)
-            .environment(overviewLayoutStore)
-            .environment(overviewCoordinator)
+            .environment(overviewPreferencesStore)
+            .environment(overviewRuntime)
             .focusedValue(\.micaFocusedWorkbenchDestination, destination)
             .focusedValue(
                 \.micaAddControllerRequestID,
@@ -147,8 +109,7 @@ struct ContentView: View {
                 destination: destination,
                 isControllerSwitchingEnabled:
                     editor == nil
-                    && !editorIsSaving
-                    && !overviewCoordinator.isCommitting,
+                    && !editorIsSaving,
                 onSelectController: requestControllerSelection,
                 onAddController: presentAddController
             )
@@ -159,15 +120,6 @@ struct ContentView: View {
                 )
         } detail: {
             VStack(spacing: 0) {
-                if pendingOverviewIntent != nil {
-                    OverviewReplacementDecisionBar(
-                        onKeepEditing: {
-                            pendingOverviewIntent = nil
-                        },
-                        onDiscardAndContinue: performPendingOverviewIntent
-                    )
-                }
-
                 if let editor {
                     RouterEditorView(
                         draft: editor.draft,
@@ -208,74 +160,39 @@ struct ContentView: View {
     }
 
     private func presentAddController() {
-        requestOverviewReplacement(
-            .editor(
-                RouterEditorPresentation(
-                    titleKey: "editor.add_router",
-                    draft: appModel.draft()
-                )
+        requestEditor(
+            RouterEditorPresentation(
+                titleKey: "editor.add_router",
+                draft: appModel.draft()
             )
         )
     }
 
     private func presentEditController(_ router: RouterProfile) {
-        requestOverviewReplacement(
-            .editor(
-                RouterEditorPresentation(
-                    titleKey: "editor.edit_router",
-                    draft: appModel.draft(for: router)
-                )
+        requestEditor(
+            RouterEditorPresentation(
+                titleKey: "editor.edit_router",
+                draft: appModel.draft(for: router)
             )
         )
     }
 
     private func requestDestination(_ next: WorkbenchDestination) {
-        guard !editorIsSaving, !overviewCoordinator.isCommitting else { return }
+        guard !editorIsSaving else { return }
         guard next.rawValue != destinationRawValue else { return }
         if editor != nil {
             pendingIntent = .destination(next)
             discardRequestID += 1
             return
         }
-        requestOverviewReplacement(.destination(next))
+        destinationRawValue = next.rawValue
     }
 
     private func requestControllerSelection(_ router: RouterProfile) {
-        requestOverviewReplacement(.controller(router))
-    }
-
-    private func requestOverviewReplacement(_ intent: PendingOverviewIntent) {
-        guard !overviewCoordinator.isCommitting else { return }
-        guard overviewCoordinator.isEditing else {
-            performOverviewIntent(intent)
-            return
-        }
-        guard overviewCoordinator.hasDirtyDraft else {
-            overviewCoordinator.cancel()
-            performOverviewIntent(intent)
-            return
-        }
-        pendingOverviewIntent = intent
-    }
-
-    private func performPendingOverviewIntent() {
-        guard let intent = pendingOverviewIntent else { return }
-        pendingOverviewIntent = nil
-        overviewCoordinator.cancel()
-        performOverviewIntent(intent)
-    }
-
-    private func performOverviewIntent(_ intent: PendingOverviewIntent) {
-        switch intent {
-        case .destination(let destination):
-            destinationRawValue = destination.rawValue
-        case .editor(let presentation):
-            requestEditor(presentation)
-        case .controller(let router):
-            Task { @MainActor in
-                await Task.yield()
-                appModel.selectRouter(router)
-            }
+        guard editor == nil, !editorIsSaving else { return }
+        Task { @MainActor in
+            await Task.yield()
+            appModel.selectRouter(router)
         }
     }
 
@@ -321,36 +238,9 @@ struct ContentView: View {
 
     private func updateCombinedCloseGuard() {
         closeGuard.update(
-            isDirty: editorIsDirty || overviewCoordinator.hasDirtyDraft,
-            isSaving: editorIsSaving || overviewCoordinator.isCommitting,
+            isDirty: editorIsDirty,
+            isSaving: editorIsSaving,
             language: preferences.language
-        )
-    }
-
-    private func synchronizeOverviewControllerOwnership() {
-        guard appModel.didFinishLoadingPersistedState else { return }
-        let current = Set(appModel.routers.map(\.id))
-        guard let previous = knownOverviewControllerIDs else {
-            knownOverviewControllerIDs = current
-            return
-        }
-        knownOverviewControllerIDs = current
-        for removedControllerID in previous.subtracting(current) {
-            Task {
-                try? await overviewLayoutStore.removeController(
-                    removedControllerID
-                )
-            }
-        }
-    }
-
-    private func reconcileOverviewCoordinator() {
-        let targetExists = overviewCoordinator.targetControllerID.map { targetID in
-            appModel.routers.contains { $0.id == targetID }
-        } ?? true
-        overviewCoordinator.reconcile(
-            selectedControllerID: appModel.selectedRouterID,
-            targetControllerExists: targetExists
         )
     }
 }
@@ -369,55 +259,4 @@ struct RouterEditorPresentation: Identifiable {
 private enum PendingEditorIntent {
     case destination(WorkbenchDestination)
     case editor(RouterEditorPresentation)
-}
-
-private enum PendingOverviewIntent {
-    case destination(WorkbenchDestination)
-    case editor(RouterEditorPresentation)
-    case controller(RouterProfile)
-}
-
-private struct OverviewReplacementDecisionBar: View {
-    @Environment(\.micaAppLanguage) private var language
-
-    let onKeepEditing: () -> Void
-    let onDiscardAndContinue: () -> Void
-
-    var body: some View {
-        HStack(spacing: MicaSpacing.module) {
-            Label(
-                MicaStrings.localizedKey(
-                    "overview.layout_pending_navigation",
-                    language: language
-                ),
-                systemImage: "exclamationmark.triangle"
-            )
-            .micaFont(.callout, weight: .semibold)
-            .foregroundStyle(MicaStyle.signalAmber)
-
-            Spacer(minLength: MicaSpacing.module)
-
-            Button(action: onKeepEditing) {
-                Text(
-                    MicaStrings.localizedKey(
-                        "overview.layout_keep_editing",
-                        language: language
-                    )
-                )
-            }
-
-            Button(role: .destructive, action: onDiscardAndContinue) {
-                Text(
-                    MicaStrings.localizedKey(
-                        "overview.layout_discard_continue",
-                        language: language
-                    )
-                )
-            }
-        }
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.tight)
-        .background(MicaDesignTokens.pageFill)
-        .overlay(alignment: .bottom) { WorkbenchChromeSeparator() }
-    }
 }

@@ -24,6 +24,12 @@ func unregisterLiveSessionWindowDemand(_ id: LiveSessionWindowDemandID)
 func upsertRouter(from draft: RouterDraft) async throws -> RouterProfile
 func deleteRouterTransaction(_ router: RouterProfile) async throws
 func moveRouter(_ routerID: RouterProfile.ID, to targetIndex: Int) async throws
+
+actor RouterProfileMutationCoordinator {
+    func run<Value: Sendable>(
+        _ operation: @escaping @MainActor @Sendable () async throws -> Value
+    ) async throws -> Value
+}
 ```
 
 Command surfaces consume these shared capabilities:
@@ -52,6 +58,13 @@ var canTogglePresentationPause: Bool
   `NSLocalNetworkUsageDescription`. Keep the narrow local-network declaration;
   do not replace it with the global `NSAllowsArbitraryLoads` exception.
 - Fast, medium, and slow REST lanes run at 2, 5, and 30 seconds. Mihomo WebSocket streams, Surge near-live polling, and sing-box StartedService streams remain part of the same selected generation.
+- Every accepted Surge near-live tick stages the current traffic and active
+  requests, appends the received traffic-rate and active-connection-count
+  samples, and publishes the `.connections` presentation domain when not
+  paused. The visible `trafficTimeline`, `connectionCountTimeline`,
+  `liveTrafficRate`, `liveStreamUpdatedAt`, and connections catalog advance
+  together; `domains: []` must not strand a current Surge frame only in the
+  generation-owned raw snapshot.
 - One `LiveSessionRuntime` actor owns high-frequency raw traffic, memory,
   active-connection count, connection rows, closed-history, and log mutations
   for the selected generation.
@@ -87,6 +100,11 @@ var canTogglePresentationPause: Bool
 - Connection structure, metrics, and aggregate traffic use independent
   revisions. Rate/counter-only frames must not rebuild static connection rows,
   close groups, rules, providers, or topology structure.
+- `ConnectionsCatalogSnapshot.traffic` preserves the controller connection
+  aggregate (for Mihomo/sing-box this can be cumulative totals). It is not the
+  authoritative live rate. Rate-labelled UI consumes the latest received
+  `TrafficTimeline.Sample` or `liveTrafficRate`; cumulative totals remain byte
+  totals and must not be formatted with `/s`.
 - Every main window owns one stable `LiveSessionWindowDemandID`. Window roots
   register/update/unregister only their own destination. The effective domains
   are the union across windows; this never creates per-window networking or a
@@ -109,12 +127,20 @@ var canTogglePresentationPause: Bool
 - Test stays available while paused. Refresh/reload/provider-update commands are disabled while paused. Menu, toolbar, Actions, Rules, and Sources consume the same capability rules.
 - Closing the final main window or sleeping invalidates the generation. App deactivation and minimization do not. Settings-only state cannot issue selected-session commands.
 - Profile save/delete persist before observable mutation. Storage failure keeps profiles, credentials, selection, and the active generation unchanged.
+- Profile load, save, delete, reorder, and `lastConnectedAt` persistence share
+  one serialized mutation queue. Each transaction reads observable profile state
+  only after it reaches the head of that queue; an older whole-array snapshot
+  must never overwrite a newer edit or metadata update across an `await`.
 - Editing or adding a non-active controller never steals the active session. Active deletion chooses the next item at the old index, otherwise the previous item.
 - Manual controller order is the only controller order. Recent controller history is stored separately and updates for every explicit selected-ID change.
 - Dirty editor navigation is inline. Saving disables destination/Add/Edit
   replacement. Dirty window close uses `MainWindowCloseGuard`, an AppKit
   lifecycle delegate attached through an `NSView` to that exact owning window;
   it must not select the process-global main window or host content UI.
+- Every remote command revalidates live-session state and the concrete runtime
+  capability inside AppModel immediately before creating its task/client.
+  Disabled or hidden UI is presentation defense only; stale clicks, controller
+  switches, reconnects, and direct dispatcher calls must not start transport.
 
 ## 4. Validation & Error Matrix
 
@@ -136,8 +162,11 @@ var canTogglePresentationPause: Bool
 | An older async demand reaches the actor late | Reject its stale identity or revision without changing scheduling or pause state. |
 | An immediate flush revision is superseded while its domain remains visible | Release the old reservation and publish against the current demand; do not orphan the dirty domain. |
 | A publication is staged while its domain becomes hidden | Keep staging authoritative; the next permitted visibility entry flushes the staged full state even if no actor revision remains dirty. |
+| Surge near-live traffic/active requests arrive after baseline | Append both bounded timelines and publish `.connections`; visible rate, count, timestamp, and catalog advance in the same accepted session. |
+| A consumer needs a live upload/download rate | Read the received traffic timeline/latest rate, not `ConnectionsCatalogSnapshot.traffic` cumulative totals. |
 | Presentation is paused | Continue networking; reject user refresh/reload; allow Test; keep visible timestamp fixed. |
 | Profile persistence fails after secret write | Restore the prior secret and leave observable/session state unchanged. |
+| Profile edit and successful-connection metadata write overlap | Serialize both whole-array writes and retain both the edit and `lastConnectedAt` in memory and storage. |
 | Active controller is deleted | Select next at old index, else previous; create one new generation. |
 | Non-active controller is edited/deleted/reordered | Current selected ID and generation remain unchanged. |
 | Dirty editor window close | Show native destructive confirmation; cancel keeps window/draft. |
@@ -147,6 +176,7 @@ var canTogglePresentationPause: Bool
 | A connection has no non-blank controller ID | Do not start a task or send a request; report the operation as unavailable/partial. |
 | A policy member disappeared before selection | Reject the stale intent without cancelling or starting a selection task. |
 | sing-box Tailscale fails after prior status | Retain prior Tailscale status and mark it partial without failing the rest of the controller session. |
+| A runtime command is invoked while connecting/reconnecting or after a controller variant change | Reject it before task/client creation and keep every in-flight marker nil. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -166,6 +196,11 @@ var canTogglePresentationPause: Bool
 - Log 2,000/8 MiB FIFO ring behavior, closed connection 200/30-minute current-session retention, and traffic/memory/active-connection five-minute/300-sample budgets.
 - Deterministic 5/4/2/1 Hz visible publication cadence, non-restarting schedule
   tokens, hidden-domain raw retention, and immediate entry flush.
+- Surge near-live publication test asserting traffic/count timelines,
+  `liveTrafficRate`, `liveStreamUpdatedAt`, and connections catalog all advance
+  from one accepted tick.
+- Source or projection test rejecting cumulative connection totals as the input
+  to rate-labelled Overview readouts.
 - Multi-window union, duplicate-domain registration, token update/unregister,
   generation replacement, and one-runtime ownership.
 - Complete demand propagation for unchanged unions when global pause, logs
@@ -181,6 +216,8 @@ var canTogglePresentationPause: Bool
 - Explicit end clears every published operational domain; reconnect retains one
   read-only stale snapshot and commits one atomic replacement baseline.
 - Transaction failure rollback for profile and secret storage.
+- Deterministic interleaving test for profile edit versus connection metadata
+  persistence; assert no overlapping store write and no lost field.
 - Active/non-active insert, edit, delete, and reorder session side effects.
 - Last-data presentation: unavailable plus existing rows resolves to content/stale; zero rows resolves to unavailable.
 - sing-box multi-stream fixture, cancellation/channel shutdown, structured gRPC status mapping, and Tailscale empty/error/partial readiness.
@@ -194,6 +231,8 @@ var canTogglePresentationPause: Bool
   `NSAllowsLocalNetworking` plus a bilingual
   `NSLocalNetworkUsageDescription`; `plutil -lint` and `swift build` verify the
   source plist and linker embedding path.
+- Execution-boundary tests that configuration and maintenance dispatch reject
+  non-live sessions and unsupported CMFA/Stash variants without transport.
 
 ## 7. Wrong vs Correct
 
@@ -209,11 +248,29 @@ requestImmediateSessionRefresh(isUserInitiated: true)
 ```
 
 ```swift
+// Wrong: rely on a disabled button and start transport from a stale intent.
+guard controllerSupports(action, router: router, action: title) else { return }
+runtimeOperationTask = Task { try await client.flushDNSCache() }
+
+// Correct: AppModel revalidates live state and capability at execution time.
+guard controllerSupportsLiveAction(action, router: router, action: title) else { return }
+runtimeOperationTask = Task { try await client.flushDNSCache() }
+```
+
+```swift
 // Wrong: each command surface invents a pause condition.
 .disabled(appModel.isBusy)
 
 // Correct: every surface consumes the shared capability.
 .disabled(!appModel.canRefreshSelectedRouter)
+```
+
+```swift
+// Wrong: the field is an Int, but its semantic unit is cumulative bytes.
+OverviewFormat.rate(appModel.connectionsCatalog.traffic.upload)
+
+// Correct: a rate-labelled readout consumes a received rate sample.
+appModel.trafficTimeline.samples.last.map { OverviewFormat.rate($0.upload) }
 ```
 
 ```xml

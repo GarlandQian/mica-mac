@@ -32,6 +32,16 @@ extension AppModel {
             return
         }
 
+        guard effectiveUnifiedCapabilities(for: router).memory else {
+            operationState = .partial(
+                localized("operation.capability_operation_unavailable"),
+                action: TrialCommandAction.memoryCheck.title(language: presentationLanguage),
+                target: router.displayName,
+                nextStep: localized("action.refresh")
+            )
+            return
+        }
+
         let commandID = beginCommand(.memoryCheck, router: router, summary: localized("operation.memory_checking"))
         let routerID = router.id
         let generation = controllerSession.generation
@@ -86,7 +96,7 @@ extension AppModel {
             return
         }
 
-        guard controllerSupports(
+        guard controllerSupportsLiveAction(
             .dnsFlush,
             router: router,
             action: TrialCommandAction.dnsFlush.title(language: presentationLanguage)
@@ -197,7 +207,7 @@ extension AppModel {
             return
         }
 
-        guard controllerSupports(
+        guard controllerSupportsLiveAction(
             unifiedAction,
             router: router,
             action: action.title(language: presentationLanguage)
@@ -267,6 +277,20 @@ extension AppModel {
             return
         }
 
+        switch effectiveUnifiedControllerType(for: router) {
+        case .mihomoCompatible, .openClashMihomoCompatible, .nikkiMihomoCompatible:
+            break
+        case .surgeHTTPAPI, .singBoxCompatible, .cmfaCompatible, .stashCompatible,
+             .stashCmfaCompatible, .smartProbe, .unknown, .unsupported:
+            operationState = .partial(
+                localized("operation.capability_operation_unavailable"),
+                action: action.title(language: presentationLanguage),
+                target: router.displayName,
+                nextStep: localized("action.refresh")
+            )
+            return
+        }
+
         let commandID = beginCommand(action, router: router, summary: localized(workingKey))
         let routerID = router.id
         let generation = controllerSession.generation
@@ -310,6 +334,16 @@ extension AppModel {
             return nil
         }
 
+        guard controllerSession.state.allowsLiveCommands else {
+            operationState = .partial(
+                localized("command.disabled_unavailable"),
+                action: action,
+                target: router.displayName,
+                nextStep: localized("action.refresh")
+            )
+            return nil
+        }
+
         switch effectiveUnifiedControllerType(for: router) {
         case .mihomoCompatible, .openClashMihomoCompatible, .nikkiMihomoCompatible, .cmfaCompatible, .stashCompatible:
             return router
@@ -327,6 +361,16 @@ extension AppModel {
     private func selectedSurgeRuntimeRouter(action: String) -> RouterProfile? {
         guard let router = selectedRouter else {
             operationState = .error(localized("operation.select_router_refresh"), action: action, nextStep: localized("action.edit_router"))
+            return nil
+        }
+
+        guard controllerSession.state.allowsLiveCommands else {
+            operationState = .partial(
+                localized("command.disabled_unavailable"),
+                action: action,
+                target: router.displayName,
+                nextStep: localized("action.refresh")
+            )
             return nil
         }
 

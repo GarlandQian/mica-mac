@@ -199,14 +199,14 @@ const expectedWorkbenchFiles = [
   "Sources/Mica/Features/Workbench/WorkbenchLogs.swift",
   "Sources/Mica/Features/Workbench/WorkbenchManagement.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewEditor.swift",
-  "Sources/Mica/Features/Workbench/WorkbenchOverviewLayoutStore.swift",
-  "Sources/Mica/Features/Workbench/WorkbenchOverviewPersonalization.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewPolicyHUD.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewPreferences.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewProjection.swift",
-  "Sources/Mica/Features/Workbench/WorkbenchOverviewRuntimes.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewTelemetry.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewTopology.swift",
   "Sources/Mica/Features/Workbench/WorkbenchOverviewTopologyView.swift",
-  "Sources/Mica/Features/Workbench/WorkbenchOverviewWindowCoordinator.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewVisualSystem.swift",
+  "Sources/Mica/Features/Workbench/WorkbenchOverviewWindowRuntime.swift",
   "Sources/Mica/Features/Workbench/WorkbenchProxyGroupPanels.swift",
   "Sources/Mica/Features/Workbench/WorkbenchProxyInteraction.swift",
   "Sources/Mica/Features/Workbench/WorkbenchProxyPresentation.swift",
@@ -309,7 +309,7 @@ const requiredPresentationTests = [
   "Tests/MicaTests/WorkbenchNavigationTests.swift",
   "Tests/MicaTests/WorkbenchOperationOutcomePresentationTests.swift",
   "Tests/MicaTests/WorkbenchOverviewPerformanceTests.swift",
-  "Tests/MicaTests/WorkbenchOverviewPersonalizationTests.swift",
+  "Tests/MicaTests/WorkbenchOverviewPreferencesTests.swift",
   "Tests/MicaTests/WorkbenchPreferencesTests.swift",
   "Tests/MicaTests/WorkbenchProxyWorkspaceTests.swift",
   "Tests/MicaTests/WorkbenchTimelineAndProxyTests.swift",
@@ -432,28 +432,25 @@ const controllerSelector = read("Sources/Mica/Features/Workbench/WorkbenchContro
 const workspaceView = read("Sources/Mica/Features/Workbench/WorkbenchWorkspaceView.swift");
 const dashboard = read("Sources/Mica/Features/Workbench/WorkbenchDashboard.swift");
 const overviewEditor = read("Sources/Mica/Features/Workbench/WorkbenchOverviewEditor.swift");
-const overviewPersonalization = read("Sources/Mica/Features/Workbench/WorkbenchOverviewPersonalization.swift");
-const overviewLayoutStore = read("Sources/Mica/Features/Workbench/WorkbenchOverviewLayoutStore.swift");
-const overviewWindowCoordinator = read("Sources/Mica/Features/Workbench/WorkbenchOverviewWindowCoordinator.swift");
-const overviewPersonalizationSource = [
-  overviewPersonalization,
-  overviewLayoutStore,
-  overviewWindowCoordinator,
-].join("\n");
+const overviewPolicyHUD = read("Sources/Mica/Features/Workbench/WorkbenchOverviewPolicyHUD.swift");
+const overviewPreferences = read("Sources/Mica/Features/Workbench/WorkbenchOverviewPreferences.swift");
 const overviewProjection = read("Sources/Mica/Features/Workbench/WorkbenchOverviewProjection.swift");
-const overviewRuntimes = read("Sources/Mica/Features/Workbench/WorkbenchOverviewRuntimes.swift");
 const overviewTelemetry = read("Sources/Mica/Features/Workbench/WorkbenchOverviewTelemetry.swift");
 const overviewTopology = read("Sources/Mica/Features/Workbench/WorkbenchOverviewTopology.swift");
 const overviewTopologyView = read("Sources/Mica/Features/Workbench/WorkbenchOverviewTopologyView.swift");
+const overviewVisualSystem = read("Sources/Mica/Features/Workbench/WorkbenchOverviewVisualSystem.swift");
+const overviewWindowRuntime = read("Sources/Mica/Features/Workbench/WorkbenchOverviewWindowRuntime.swift");
 const overviewSource = [
   dashboard,
   overviewEditor,
-  overviewPersonalizationSource,
+  overviewPolicyHUD,
+  overviewPreferences,
   overviewProjection,
-  overviewRuntimes,
   overviewTelemetry,
   overviewTopology,
   overviewTopologyView,
+  overviewVisualSystem,
+  overviewWindowRuntime,
 ].join("\n");
 const proxyRoot = read("Sources/Mica/Features/Workbench/WorkbenchProxies.swift");
 const proxyPanels = read("Sources/Mica/Features/Workbench/WorkbenchProxyGroupPanels.swift");
@@ -509,8 +506,8 @@ const presentationTests = requiredPresentationTests.map(read).join("\n");
 const sessionStreamTests = read("Tests/MicaTests/SessionStreamStateTests.swift");
 const liveSessionPublicationTests = read("Tests/MicaTests/LiveSessionPublicationTests.swift");
 const liveSessionRuntimeTests = read("Tests/MicaTests/LiveSessionRuntimeTests.swift");
-const overviewPersonalizationTests = read(
-  "Tests/MicaTests/WorkbenchOverviewPersonalizationTests.swift",
+const overviewPreferencesTests = read(
+  "Tests/MicaTests/WorkbenchOverviewPreferencesTests.swift",
 );
 const appAppearance = read("Sources/Mica/App/AppAppearance.swift");
 const appFontScale = read("Sources/Mica/App/AppFontScale.swift");
@@ -954,7 +951,7 @@ assertIncludes(
 assertIncludes(workspaceView, ".searchable(", "Searchable destinations must share the native toolbar search field");
 assertIncludes(chrome, ".safeAreaInset(edge: .bottom", "Workbench must keep a fixed bottom status bar");
 assertIncludes(statusBar, "struct WorkbenchStatusBar", "Workbench must expose the replacement status bar");
-assert(count(chromeSource, "WorkbenchChromeSeparator()") >= 2, "Workbench command and status chrome must share the semantic separator");
+assert(count(workbenchCode, "WorkbenchChromeSeparator()") >= 2, "Workbench command and status chrome must share the semantic separator");
 assertIncludes(statusBar, "struct WorkbenchOperationOutcomePresentation", "Completed operations must retain a durable presentation projection");
 assertIncludes(statusBar, "activityIdentity(status:", "Completed operations must share the stable bottom status surface");
 assertExcludes(statusBar, "WorkbenchOperationOutcomeBar", "Operation outcomes must not add a second stacked bottom bar");
@@ -966,9 +963,11 @@ assertIncludes(chrome, "unregisterLiveSessionWindowDemand(", "A closing window m
 assertIncludes(window, "MainWindowCloseGuardAttachment(closeGuard:", "Dirty-close protection must bind to the owning SwiftUI window");
 assertIncludes(mainWindowCloseGuard, "func attach(to candidate: NSWindow)", "The close guard must attach to an explicit owning window");
 assertExcludes(mainWindowCloseGuard, "NSApplication.shared.mainWindow", "A window-local close guard must not select a process-global main window");
-assertIncludes(appModel, "var didFinishLoadingPersistedState = false", "Controller layout cleanup must wait for completed profile loading");
-assertIncludes(window, "previous.subtracting(current)", "Layout cleanup must remove only controllers deleted after initial loading");
-assertExcludes(window, "overviewLayoutStore.retainControllers(", "Cold launch must not prune overrides from a transient router snapshot");
+assertIncludes(window, ".environment(overviewPreferencesStore)", "Every window must observe the one app-owned Overview preference store");
+assertIncludes(window, ".environment(overviewRuntime)", "Every window must own one stable Overview runtime");
+assertIncludes(micaApp, "wrappedValue: OverviewPreferencesStore()", "The application must create one global Overview preference authority");
+assertIncludes(chrome, "overviewRuntime.liveSessionWindowDemandID", "Live-session demand must remain window-owned after layout removal");
+assertExcludes(window, "overviewCoordinator", "Overview preferences must not participate in window draft or dirty-close coordination");
 assertIncludes(chrome, "struct WorkbenchRootView", "WorkbenchChrome must own root destination composition");
 assertExcludes(chrome, "struct ContentView", "WorkbenchChrome must not absorb window editing coordination");
 assertIncludes(window, "struct ContentView", "WorkbenchWindow must own window and editor coordination");
@@ -991,7 +990,12 @@ for (const realTimeline of [
 }
 assertIncludes(dashboard, "OverviewTelemetrySection(", "Overview root must compose the extracted telemetry surface");
 assertIncludes(dashboard, "OverviewTopologySection(", "Overview root must compose the extracted topology surface");
-assertIncludes(dashboard, "OverviewInstrumentRailSection(", "Overview root must compose the extracted instrument rail");
+assertIncludes(dashboard, "ForEach(visibleOptionalModules)", "Overview must construct only globally enabled optional modules");
+assertOrdered(
+  dashboard,
+  ["OverviewTelemetrySection(", "OverviewTopologySection(", "ForEach(visibleOptionalModules)"],
+  "Overview must keep the fixed telemetry, topology, optional-module hierarchy",
+);
 assertExcludes(dashboard, "struct OverviewTelemetrySection", "Dashboard root must not retain telemetry implementation ownership");
 assertExcludes(dashboard, "struct OverviewTopologySection", "Dashboard root must not retain topology view implementation ownership");
 assertExcludes(dashboard, "struct OverviewInstrumentRailSection", "Dashboard root must not retain instrument implementation ownership");
@@ -1006,11 +1010,12 @@ assert(/trafficChart\(\s*\.upload/.test(overviewTelemetry), "Overview must rende
 assert(/trafficChart\(\s*\.download/.test(overviewTelemetry), "Overview must render a dedicated download chart");
 assert(count(overviewTelemetry, "AreaPlot(") === 3, "Overview live charts must keep upload, download, and connection areas");
 assert(count(overviewTelemetry, "LinePlot(") === 3, "Overview live charts must keep upload, download, and connection lines");
-assert(count(overviewTelemetry, "PointPlot(") === 3, "Overview live charts must expose the latest real sample for each displayed timeline");
+assert(count(overviewTelemetry, "PointMark(") === 2, "Overview live chart primitives must expose finite latest-sample marks");
+assertIncludes(overviewTelemetry, "OverviewLatestSampleMark(", "Latest real samples must use the finite neon mark");
 assertIncludes(overviewProjection, "struct OverviewTimelineChartScale", "Overview charts must retain a real-data visible scale");
 assertIncludes(overviewTelemetry, ".chartYScale(domain: scale.domain)", "Overview charts must apply their visible real-data scale");
 assertIncludes(dashboard, "LazyVStack(alignment: .leading", "Overview below-fold analytics must construct lazily");
-assertIncludes(dashboard, "OverviewDashboardRowPacker.rows(", "Overview modules must use deterministic sequential row packing");
+assertExcludes(dashboard, "OverviewDashboardRowPacker", "Fixed Overview composition must not retain dashboard row packing");
 assertExcludes(dashboard, "min(availableWidth, 1_180)", "Overview charts and topology must use the full padded content width");
 assertIncludes(dashboard, ".frame(maxWidth: .infinity, alignment: .topLeading)", "Overview monitoring content must fill the available canvas");
 const overviewFlatSection = sourceSection(
@@ -1056,24 +1061,20 @@ assertExcludes(overviewTopologySection, "tint: MicaStyle.signalViolet", "Topolog
 assertIncludes(overviewTopologySection, "OverviewTopologyHeaderControls(", "Topology commands must share the section heading row");
 assertIncludes(overviewTelemetryControls, "} else if snapshot.isPinned {", "Only a pinned chart sample may change the global chart state to selected");
 assertExcludes(overviewTelemetryControls, "snapshot.selectedDate != nil", "Transient chart hover must not change header chrome state");
-const overviewResponsiveRow = sourceSection(
-  dashboard,
-  "private struct OverviewDashboardResponsiveRow",
-  "private struct OverviewDashboardSpanLayout",
-);
-for (const viewportAnimation of ["appeared", ".opacity(", ".offset(", ".animation("]) {
-  assertExcludes(
-    overviewResponsiveRow,
-    viewportAnimation,
-    `Overview rows must not animate while entering the scrolling viewport: ${viewportAnimation}`,
-  );
-}
 assertIncludes(overviewTelemetry, "struct OverviewInstrumentRailSection", "Overview must use one unified instrument rail");
+assertIncludes(overviewTelemetry, "appModel.trafficTimeline.samples.last", "Overview current-rate readouts must consume received live samples");
+assertExcludes(overviewTelemetry, "connectionsCatalog.traffic.upload", "Overview must not label cumulative connection upload totals as a live rate");
+assertExcludes(overviewTelemetry, "connectionsCatalog.traffic.download", "Overview must not label cumulative connection download totals as a live rate");
 assertIncludes(overviewTelemetry, "struct OverviewTelemetryPanel", "Overview must use one repeated metric-panel primitive for its three primary charts");
-assertIncludes(dashboard, ".background(MicaStyle.contentFill)", "Overview telemetry and network facts must use bounded continuous data surfaces");
-assertIncludes(overviewTelemetry, ".background(MicaStyle.contentFill)", "Overview telemetry must use a bounded continuous data surface");
-assertIncludes(overviewTelemetry, "if availableWidth >= 960", "Overview charts must use a three-column wide layout");
-assertIncludes(overviewTelemetry, "else if availableWidth >= 700", "Overview charts must use a two-column medium layout");
+assertIncludes(overviewTelemetry, ".overviewCyberSurface(.telemetry)", "Overview telemetry must use the restrained cyber surface");
+assertIncludes(dashboard, ".overviewCyberSurface(.auxiliary)", "Optional Overview modules must use the restrained auxiliary surface");
+assertIncludes(overviewVisualSystem, "struct OverviewLatestSampleMark", "Overview visuals must isolate finite data-arrival motion");
+assertIncludes(overviewVisualSystem, ".phaseAnimator(", "Overview motion must be finite and trigger driven");
+assertExcludes(overviewSource, "TimelineView", "Overview must not keep an idle animation clock alive");
+assertExcludes(overviewSource, ".glassEffect", "Overview content surfaces must not apply Liquid Glass");
+assertExcludes(overviewSource, "GlassEffectContainer", "Overview content surfaces must not create glass containers");
+assertIncludes(overviewTelemetry, "availableWidth >= 960", "Overview charts must use a three-column wide layout");
+assertIncludes(overviewTelemetry, "availableWidth >= 700", "Overview charts must use a two-column medium layout");
 assertIncludes(overviewTelemetry, "private var plotHeight: CGFloat", "Overview plot height must follow the effective panel width");
 assertIncludes(overviewTelemetry, "return min(max(panelWidth * 0.60, 240), 300)", "Overview plots must retain the primary 240-300 point visual range");
 assertIncludes(overviewTelemetry, "systemName: \"chart.line.uptrend.xyaxis\"", "Overview telemetry must retain its native chart symbol");
@@ -1081,8 +1082,8 @@ assertIncludes(overviewTelemetry, "size: .section", "Overview telemetry title mu
 assertIncludes(overviewTelemetry, "size: .metric", "Overview metric titles must use the dedicated metric mark");
 assertIncludes(overviewTelemetry, ".frame(height: plotHeight)", "Every primary Overview plot must use the responsive height");
 assertExcludes(overviewSource, "OverviewMemoryBaseChart", "Memory must remain context on the connection chart instead of a fourth plot");
-assertIncludes(overviewPersonalization, ".init(id: .instrumentRail, size: .full, isVisible: false)", "The default Overview must hide the duplicate instrument rail");
-assertIncludes(overviewPersonalization, ".init(id: .operationalSummaries, size: .full, isVisible: false)", "The default Overview must hide secondary summaries");
+assertIncludes(overviewPreferences, "visibleOptionalModules: Set<OverviewOptionalModuleID> = []", "The default Overview must hide every optional module");
+assertIncludes(overviewPreferences, "visibleMetrics: Set<OverviewMetricID> = Set(OverviewMetricID.allCases)", "The default Overview must keep all primary telemetry visible");
 assertExcludes(overviewSource, "OverviewSessionHeader", "Overview must not duplicate selected-controller session chrome");
 assertExcludes(overviewSource, "OverviewMetricModule", "Overview must not restore four independent KPI cards");
 for (const removedSparkline of [
@@ -1102,32 +1103,56 @@ assertIncludes(dashboard, 'guard value > 0 else { return "0 B" }', "Overview zer
 assertIncludes(dashboard, "struct OverviewNetworkFactsSection", "Overview must keep complete network information");
 assertIncludes(dashboard, "OverviewProjection.networkFactGroups(", "Network information must use grouped definition lists");
 assertIncludes(dashboard, "GridItem(.adaptive(minimum: 320)", "Network groups must adapt without becoming a full-width field wall");
-assertIncludes(overviewPersonalization, "modules.filter(\\.isVisible)", "Hidden modules must be filtered before subtree construction");
-assertIncludes(overviewPersonalization, "enum OverviewDashboardPreset", "Overview must retain built-in native layout presets");
-assertIncludes(overviewEditor, ".dropDestination(for: String.self)", "Overview editing must support one-shot native drag reordering");
-assertIncludes(overviewRuntimes, "OverviewDashboardModuleRuntimeRegistry", "Overview must preserve expensive module runtimes across reordering");
-assertIncludes(overviewLayoutStore, "case resetController", "Reset must remove a controller override instead of copying the current default");
-assertIncludes(overviewLayoutStore, "guard current.token == expected", "Global-default commits must CAS both target and global revisions");
-assertIncludes(overviewWindowCoordinator, "resetsControllerOverride", "Window drafts must retain inherited-default intent");
-assertIncludes(overviewPersonalization, "struct OverviewDashboardLayout", "Overview personalization must own layout value models");
-assertExcludes(overviewPersonalization, "OverviewDashboardPersistenceCoordinator", "Overview layout models must not absorb persistence");
-assertIncludes(overviewLayoutStore, "private actor OverviewDashboardPersistenceCoordinator", "Overview layout writes must remain actor-coordinated");
-assertIncludes(overviewLayoutStore, "final class OverviewDashboardLayoutStore", "Overview layout store must publish committed presentation state on the main actor");
-assertIncludes(overviewWindowCoordinator, "final class OverviewDashboardWindowCoordinator", "Overview window coordination must own draft and conflict state");
-assertIncludes(dashboard, ".disabled(coordinator.isEditing)", "Layout editing must disable keyboard and accessibility business actions");
-assertExcludes(overviewTelemetry, ".onChange(of: preferredTimelineWindow, initial: true)", "Pure module reorder must not reset a temporary timeline selection");
+assertIncludes(dashboard, "OverviewOptionalModuleID.allCases.filter(", "Optional modules must stay in one fixed declaration order");
+assertIncludes(overviewPreferences, "struct OverviewPreferences", "Overview must expose one compact global preference value");
+assertIncludes(overviewPreferences, "final class OverviewPreferencesStore", "Overview must expose one app-owned preference authority");
+assertIncludes(overviewPreferences, 'static let schema = "mica.overview.fixed-core.v1"', "Overview persistence must reject superseded layout payloads by schema");
+assertIncludes(overviewPreferences, 'static let defaultPersistenceKey = "overview.dashboard.layout.v1"', "Overview must reset the old v1 payload in place");
+assertIncludes(overviewPreferences, "guard normalized != preferences else { return }", "Overview preference writes must be deduplicated");
+assertExcludes(overviewPreferences, "controllerID", "Overview preferences must be global rather than controller-specific");
+for (const removedLayoutModel of [
+  "OverviewDashboardLayout",
+  "OverviewDashboardPreset",
+  "OverviewDashboardWindowCoordinator",
+  "OverviewDashboardLayoutStore",
+  "OverviewDashboardRowPacker",
+  "OverviewDashboardSpanLayout",
+  "OverviewDashboardModuleRuntimeRegistry",
+]) {
+  assertExcludes(overviewSource, removedLayoutModel, `Superseded Overview layout compatibility must stay deleted: ${removedLayoutModel}`);
+}
+assertIncludes(overviewEditor, "struct OverviewPreferencesBar", "Overview preferences must use the inline immediate control bar");
+assertIncludes(overviewEditor, "ForEach(OverviewMetricID.allCases)", "Overview preferences must control visible primary metrics");
+assertIncludes(overviewEditor, "ForEach(OverviewOptionalModuleID.allCases)", "Overview preferences must control optional visibility");
+assertIncludes(overviewEditor, "store.setTimelineWindow", "Overview preferences must own one global timeline choice");
+assertIncludes(overviewEditor, "store.reset()", "Overview preferences must expose one clean reset");
+for (const removedEditorBehavior of [
+  "UndoManager",
+  "DropDelegate",
+  ".dropDestination",
+  "coordinator.commit",
+  "coordinator.cancel",
+]) {
+  assertExcludes(overviewEditor, removedEditorBehavior, `Overview preferences must not retain layout editing behavior: ${removedEditorBehavior}`);
+}
+assertIncludes(overviewWindowRuntime, "final class OverviewRuntimeRegistry", "Overview must preserve expensive telemetry and topology runtimes per live generation");
+assertIncludes(overviewWindowRuntime, "let liveSessionWindowDemandID", "Each Overview window must retain stable live-session demand identity");
+assertIncludes(overviewWindowRuntime, "let registry = OverviewRuntimeRegistry()", "Each Overview window must retain one runtime registry");
 assertIncludes(overviewTelemetry, "state.label(language: language)", "Telemetry must expose live or stale session state");
-assertIncludes(overviewEditor, "width: MicaBounds.iconControlSize", "Overview editor icon commands must use compact macOS control geometry");
-for (const personalizationRegression of [
-  "staleGlobalCommitCannotDeleteNewerControllerOverride",
-  "resetKeepsInheritanceWhenGlobalDefaultChangesBeforeCommit",
-  "selectedControllerConflictCannotBeClearedByReload",
-  "undoReconcilesConflictAfterDefaultIntentIsRemoved",
+for (const preferenceRegression of [
+  "fixedPreferencesDefaultAndNormalizationAreMinimal",
+  "globalPreferencesRoundTripResetAndDeduplicateWrites",
+  "supersededLayoutAndWrongSchemaResetWithoutMigration",
+  "oneStoreIsSharedWhileEachWindowKeepsStableRuntimeIdentity",
+  "policyInspectionResolvesOnlyUniqueExactNames",
+  "policyInspectionCacheAndPinnedHUDKeepGeometryIndependent",
+  "hudPlacementFlipsAroundObstaclesAndAlwaysClampsInsideGraph",
+  "motionProjectionIsStaticForPauseInactiveAndReduceMotion",
 ]) {
   assertIncludes(
-    overviewPersonalizationTests,
-    personalizationRegression,
-    `Overview personalization needs regression coverage for ${personalizationRegression}`,
+    overviewPreferencesTests,
+    preferenceRegression,
+    `Overview replacement needs regression coverage for ${preferenceRegression}`,
   );
 }
 assertExcludes(overviewSource, "selectedConnectionFields", "Overview must not restore the removed raw connection inspector");
@@ -1198,12 +1223,13 @@ assertIncludes(overviewTopologyView, "Canvas { context, _ in", "Topology must re
 const overviewTopologyViewport = sourceSection(
   overviewTopologyView,
   "private struct OverviewTopologyViewport",
-  "private struct OverviewTopologySelectionDetail",
+  "private struct OverviewTopologyHUDOverlay",
 );
 assertExcludes(overviewTopologyViewport, "ScrollView(.horizontal)", "Complete topology must fit its available width without a nested horizontal viewport");
 assertIncludes(overviewTopologyViewport, ".frame(maxWidth: .infinity, alignment: .center)", "Complete topology must center its width-fitted canvas");
-assertIncludes(overviewTopologyViewport, ".overlay(alignment: .topLeading)", "Topology selection feedback must stay inside stable graph geometry");
-assertIncludes(overviewTopologyViewport, ".padding(.top, OverviewTopologyLayout.columnHeaderHeight)", "Topology selection feedback must occupy the reserved graph header inset");
+assertIncludes(overviewTopologyViewport, ".overlay(alignment: .topLeading)", "Topology HUD feedback must stay inside stable graph geometry");
+assertIncludes(overviewTopologyViewport, "OverviewTopologyHUDOverlay(", "Topology must anchor selection detail over graph geometry");
+assertIncludes(overviewTopologyViewport, ".overviewCyberSurface(.topology)", "Topology must use the restrained cyber surface");
 assertIncludes(overviewTopologyViewport, ".focusable()", "Topology must expose one native keyboard focus surface");
 assertIncludes(overviewTopologyViewport, ".onMoveCommand(perform: movePathSelection)", "Topology must support keyboard path stepping");
 assertIncludes(overviewTopologyViewport, ".onExitCommand", "Topology must clear local selection with the native exit command");
@@ -1212,39 +1238,74 @@ assert(
   [...workbenchCode.matchAll(/\.contextMenu/g)].length === 1,
   "Workbench context menus are limited to the topology canvas command mirror",
 );
-assertOrdered(
-  overviewTopologyViewport,
-  ["private var topologyGraph", "OverviewTopologySelectionDetail("],
-  "Topology selection detail must not be conditionally inserted before the graph",
-);
-const overviewTopologySelectionDetail = sourceSection(
+const overviewTopologyHUDOverlay = sourceSection(
   overviewTopologyView,
-  "private struct OverviewTopologySelectionDetail",
-  "private struct OverviewTopologyPathRows",
+  "private struct OverviewTopologyHUDOverlay",
+  "private struct OverviewTopologyHUDAnchor",
+);
+for (const anchoredHUDContract of [
+  "revision: appModel.policyGroupCatalogRevision",
+  "catalog: appModel.policyGroupCatalog",
+  "layout.nodeGeometry(id:",
+  "obstacles: layout.hudObstacles",
+  "OverviewPolicyHUDPlacementResolver.resolve(",
+  ".position(x: placement.frame.midX",
+  "OverviewHolographicHUD(",
+  "interaction.clearSelection",
+]) {
+  assertIncludes(overviewTopologyHUDOverlay, anchoredHUDContract, `Topology HUD must retain ${anchoredHUDContract}`);
+}
+const overviewHolographicHUD = sourceSection(
+  overviewTopologyView,
+  "private struct OverviewHolographicHUD",
+  "private extension OverviewPolicyHUDField.Tone",
 );
 const overviewTopologyIdleSummary = sourceSection(
   overviewTopologyView,
   "private struct OverviewTopologyIdleSummary",
   "private struct OverviewTopologyPathRows",
 );
-assertIncludes(overviewTopologySelectionDetail, "systemName: \"pin.fill\"", "Pinned topology state must use one restrained symbol");
-assertIncludes(overviewTopologySelectionDetail, "frameSize: 20", "Pinned topology state must remain visually legible");
-assertIncludes(overviewTopologySelectionDetail, "OverviewTopologyIdleSummary(", "Idle topology detail must use its reserved geometry for real summary data");
-assert(
-  [...overviewTopologySelectionDetail.matchAll(/WorkbenchIconCommand\(/g)].length === 1,
-  "Topology detail must expose only the eligible Connections command",
-);
-assertExcludes(overviewTopologySelectionDetail, "overview.topology_previous_path", "Topology detail must not become a path-navigation toolbar");
-assertExcludes(overviewTopologySelectionDetail, "overview.topology_clear_selection", "Topology detail must not expose redundant clear chrome");
-assertExcludes(overviewTopologySelectionDetail, ".background(", "Topology detail must remain unframed inside the graph");
-assertExcludes(overviewTopologySelectionDetail, "RoundedRectangle", "Topology detail must not create a nested card outline");
+assertIncludes(overviewHolographicHUD, ".overviewCyberSurface(.hud)", "Pinned policy detail must use one node-adjacent holographic surface");
+assertIncludes(overviewHolographicHUD, 'Image(systemName: "pin.fill")', "Pinned HUD state must remain explicit without changing graph geometry");
+assertIncludes(overviewHolographicHUD, "snapshot.sections", "Hover HUD must expose the complete organized policy field composition");
+assertIncludes(overviewHolographicHUD, "snapshot.fields", "Pinned and hover HUD states must share the same complete fields");
+assertIncludes(overviewHolographicHUD, "onOpenProxies", "Policy HUD must provide direct policy navigation");
+assertIncludes(overviewHolographicHUD, "onOpenPath", "Route HUD must provide direct connection navigation");
+assertExcludes(overviewTopologyView, "OverviewTopologySelectionDetail", "The removed fixed selection-detail band must stay deleted");
 assertIncludes(overviewTopologyIdleSummary, "overview.connection_count", "Idle topology summary must retain the real connection count");
 assertIncludes(overviewTopologyIdleSummary, "overview.topology_unavailable_paths", "Idle topology summary must expose unavailable real paths");
 assertExcludes(overviewTopologyIdleSummary, "WorkbenchSymbol(", "Idle topology summary must not repeat the section icon");
 assertExcludes(overviewTopologyView, "WorkbenchCommandSummary(", "Topology must not repeat its section identity in a second command summary");
 assertIncludes(overviewTopology, "let graphWidth = max(availableWidth.rounded(.down), 1)", "Topology layout must be bounded by the measured module width");
 assertIncludes(overviewTopology, "static let columnHeaderHeight: CGFloat = 40", "Topology columns must reserve a legible header geometry");
-assertIncludes(overviewTopology, "static let selectionDetailHeight: CGFloat = 80", "Topology layout must reserve a readable stable selection-detail geometry");
+assertIncludes(overviewTopology, "let topInset = OverviewTopologyLayout.columnHeaderHeight + 12", "Topology must reserve only its column-header inset");
+assertIncludes(overviewTopology, "private let nodeGeometryByID", "Topology HUD anchoring must use an O(1) node geometry index");
+assertIncludes(overviewTopology, "func nodeGeometry(id: String)", "Topology layout must expose indexed node geometry lookup");
+assertIncludes(overviewTopology, "let hudObstacles: [CGRect]", "Topology layout must precompute reusable HUD obstacle geometry");
+assertExcludes(overviewTopology, "selectionDetailHeight", "Topology geometry must not retain a fixed selection-detail band");
+for (const policyHUDContract of [
+  "struct OverviewPolicyInspectionIndex",
+  "groups.count == 1 ? .group(groups[0]) : .ambiguous",
+  "members.count == 1 ? .member(members[0]) : .ambiguous",
+  "final class OverviewPolicyInspectionCache",
+  "if self.revision == revision",
+  "enum OverviewPolicyHUDPlacementResolver",
+  "OverviewPolicyHUDSide.allCases.map",
+  "frame: clamp(winner.1, to: safeBounds)",
+  "detailProjection.reportedFields.map",
+]) {
+  assertIncludes(overviewPolicyHUD, policyHUDContract, `Policy HUD must retain ${policyHUDContract}`);
+}
+const overviewTopologyEnergyBand = sourceSection(
+  overviewTopologyView,
+  "private struct OverviewTopologyEnergyBand",
+  "private struct OverviewRouteEnergyTrigger",
+);
+assertIncludes(overviewTopologyEnergyBand, ".phaseAnimator(", "Topology energy must animate only on finite data or selection triggers");
+assertIncludes(overviewTopologyEnergyBand, "structureRevision: request.revision", "Topology energy must react to a new real topology revision");
+assertIncludes(overviewTopologyEnergyBand, "liveSignal: liveSignal", "Topology energy must react to received traffic and connection metric revisions");
+assertIncludes(overviewTopologyEnergyBand, "selection: interaction.snapshot.activeSelection", "Topology energy must react to explicit interaction");
+assertExcludes(overviewTopologyEnergyBand, "TimelineView", "Topology energy must not keep an idle clock alive");
 assertIncludes(overviewTopologyView, "private func minimumFlowHeight(for availableWidth: Int)", "Topology must scale its sparse-flow viewport with the available width");
 assertIncludes(overviewTopologyView, "return Int(min(max(scaledHeight, 680), 920).rounded())", "Topology must remain a primary 680-920 point surface when sparse");
 for (const sankeyScaleContract of [

@@ -42,6 +42,10 @@ public struct ControllerProbeResolver: Sendable {
             throw ControllerHTTPProbeError.unrecognizedController
         }
 
+        if Self.isCancellation(httpError) {
+            throw CancellationError()
+        }
+
         // A refused/unavailable HTTP port is conclusive for this reconnect
         // attempt. In particular, do not wait for sing-box's 20-second
         // wait-for-ready RPC when mihomo is simply starting up.
@@ -141,5 +145,18 @@ public struct ControllerProbeResolver: Sendable {
             return false
         }
         return code == 7 || code == 16
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if case MihomoClientError.connectionFailure(.cancelled) = error {
+            return true
+        }
+        if case SurgeHttpAPIError.connectionFailure(.cancelled) = error {
+            return true
+        }
+        return false
     }
 }

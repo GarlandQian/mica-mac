@@ -239,7 +239,14 @@ extension AppModel {
                 try await client.killActiveRequest(id: request.id)
                 didKillRequest = true
                 let activeRequests = try await client.activeRequests()
-                let recentRequests = try? await client.recentRequests()
+                let recentRequests: SurgeActiveRequestsResponse?
+                do {
+                    recentRequests = try await client.recentRequests()
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    recentRequests = nil
+                }
 
                 guard isCurrentSession(routerID: router.id, generation: generation), !Task.isCancelled else {
                     return

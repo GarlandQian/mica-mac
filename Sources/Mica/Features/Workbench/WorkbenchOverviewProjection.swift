@@ -2,7 +2,7 @@ import Foundation
 import MicaCore
 import Observation
 
-enum OverviewTimelineWindow: String, CaseIterable, Identifiable {
+enum OverviewTimelineWindow: String, CaseIterable, Codable, Identifiable, Sendable {
     case oneMinute
     case threeMinutes
     case fiveMinutes
@@ -217,6 +217,8 @@ final class OverviewTimelineProjectionCache {
         let count: Int
         let firstID: Int?
         let lastID: Int?
+        let firstReceivedAt: Date?
+        let lastReceivedAt: Date?
     }
 
     private struct TrafficKey: Equatable {
@@ -269,7 +271,9 @@ final class OverviewTimelineProjectionCache {
             signature: SourceSignature(
                 count: sourceTraffic.count,
                 firstID: sourceTraffic.first?.id,
-                lastID: sourceTraffic.last?.id
+                lastID: sourceTraffic.last?.id,
+                firstReceivedAt: sourceTraffic.first?.receivedAt,
+                lastReceivedAt: sourceTraffic.last?.receivedAt
             )
         )
         let nextMemoryKey = MemoryKey(
@@ -278,7 +282,9 @@ final class OverviewTimelineProjectionCache {
             signature: SourceSignature(
                 count: sourceMemory.count,
                 firstID: sourceMemory.first?.id,
-                lastID: sourceMemory.last?.id
+                lastID: sourceMemory.last?.id,
+                firstReceivedAt: sourceMemory.first?.receivedAt,
+                lastReceivedAt: sourceMemory.last?.receivedAt
             )
         )
         let nextConnectionKey = ConnectionKey(
@@ -287,7 +293,9 @@ final class OverviewTimelineProjectionCache {
             signature: SourceSignature(
                 count: sourceConnections.count,
                 firstID: sourceConnections.first?.id,
-                lastID: sourceConnections.last?.id
+                lastID: sourceConnections.last?.id,
+                firstReceivedAt: sourceConnections.first?.receivedAt,
+                lastReceivedAt: sourceConnections.last?.receivedAt
             )
         )
 
@@ -543,14 +551,14 @@ struct OverviewActiveConnection: Identifiable, Equatable {
 
 struct OverviewNetworkFact: Identifiable, Equatable {
     let id: String
-    let group: OverviewDashboardNetworkGroupID
+    let group: OverviewNetworkGroupID
     let titleKey: String
     let value: String
     var monospaced = true
 }
 
 struct OverviewNetworkFactGroup: Identifiable, Equatable {
-    let id: OverviewDashboardNetworkGroupID
+    let id: OverviewNetworkGroupID
     let facts: [OverviewNetworkFact]
 }
 
@@ -740,7 +748,7 @@ enum OverviewProjection {
         router: RouterProfile?,
         metadata: ControllerMetadataSnapshot,
         language: AppLanguage,
-        order: [OverviewDashboardNetworkGroupID] = OverviewDashboardNetworkGroupID.allCases
+        order: [OverviewNetworkGroupID] = OverviewNetworkGroupID.allCases
     ) -> [OverviewNetworkFactGroup] {
         let facts = networkFacts(router: router, metadata: metadata, language: language)
         return order.compactMap { groupID in
@@ -798,7 +806,7 @@ enum OverviewProjection {
         id: String,
         titleKey: String,
         to facts: inout [OverviewNetworkFact],
-        group: OverviewDashboardNetworkGroupID,
+        group: OverviewNetworkGroupID,
         monospaced: Bool = true
     ) {
         guard let value = nonBlank(value) else { return }

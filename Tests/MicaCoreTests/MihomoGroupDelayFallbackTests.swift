@@ -57,6 +57,27 @@ final class MihomoGroupDelayFallbackTests: XCTestCase {
         XCTAssertTrue(requests.contains { $0.url?.path == "/proxies" })
     }
 
+    func testMemberFallbackPropagatesCancellation() async throws {
+        let fixture = GroupDelayFixture(
+            proxies: try fixtureData("proxies-stash-group"),
+            delays: [:],
+            cancelledPaths: ["/proxies/Node A/delay"]
+        )
+        let client = makeClient(fixture: fixture)
+
+        do {
+            _ = try await client.groupDelay(
+                group: "Proxy",
+                forceMemberFallback: true
+            )
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Structured member probing must not convert cancellation to 0 ms.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     private func makeClient(fixture: GroupDelayFixture) -> MihomoClient {
         let profile = RouterProfile(
             displayName: "Stash Fixture",
@@ -96,17 +117,26 @@ private actor GroupDelayFixture {
 
     private let proxies: Data
     private let delays: [String: Route]
+    private let cancelledPaths: Set<String>
     private var requests: [URLRequest] = []
 
-    init(proxies: Data, delays: [String: Route]) {
+    init(
+        proxies: Data,
+        delays: [String: Route],
+        cancelledPaths: Set<String> = []
+    ) {
         self.proxies = proxies
         self.delays = delays
+        self.cancelledPaths = cancelledPaths
     }
 
     func load(_ request: URLRequest) throws -> (Data, URLResponse) {
         requests.append(request)
         guard let url = request.url else {
             throw URLError(.badURL)
+        }
+        if cancelledPaths.contains(url.path) {
+            throw CancellationError()
         }
 
         let route: Route

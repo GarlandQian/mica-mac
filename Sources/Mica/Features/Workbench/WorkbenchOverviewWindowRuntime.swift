@@ -1,12 +1,11 @@
-import CoreGraphics
 import Foundation
 import MicaCore
 import Observation
 
 @MainActor
 @Observable
-final class OverviewTelemetryModuleRuntime {
-    var timelineWindow: OverviewTimelineWindow
+final class OverviewTelemetryRuntime {
+    private(set) var timelineWindow: OverviewTimelineWindow
     private(set) var isPaused = false
     let interaction = OverviewTimelineInteractionState()
 
@@ -22,6 +21,10 @@ final class OverviewTelemetryModuleRuntime {
         returnToLive()
     }
 
+    func synchronize(preferredWindow: OverviewTimelineWindow) {
+        setTimelineWindow(preferredWindow)
+    }
+
     func togglePause() {
         isPaused.toggle()
     }
@@ -30,20 +33,11 @@ final class OverviewTelemetryModuleRuntime {
         isPaused = false
         interaction.reset()
     }
-
-    func synchronize(
-        preferredWindow: OverviewDashboardTimelineWindow
-    ) {
-        let next = preferredWindow.projectionWindow
-        guard timelineWindow != next else { return }
-        timelineWindow = next
-        returnToLive()
-    }
 }
 
 @MainActor
 @Observable
-final class OverviewTopologyModuleRuntime {
+final class OverviewTopologyRuntime {
     var presentation: OverviewTopologyPresentation?
     var availableWidth = 520
     var isPaused = false
@@ -51,6 +45,7 @@ final class OverviewTopologyModuleRuntime {
     let interaction = OverviewTopologyInteractionState()
 
     @ObservationIgnored let presentationCache = OverviewTopologyPresentationCache()
+    @ObservationIgnored let policyInspectionCache = OverviewPolicyInspectionCache()
 
     func togglePause() {
         isPaused.toggle()
@@ -58,20 +53,17 @@ final class OverviewTopologyModuleRuntime {
 }
 
 @MainActor
-final class OverviewDashboardModuleRuntimeRegistry {
+final class OverviewRuntimeRegistry {
     private struct SessionKey: Hashable {
         let controllerID: RouterProfile.ID
         let generation: UUID
     }
 
     private var activeSession: SessionKey?
-    private var telemetryRuntimes: [SessionKey: OverviewTelemetryModuleRuntime] = [:]
-    private var topologyRuntimes: [SessionKey: OverviewTopologyModuleRuntime] = [:]
+    private var telemetryRuntimes: [SessionKey: OverviewTelemetryRuntime] = [:]
+    private var topologyRuntimes: [SessionKey: OverviewTopologyRuntime] = [:]
 
-    func prepare(
-        controllerID: RouterProfile.ID,
-        generation: UUID
-    ) {
+    func prepare(controllerID: RouterProfile.ID, generation: UUID) {
         let key = SessionKey(controllerID: controllerID, generation: generation)
         guard activeSession != key else { return }
         activeSession = key
@@ -82,16 +74,15 @@ final class OverviewDashboardModuleRuntimeRegistry {
     func telemetryRuntime(
         controllerID: RouterProfile.ID,
         generation: UUID,
-        preferredWindow: OverviewDashboardTimelineWindow
-    ) -> OverviewTelemetryModuleRuntime {
+        preferredWindow: OverviewTimelineWindow
+    ) -> OverviewTelemetryRuntime {
         let key = SessionKey(controllerID: controllerID, generation: generation)
         prepare(controllerID: controllerID, generation: generation)
         if let runtime = telemetryRuntimes[key] {
+            runtime.synchronize(preferredWindow: preferredWindow)
             return runtime
         }
-        let runtime = OverviewTelemetryModuleRuntime(
-            timelineWindow: preferredWindow.projectionWindow
-        )
+        let runtime = OverviewTelemetryRuntime(timelineWindow: preferredWindow)
         telemetryRuntimes[key] = runtime
         return runtime
     }
@@ -99,13 +90,13 @@ final class OverviewDashboardModuleRuntimeRegistry {
     func topologyRuntime(
         controllerID: RouterProfile.ID,
         generation: UUID
-    ) -> OverviewTopologyModuleRuntime {
+    ) -> OverviewTopologyRuntime {
         let key = SessionKey(controllerID: controllerID, generation: generation)
         prepare(controllerID: controllerID, generation: generation)
         if let runtime = topologyRuntimes[key] {
             return runtime
         }
-        let runtime = OverviewTopologyModuleRuntime()
+        let runtime = OverviewTopologyRuntime()
         topologyRuntimes[key] = runtime
         return runtime
     }
@@ -114,5 +105,22 @@ final class OverviewDashboardModuleRuntimeRegistry {
         activeSession = nil
         telemetryRuntimes.removeAll(keepingCapacity: false)
         topologyRuntimes.removeAll(keepingCapacity: false)
+    }
+}
+
+@MainActor
+@Observable
+final class OverviewWindowRuntime {
+    var showsPreferences = false
+
+    @ObservationIgnored let liveSessionWindowDemandID: LiveSessionWindowDemandID
+    @ObservationIgnored let registry = OverviewRuntimeRegistry()
+
+    init(liveSessionWindowDemandID: LiveSessionWindowDemandID = LiveSessionWindowDemandID()) {
+        self.liveSessionWindowDemandID = liveSessionWindowDemandID
+    }
+
+    func togglePreferences() {
+        showsPreferences.toggle()
     }
 }

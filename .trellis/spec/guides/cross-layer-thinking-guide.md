@@ -120,6 +120,28 @@ After implementation:
       casting payload fields locally
 - [ ] Checked that derived state points back to the source event identifier
       (`seq`, `id`, `version`) instead of inventing a second cursor
+- [ ] Checked semantic units at every projection boundary: rates, cumulative
+      totals, counts, and timestamps may share the same primitive type but are
+      not interchangeable
+- [ ] Checked that the revision driving visible freshness actually changes for
+      the user-visible event; a structure revision must not stand in for traffic
+      or metrics activity
+- [ ] Traced one real event through raw ingestion, published presentation state,
+      cached projection, and the final visible value instead of testing those
+      layers only in isolation
+
+### Mistake 5: Correct Type, Wrong Meaning
+
+**Bad**: A view labeled “Upload rate” formats a cumulative `uploadTotal`, or a
+live animation listens only to a structure revision because both values are
+available as integers.
+
+**Good**: Name and test semantic units at the boundary. Live rate UI reads the
+latest received rate sample; cumulative totals stay in byte-total surfaces.
+Structure, metrics, and traffic revisions drive only the consumers they own.
+
+**Rule**: Primitive type compatibility is not a data contract. Review every
+cross-layer field by source, unit, cadence, optionality, and revision owner.
 
 ---
 

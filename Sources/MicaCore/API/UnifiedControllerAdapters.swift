@@ -2,7 +2,7 @@ import Foundation
 
 public actor MihomoCompatibleControllerAdapter: ControllerAdapterProtocol {
     public nonisolated let profile: RouterProfile
-    private let secret: String?
+    private let client: MihomoClient
 
     public nonisolated var controllerType: UnifiedControllerType {
         profile.unifiedControllerType
@@ -14,11 +14,15 @@ public actor MihomoCompatibleControllerAdapter: ControllerAdapterProtocol {
 
     public init(profile: RouterProfile, secret: String? = nil) {
         self.profile = profile
-        self.secret = secret
+        self.client = MihomoClient(profile: profile, secret: secret)
+    }
+
+    init(profile: RouterProfile, client: MihomoClient) {
+        self.profile = profile
+        self.client = client
     }
 
     public func testConnection() async throws -> UnifiedControllerHealth {
-        let client = MihomoClient(profile: profile, secret: secret)
         let version = try await client.version()
 
         return UnifiedControllerHealth(
@@ -32,8 +36,6 @@ public actor MihomoCompatibleControllerAdapter: ControllerAdapterProtocol {
     }
 
     public func snapshot() async throws -> UnifiedControllerSnapshot {
-        let client = MihomoClient(profile: profile, secret: secret)
-
         async let version = client.version()
         async let configs = client.configs()
         async let proxies = client.proxies()
@@ -46,9 +48,9 @@ public actor MihomoCompatibleControllerAdapter: ControllerAdapterProtocol {
             connections: connections
         )
 
-        let rules = try? await client.rules()
-        let providers = try? await client.proxyProviders()
-        let ruleProviders = try? await client.ruleProviders()
+        let rules = try await optionalValue { try await client.rules() }
+        let providers = try await optionalValue { try await client.proxyProviders() }
+        let ruleProviders = try await optionalValue { try await client.ruleProviders() }
 
         return UnifiedControllerSnapshot.mihomoCompatible(
             profile: profile,
@@ -60,6 +62,18 @@ public actor MihomoCompatibleControllerAdapter: ControllerAdapterProtocol {
             providers: providers,
             ruleProviders: ruleProviders
         )
+    }
+
+    private func optionalValue<Value: Sendable>(
+        _ operation: @Sendable () async throws -> Value
+    ) async throws -> Value? {
+        do {
+            return try await operation()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
     }
 }
 

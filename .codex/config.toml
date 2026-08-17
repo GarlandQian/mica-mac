@@ -34,3 +34,8 @@ startup_timeout_sec = 60
 # aborts the entire config load and blocks Codex from starting. Codex's own
 # default for multi_agent_v2 is used instead; tune it in your user-level
 # config if needed.
+
+# Keep native Trellis subagents at a single recursion level. The project
+# setting takes precedence over user-level Codex defaults.
+[agents]
+max_depth = 1

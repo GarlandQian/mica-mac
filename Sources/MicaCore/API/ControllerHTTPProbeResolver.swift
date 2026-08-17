@@ -35,6 +35,10 @@ public struct ControllerHTTPProbeResolver: Sendable {
             return Self.clashKind(for: version)
         }
 
+        if clash.failure?.isCancellation == true {
+            throw CancellationError()
+        }
+
         if let clashFailure = clash.failure,
            clashFailure.isAuthenticationFailure || clashFailure.isConclusiveTransportFailure {
             throw clashFailure.underlyingError
@@ -149,6 +153,17 @@ private enum ControllerProbeFailure: Sendable {
         switch self {
         case .mihomo(.unauthorized), .surge(.unauthorized): true
         case .mihomo, .surge, .cancelled, .other: false
+        }
+    }
+
+    var isCancellation: Bool {
+        switch self {
+        case .cancelled,
+             .mihomo(.connectionFailure(.cancelled)),
+             .surge(.connectionFailure(.cancelled)):
+            true
+        case .mihomo, .surge, .other:
+            false
         }
     }
 

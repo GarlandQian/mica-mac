@@ -7,7 +7,7 @@ struct MicaApp: App {
     @NSApplicationDelegateAdaptor(MicaAppDelegate.self) private var appDelegate
     private let launchPreferencesApplied: Void = AppLaunchPreferences.applyFromProcessArguments()
     @State private var appModel: AppModel
-    @State private var overviewLayoutStore: OverviewDashboardLayoutStore
+    @State private var overviewPreferencesStore: OverviewPreferencesStore
     @StateObject private var preferences: AppPreferencesStore
     @FocusedValue(\.micaFocusedWorkbenchDestination) private var focusedArea
     @FocusedValue(\.micaAddControllerRequestID) private var addControllerRequestID
@@ -20,8 +20,8 @@ struct MicaApp: App {
         Bundle.enableModuleLocalization()
         AppRuntimeSmokeProbe.runIfRequested()
         _appModel = State(wrappedValue: AppModel())
-        _overviewLayoutStore = State(
-            wrappedValue: OverviewDashboardLayoutStore()
+        _overviewPreferencesStore = State(
+            wrappedValue: OverviewPreferencesStore()
         )
         _preferences = StateObject(wrappedValue: AppPreferencesStore())
     }
@@ -40,7 +40,7 @@ struct MicaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(overviewLayoutStore: overviewLayoutStore)
+            ContentView(overviewPreferencesStore: overviewPreferencesStore)
                 .environment(appModel)
                 .environmentObject(preferences)
                 .micaScenePreferences(

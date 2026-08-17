@@ -22019,298 +22019,165 @@
         }
       }
     },
-    "overview.layout_conflict_controller": {
+    "overview.hud.additional_metadata": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The selected controller changed. This draft remains attached to its original controller." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前控制器已切换。此草稿仍绑定原控制器。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Additional metadata" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "附加元数据" } }
       }
     },
-    "overview.layout_conflict_deleted": {
+    "overview.hud.availability": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The draft's controller no longer exists. Set this layout as the default or discard it." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此草稿对应的控制器已不存在。请将布局设为默认或放弃草稿。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Availability" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可用状态" } }
       }
     },
-    "overview.layout_conflict_external": {
+    "overview.hud.current_selection": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "This layout changed in another window." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "另一窗口已修改此布局。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Current selection" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前选择" } }
       }
     },
-    "overview.layout_content_options": {
+    "overview.hud.group": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Content Options" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "内容选项" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Policy group" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "策略组" } }
       }
     },
-    "overview.layout_discard_continue": {
+    "overview.hud.group_type": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Discard and Continue" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "放弃并继续" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Group type" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "策略组类型" } }
       }
     },
-    "overview.layout_edit": {
+    "overview.hud.interface": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Customize Overview" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "自定义概览" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Interface" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "接口" } }
       }
     },
-    "overview.layout_edit_help": {
+    "overview.hud.latency": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Change Overview module order, size, visibility, and content." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "调整概览模块的顺序、尺寸、显示状态和内容。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Latency" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "延迟" } }
       }
     },
-    "overview.layout_editor": {
+    "overview.hud.member_count": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Overview Layout" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "概览布局" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Members" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "成员数" } }
       }
     },
-    "overview.layout_failure_conflict": {
+    "overview.hud.members": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Resolve the layout conflict before saving." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请先解决布局冲突再保存。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Ordered members" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "成员顺序" } }
       }
     },
-    "overview.layout_failure_deleted": {
+    "overview.hud.provider": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The original controller is unavailable." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "原控制器已不可用。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Provider" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "提供方" } }
       }
     },
-    "overview.layout_failure_persistence": {
+    "overview.hud.smart_rank": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The layout could not be saved. Your draft is still open." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法保存布局，草稿仍保持打开。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Smart rank" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "智能排序" } }
       }
     },
-    "overview.layout_keep_editing": {
+    "overview.hud.test_delay": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Keep Editing" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "继续编辑" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Last test delay" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最近测试延迟" } }
       }
     },
-    "overview.layout_keep_mine": {
+    "overview.hud.test_time": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Keep Mine" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "保留我的版本" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Last test time" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最近测试时间" } }
       }
     },
-    "overview.layout_metrics": {
+    "overview.hud.test_url": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Instruments" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "仪表" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Test URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "测试 URL" } }
       }
     },
-    "overview.layout_module_instruments": {
+    "overview.hud.transports": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Instrument Rail" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Transport capabilities" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "传输能力" } }
+      }
+    },
+    "overview.hud.type": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Type" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "类型" } }
+      }
+    },
+    "overview.instrument_rail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Instrument rail" } },
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "仪表带" } }
       }
     },
-    "overview.layout_module_network": {
+    "overview.preferences_close": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Network Information" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "网络信息" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Close Overview Preferences" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "关闭概览偏好" } }
       }
     },
-    "overview.layout_module_summaries": {
+    "overview.preferences_help": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Operational Summaries" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "运行摘要" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Choose the telemetry, time window, and optional modules shown in Overview." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择概览中显示的遥测指标、时间窗口和可选模块。" } }
       }
     },
-    "overview.layout_module_telemetry": {
+    "overview.preferences_metrics": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Telemetry" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "实时监控" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Metrics" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "指标" } }
       }
     },
-    "overview.layout_module_topology": {
+    "overview.preferences_optional": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection Topology" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接拓扑" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Optional modules" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可选模块" } }
       }
     },
-    "overview.layout_move_earlier": {
+    "overview.preferences_reset": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Move Earlier" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "向前移动" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Reset" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重置" } }
       }
     },
-    "overview.layout_move_later": {
+    "overview.preferences_title": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Move Later" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "向后移动" } }
-      }
-    },
-    "overview.layout_pending_navigation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The Overview layout has unsaved changes." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "概览布局有未保存的修改。" } }
-      }
-    },
-    "overview.layout_preset": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Preset" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "预设" } }
-      }
-    },
-    "overview.layout_preset_lightweight": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Lightweight" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "轻量监控" } }
-      }
-    },
-    "overview.layout_preset_realtime": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Real-time" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "实时态势" } }
-      }
-    },
-    "overview.layout_preset_routes": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Routes" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "链路分析" } }
-      }
-    },
-    "overview.layout_reload": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Reload" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重新加载" } }
-      }
-    },
-    "overview.layout_reset": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Use Default" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用默认布局" } }
-      }
-    },
-    "overview.layout_row_count": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Rows" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "条目数" } }
-      }
-    },
-    "overview.layout_set_default": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Set as Default" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "设为默认布局" } }
-      }
-    },
-    "overview.layout_size": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Size" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "尺寸" } }
-      }
-    },
-    "overview.layout_size_compact": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Compact" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "紧凑" } }
-      }
-    },
-    "overview.layout_size_full": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Full" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "整行" } }
-      }
-    },
-    "overview.layout_size_standard": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Standard" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "标准" } }
-      }
-    },
-    "overview.layout_undo_content": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Change Overview Content" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "修改概览内容" } }
-      }
-    },
-    "overview.layout_undo_default": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Change Default Layout" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "修改默认布局" } }
-      }
-    },
-    "overview.layout_undo_move": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Move Overview Module" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "移动概览模块" } }
-      }
-    },
-    "overview.layout_undo_preset": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Apply Overview Preset" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "应用概览预设" } }
-      }
-    },
-    "overview.layout_undo_reset": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Reset Overview Layout" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重置概览布局" } }
-      }
-    },
-    "overview.layout_undo_size": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Resize Overview Module" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "调整概览模块尺寸" } }
-      }
-    },
-    "overview.layout_undo_visibility": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Change Overview Visibility" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "修改概览模块显示状态" } }
-      }
-    },
-    "overview.layout_visible": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Show" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "显示" } }
+        "en": { "stringUnit": { "state": "translated", "value": "Overview Preferences" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "概览偏好" } }
       }
     },
     "overview.latency_distribution": {

@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Final fixed Overview, HUD, accessibility, motion, and performance contracts."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Window demand, generation, cancellation, and publication boundaries."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Controller-family capability, ordering, optionality, and transport contracts."}
