@@ -7,19 +7,23 @@ struct OverviewInstrumentRailSection: View {
     @Environment(\.micaAppLanguage) private var language
 
     let availableWidth: CGFloat
-    let metrics: [OverviewDashboardInstrumentMetricConfiguration]
+    let visibleMetrics: Set<OverviewMetricID>
 
     var body: some View {
-        let visibleMetrics = metrics.filter(\.isVisible)
+        let orderedMetrics = OverviewMetricID.allCases.filter(
+            visibleMetrics.contains
+        )
 
         Group {
             if availableWidth >= 760 {
                 HStack(spacing: 0) {
                     OverviewSessionStateReadout()
-                    ForEach(visibleMetrics) { metric in
+                    ForEach(orderedMetrics) { metric in
                         Divider().frame(height: 34)
-                        readout(for: metric.id)
+                        readout(for: metric)
                     }
+                    Divider().frame(height: 34)
+                    memoryReadout
                 }
             } else {
                 VStack(alignment: .leading, spacing: 0) {
@@ -31,77 +35,98 @@ struct OverviewInstrumentRailSection: View {
                         ],
                         spacing: 0
                     ) {
-                        ForEach(visibleMetrics) { metric in
-                            readout(for: metric.id)
+                        ForEach(orderedMetrics) { metric in
+                            readout(for: metric)
                         }
+                        memoryReadout
                     }
                 }
             }
         }
         .padding(.vertical, MicaSpacing.tight)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaStyle.secondaryContentFill.opacity(0.42))
-        .clipShape(.rect(cornerRadius: 6))
-        .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(MicaStyle.separator.opacity(0.45), lineWidth: 1)
-        }
+        .overviewCyberSurface(.auxiliary, cornerRadius: 6)
     }
 
     @ViewBuilder
     private func readout(
-        for metric: OverviewDashboardInstrumentMetricID
+        for metric: OverviewMetricID
     ) -> some View {
         switch metric {
         case .upload:
             OverviewInstrumentReadout(
                 titleKey: "overview.upload_rate",
                 symbol: "arrow.up.right",
-                value: OverviewFormat.rate(appModel.connectionsCatalog.traffic.upload),
+                value: currentTrafficRateText(\.upload),
                 tint: MicaStyle.signalViolet
             )
         case .download:
             OverviewInstrumentReadout(
                 titleKey: "overview.download_rate",
                 symbol: "arrow.down.left",
-                value: OverviewFormat.rate(appModel.connectionsCatalog.traffic.download),
+                value: currentTrafficRateText(\.download),
                 tint: MicaStyle.signalCyan
             )
         case .activeConnections:
             OverviewInstrumentReadout(
                 titleKey: "dashboard.active_sessions",
                 symbol: "network",
-                value: appModel.connectionsCatalog.connections.count.formatted(),
+                value: currentConnectionCountText,
                 tint: MicaStyle.signalMint
-            )
-        case .memoryUsage:
-            OverviewInstrumentReadout(
-                titleKey: "overview.memory_current",
-                symbol: "memorychip",
-                value: currentMemoryText,
-                tint: MicaStyle.signalAmber
             )
         }
     }
 
+    private func currentTrafficRateText(
+        _ value: KeyPath<TrafficTimeline.Sample, Int>
+    ) -> String {
+        guard let sample = appModel.trafficTimeline.samples.last else {
+            return unavailableText
+        }
+        return OverviewFormat.rate(sample[keyPath: value])
+    }
+
+    private var currentConnectionCountText: String {
+        if let count = appModel.connectionCountTimeline.samples.last?.activeCount {
+            return count.formatted()
+        }
+        return appModel.connectionsCatalog.connections.count.formatted()
+    }
+
+    private var memoryReadout: some View {
+        OverviewInstrumentReadout(
+            titleKey: "overview.memory_current",
+            symbol: "memorychip",
+            value: currentMemoryText,
+            tint: MicaStyle.signalAmber
+        )
+    }
+
     private var currentMemoryText: String {
         guard let bytes = appModel.memoryTimeline.samples.last?.inUseBytes else {
-            return MicaStrings.localizedKey(
-                "overview.config_not_reported",
-                language: language
-            )
+            return unavailableText
         }
         return OverviewFormat.bytes(bytes)
+    }
+
+    private var unavailableText: String {
+        MicaStrings.localizedKey(
+            "overview.config_not_reported",
+            language: language
+        )
     }
 }
 
 struct OverviewTelemetrySection: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.controlActiveState) private var controlActiveState
 
     let availableWidth: CGFloat
-    let preferredTimelineWindow: OverviewDashboardTimelineWindow
-    let runtime: OverviewTelemetryModuleRuntime
+    let visibleMetrics: Set<OverviewMetricID>
+    let preferredTimelineWindow: OverviewTimelineWindow
+    let runtime: OverviewTelemetryRuntime
 
     var body: some View {
         let projection = runtime.projectionCache.resolve(
@@ -121,16 +146,9 @@ struct OverviewTelemetrySection: View {
                 connectionSamples: projection.connectionSamples,
                 dates: projection.dates
             )
-            .background(MicaStyle.contentFill)
-            .clipShape(.rect(cornerRadius: MicaBounds.moduleRadius))
-            .overlay {
-                RoundedRectangle(cornerRadius: MicaBounds.moduleRadius)
-                    .stroke(MicaStyle.separator.opacity(0.5), lineWidth: 1)
-            }
+            .overviewCyberSurface(.telemetry)
         }
-        .padding(.top, MicaSpacing.module)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider() }
         .onChange(of: preferredTimelineWindow) {
             runtime.synchronize(preferredWindow: preferredTimelineWindow)
         }
@@ -188,8 +206,12 @@ struct OverviewTelemetrySection: View {
         connectionSamples: [ConnectionCountTimeline.Sample],
         dates: [Date]
     ) -> some View {
+        let orderedMetrics = OverviewMetricID.allCases.filter(
+            visibleMetrics.contains
+        )
+
         Group {
-            if availableWidth >= 960 {
+            if orderedMetrics == OverviewMetricID.allCases, availableWidth >= 960 {
                 HStack(alignment: .top, spacing: 0) {
                     trafficChart(
                         .upload,
@@ -214,7 +236,7 @@ struct OverviewTelemetrySection: View {
                         plotHeight: plotHeight
                     )
                 }
-            } else if availableWidth >= 700 {
+            } else if orderedMetrics == OverviewMetricID.allCases, availableWidth >= 700 {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .top, spacing: 0) {
                         trafficChart(
@@ -241,30 +263,54 @@ struct OverviewTelemetrySection: View {
                         plotHeight: plotHeight
                     )
                 }
+            } else if orderedMetrics.count == 2, availableWidth >= 700 {
+                HStack(alignment: .top, spacing: 0) {
+                    metricPanel(
+                        orderedMetrics[0],
+                        trafficSamples: trafficSamples,
+                        memorySamples: memorySamples,
+                        connectionSamples: connectionSamples,
+                        dates: dates,
+                        plotHeight: plotHeight
+                    )
+                    Divider()
+                        .padding(.vertical, MicaSpacing.module)
+                    metricPanel(
+                        orderedMetrics[1],
+                        trafficSamples: trafficSamples,
+                        memorySamples: memorySamples,
+                        connectionSamples: connectionSamples,
+                        dates: dates,
+                        plotHeight: plotHeight
+                    )
+                }
+            } else if let onlyMetric = orderedMetrics.first, orderedMetrics.count == 1 {
+                metricPanel(
+                    onlyMetric,
+                    trafficSamples: trafficSamples,
+                    memorySamples: memorySamples,
+                    connectionSamples: connectionSamples,
+                    dates: dates,
+                    plotHeight: plotHeight
+                )
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    trafficChart(
-                        .upload,
-                        samples: trafficSamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                    Divider()
-                        .padding(.horizontal, MicaSpacing.module)
-                    trafficChart(
-                        .download,
-                        samples: trafficSamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                    Divider()
-                        .padding(.horizontal, MicaSpacing.module)
-                    connectionChart(
-                        samples: connectionSamples,
-                        memorySamples: memorySamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
+                    ForEach(Array(orderedMetrics.enumerated()), id: \.element) {
+                        index,
+                        metric in
+                        if index > 0 {
+                            Divider()
+                                .padding(.horizontal, MicaSpacing.module)
+                        }
+                        metricPanel(
+                            metric,
+                            trafficSamples: trafficSamples,
+                            memorySamples: memorySamples,
+                            connectionSamples: connectionSamples,
+                            dates: dates,
+                            plotHeight: plotHeight
+                        )
+                    }
                 }
             }
         }
@@ -272,15 +318,49 @@ struct OverviewTelemetrySection: View {
 
     private var plotHeight: CGFloat {
         let columnCount: CGFloat
-        if availableWidth >= 960 {
+        if visibleMetrics.count >= 3, availableWidth >= 960 {
             columnCount = 3
-        } else if availableWidth >= 700 {
+        } else if visibleMetrics.count >= 2, availableWidth >= 700 {
             columnCount = 2
         } else {
             columnCount = 1
         }
         let panelWidth = max(availableWidth / columnCount, 0)
         return min(max(panelWidth * 0.60, 240), 300)
+    }
+
+    @ViewBuilder
+    private func metricPanel(
+        _ metric: OverviewMetricID,
+        trafficSamples: [TrafficTimeline.Sample],
+        memorySamples: [MemoryTimeline.Sample],
+        connectionSamples: [ConnectionCountTimeline.Sample],
+        dates: [Date],
+        plotHeight: CGFloat
+    ) -> some View {
+        switch metric {
+        case .upload:
+            trafficChart(
+                .upload,
+                samples: trafficSamples,
+                dates: dates,
+                plotHeight: plotHeight
+            )
+        case .download:
+            trafficChart(
+                .download,
+                samples: trafficSamples,
+                dates: dates,
+                plotHeight: plotHeight
+            )
+        case .activeConnections:
+            connectionChart(
+                samples: connectionSamples,
+                memorySamples: memorySamples,
+                dates: dates,
+                plotHeight: plotHeight
+            )
+        }
     }
 
     @ViewBuilder
@@ -296,6 +376,7 @@ struct OverviewTelemetrySection: View {
             dates: dates,
             window: runtime.timelineWindow,
             interaction: runtime.interaction,
+            motionState: motionState,
             plotHeight: plotHeight
         )
         .frame(maxWidth: .infinity)
@@ -314,9 +395,19 @@ struct OverviewTelemetrySection: View {
             dates: dates,
             window: runtime.timelineWindow,
             interaction: runtime.interaction,
+            motionState: motionState,
             plotHeight: plotHeight
         )
         .frame(maxWidth: .infinity)
+    }
+
+    private var motionState: OverviewMotionState {
+        OverviewMotionState.resolve(
+            reduceMotion: reduceMotion,
+            isWindowActive: controlActiveState != .inactive,
+            isPaused: runtime.isPaused
+                || appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused
+        )
     }
 }
 
@@ -327,10 +418,11 @@ private enum OverviewTelemetryControlsLayout {
 
 private struct OverviewTelemetryControls: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(OverviewPreferencesStore.self) private var preferencesStore
     @Environment(\.micaAppLanguage) private var language
 
     let dates: [Date]
-    let runtime: OverviewTelemetryModuleRuntime
+    let runtime: OverviewTelemetryRuntime
     let layout: OverviewTelemetryControlsLayout
 
     var body: some View {
@@ -394,8 +486,11 @@ private struct OverviewTelemetryControls: View {
         Picker(
             MicaStrings.localizedKey("overview.timeline_window", language: language),
             selection: Binding(
-                get: { runtime.timelineWindow },
-                set: { runtime.setTimelineWindow($0) }
+                get: { preferencesStore.preferences.timelineWindow },
+                set: { window in
+                    preferencesStore.setTimelineWindow(window)
+                    runtime.setTimelineWindow(window)
+                }
             )
         ) {
             ForEach(OverviewTimelineWindow.allCases) { window in
@@ -736,6 +831,7 @@ private struct OverviewTelemetryEmptyPlot: View {
 }
 
 private struct OverviewTrafficChart: View {
+    @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
 
     let metric: OverviewTrafficMetric
@@ -743,17 +839,18 @@ private struct OverviewTrafficChart: View {
     let dates: [Date]
     let window: OverviewTimelineWindow
     let interaction: OverviewTimelineInteractionState
+    let motionState: OverviewMotionState
     let plotHeight: CGFloat
 
     var body: some View {
-        let selectedSample = selectedSample
+        let displayedSample = displayedSample
 
         OverviewTelemetryPanel(
             titleKey: metric.titleKey,
             systemImage: metric.systemImage,
             tint: metric.tint,
-            value: selectedSample.map { OverviewFormat.rate(metric.value(in: $0)) },
-            timestamp: selectedSample?.receivedAt,
+            value: displayedSample.map { OverviewFormat.rate(metric.value(in: $0)) },
+            timestamp: displayedSample?.receivedAt,
             plotHeight: plotHeight
         ) {
             if samples.isEmpty {
@@ -763,7 +860,8 @@ private struct OverviewTrafficChart: View {
                     metric: metric,
                     samples: samples,
                     window: window,
-                    language: language
+                    language: language,
+                    motionState: motionState
                 )
                 .equatable()
                 .chartOverlay { proxy in
@@ -797,19 +895,18 @@ private struct OverviewTrafficChart: View {
         }
     }
 
-    private var selectedSample: TrafficTimeline.Sample? {
-        guard let target = interaction.snapshot.selectedDate
-                ?? samples.last?.receivedAt else {
-            return nil
+    private var displayedSample: TrafficTimeline.Sample? {
+        guard let target = interaction.snapshot.selectedDate else {
+            return appModel.trafficTimeline.samples.last ?? samples.last
         }
         return OverviewTimelineProjection.nearestTrafficSample(to: target, in: samples)
     }
 
     private var accessibilityValue: String {
-        guard let selectedSample else { return "" }
-        let time = selectedSample.receivedAt.formatted(date: .omitted, time: .standard)
+        guard let displayedSample else { return "" }
+        let time = displayedSample.receivedAt.formatted(date: .omitted, time: .standard)
         let title = MicaStrings.localizedKey(metric.titleKey, language: language)
-        return "\(time), \(title): \(OverviewFormat.rate(metric.value(in: selectedSample)))"
+        return "\(time), \(title): \(OverviewFormat.rate(metric.value(in: displayedSample)))"
     }
 
     private func moveSelection(_ direction: MoveCommandDirection) {
@@ -829,12 +926,14 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
     let samples: [TrafficTimeline.Sample]
     let window: OverviewTimelineWindow
     let language: AppLanguage
+    let motionState: OverviewMotionState
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.metric == rhs.metric
             && lhs.samples == rhs.samples
             && lhs.window == rhs.window
             && lhs.language == rhs.language
+            && lhs.motionState == rhs.motionState
     }
 
     var body: some View {
@@ -861,13 +960,6 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                 .foregroundStyle(metric.tint)
                 .lineStyle(StrokeStyle(lineWidth: 1.6))
 
-                PointPlot(
-                    samples.suffix(1),
-                    x: .value(timeLabel, \.receivedAt),
-                    y: .value(metricLabel, \.upload)
-                )
-                .foregroundStyle(metric.tint)
-                .symbolSize(24)
             } else {
                 AreaPlot(
                     samples,
@@ -884,13 +976,21 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                 .foregroundStyle(metric.tint)
                 .lineStyle(StrokeStyle(lineWidth: 1.6))
 
-                PointPlot(
-                    samples.suffix(1),
-                    x: .value(timeLabel, \.receivedAt),
-                    y: .value(metricLabel, \.download)
+            }
+
+            if let latestSample = samples.last {
+                PointMark(
+                    x: .value(timeLabel, latestSample.receivedAt),
+                    y: .value(metricLabel, metric.value(in: latestSample))
                 )
                 .foregroundStyle(metric.tint)
-                .symbolSize(24)
+                .symbol {
+                    OverviewLatestSampleMark(
+                        tint: metric.tint,
+                        trigger: latestSample.id,
+                        motionState: motionState
+                    )
+                }
             }
         }
         .chartXScale(domain: dateDomain)
@@ -922,6 +1022,7 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
 }
 
 private struct OverviewConnectionChart: View {
+    @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
 
     let samples: [ConnectionCountTimeline.Sample]
@@ -929,17 +1030,18 @@ private struct OverviewConnectionChart: View {
     let dates: [Date]
     let window: OverviewTimelineWindow
     let interaction: OverviewTimelineInteractionState
+    let motionState: OverviewMotionState
     let plotHeight: CGFloat
 
     var body: some View {
-        let selectedSample = selectedSample
+        let displayedSample = displayedSample
 
         OverviewTelemetryPanel(
             titleKey: "overview.connection_count",
             systemImage: "network",
             tint: MicaStyle.signalMint,
-            value: selectedSample?.activeCount.formatted(),
-            timestamp: selectedSample?.receivedAt,
+            value: displayedSample?.activeCount.formatted(),
+            timestamp: displayedSample?.receivedAt,
             contextText: memoryContextText,
             plotHeight: plotHeight
         ) {
@@ -949,7 +1051,8 @@ private struct OverviewConnectionChart: View {
                 OverviewConnectionBaseChart(
                     samples: samples,
                     window: window,
-                    language: language
+                    language: language,
+                    motionState: motionState
                 )
                 .equatable()
                 .chartOverlay { proxy in
@@ -985,10 +1088,9 @@ private struct OverviewConnectionChart: View {
         }
     }
 
-    private var selectedSample: ConnectionCountTimeline.Sample? {
-        guard let target = interaction.snapshot.selectedDate
-                ?? samples.last?.receivedAt else {
-            return nil
+    private var displayedSample: ConnectionCountTimeline.Sample? {
+        guard let target = interaction.snapshot.selectedDate else {
+            return appModel.connectionCountTimeline.samples.last ?? samples.last
         }
         return OverviewTimelineProjection.nearestConnectionSample(
             to: target,
@@ -997,9 +1099,8 @@ private struct OverviewConnectionChart: View {
     }
 
     private var selectedMemorySample: MemoryTimeline.Sample? {
-        guard let target = interaction.snapshot.selectedDate
-                ?? memorySamples.last?.receivedAt else {
-            return nil
+        guard let target = interaction.snapshot.selectedDate else {
+            return appModel.memoryTimeline.samples.last ?? memorySamples.last
         }
         return OverviewTimelineProjection.nearestMemorySample(
             to: target,
@@ -1022,9 +1123,9 @@ private struct OverviewConnectionChart: View {
     }
 
     private var accessibilityValue: String {
-        guard let selectedSample else { return "" }
-        let time = selectedSample.receivedAt.formatted(date: .omitted, time: .standard)
-        return "\(time), \(selectedSample.activeCount.formatted()), \(memoryContextText)"
+        guard let displayedSample else { return "" }
+        let time = displayedSample.receivedAt.formatted(date: .omitted, time: .standard)
+        return "\(time), \(displayedSample.activeCount.formatted()), \(memoryContextText)"
     }
 
     private func moveSelection(_ direction: MoveCommandDirection) {
@@ -1043,11 +1144,13 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
     let samples: [ConnectionCountTimeline.Sample]
     let window: OverviewTimelineWindow
     let language: AppLanguage
+    let motionState: OverviewMotionState
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.samples == rhs.samples
             && lhs.window == rhs.window
             && lhs.language == rhs.language
+            && lhs.motionState == rhs.motionState
     }
 
     var body: some View {
@@ -1073,13 +1176,20 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
             .foregroundStyle(MicaStyle.signalMint)
             .lineStyle(StrokeStyle(lineWidth: 1.5))
 
-            PointPlot(
-                samples.suffix(1),
-                x: .value(timeLabel, \.receivedAt),
-                y: .value(connectionLabel, \.activeCount)
-            )
-            .foregroundStyle(MicaStyle.signalMint)
-            .symbolSize(24)
+            if let latestSample = samples.last {
+                PointMark(
+                    x: .value(timeLabel, latestSample.receivedAt),
+                    y: .value(connectionLabel, latestSample.activeCount)
+                )
+                .foregroundStyle(MicaStyle.signalMint)
+                .symbol {
+                    OverviewLatestSampleMark(
+                        tint: MicaStyle.signalMint,
+                        trigger: latestSample.id,
+                        motionState: motionState
+                    )
+                }
+            }
         }
         .chartXScale(domain: dateDomain)
         .chartXAxis(.hidden)

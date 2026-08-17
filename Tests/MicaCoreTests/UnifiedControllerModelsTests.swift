@@ -1,7 +1,32 @@
+import Foundation
 import XCTest
 @testable import MicaCore
 
 final class UnifiedControllerModelsTests: XCTestCase {
+    func testMihomoAdapterSnapshotPropagatesOptionalEndpointCancellation() async throws {
+        let profile = RouterProfile(
+            displayName: "Cancelled Adapter",
+            host: "controller.example",
+            controllerKind: .mihomoCompatible
+        )
+        let fixture = MihomoAdapterCancellationFixture()
+        let client = MihomoClient(profile: profile) { request in
+            try await fixture.load(request)
+        }
+        let adapter = MihomoCompatibleControllerAdapter(profile: profile, client: client)
+
+        do {
+            _ = try await adapter.snapshot()
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            let paths = await fixture.recordedPaths()
+            XCTAssertTrue(paths.contains("/rules"))
+            XCTAssertFalse(paths.contains("/providers/proxies"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testSingBoxAdapterIsNativeAndCombinedStashHintStaysCapabilityOnly() {
         let singBox = RouterProfile(
             displayName: "sing-box",
@@ -219,5 +244,38 @@ final class UnifiedControllerModelsTests: XCTestCase {
         XCTAssertEqual(snapshot.policyGroups[0].latencyBuckets["normal"], 1)
         XCTAssertEqual(snapshot.traffic, UnifiedTrafficSnapshot(upload: 3, download: 5))
         XCTAssertEqual(snapshot.modeLabel, "rule")
+    }
+}
+
+private actor MihomoAdapterCancellationFixture {
+    private var paths: [String] = []
+
+    func load(_ request: URLRequest) throws -> (Data, URLResponse) {
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                  url: url,
+                  statusCode: 200,
+                  httpVersion: "HTTP/1.1",
+                  headerFields: ["Content-Type": "application/json"]
+              ) else {
+            throw URLError(.badServerResponse)
+        }
+
+        paths.append(url.path)
+        let data: Data
+        switch url.path {
+        case "/version": data = Data(#"{"version":"v1"}"#.utf8)
+        case "/configs": data = Data(#"{"mode":"rule"}"#.utf8)
+        case "/proxies": data = Data(#"{"proxies":{}}"#.utf8)
+        case "/connections": data = Data(#"{"connections":[]}"#.utf8)
+        case "/rules": throw CancellationError()
+        case "/providers/proxies", "/providers/rules": data = Data(#"{"providers":{}}"#.utf8)
+        default: throw URLError(.unsupportedURL)
+        }
+        return (data, response)
+    }
+
+    func recordedPaths() -> [String] {
+        paths
     }
 }

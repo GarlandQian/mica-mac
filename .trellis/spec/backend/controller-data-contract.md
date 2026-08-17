@@ -13,6 +13,8 @@ public static func ProxiesResponse.decodePreservingProxyOrder(
 ) throws -> ProxiesResponse
 
 public func MihomoClient.proxies() async throws -> ProxiesResponse
+
+public func RouterProfile.baseURL() throws -> URL
 ```
 
 `MihomoClient.proxies()` must call `decodePreservingProxyOrder`; it must not decode `/proxies` through a generic request helper.
@@ -40,6 +42,14 @@ public func MihomoClient.proxies() async throws -> ProxiesResponse
   permission to issue a selection mutation.
 - Connection delete endpoints require a non-blank reported ID. Reject blank IDs
   before URL construction or transport dispatch.
+- Router endpoints are validated before persistence, after decoding, and before
+  any HTTP or gRPC transport is created. Invalid hosts, ports outside
+  `1...65535`, and malformed URLs are typed failures; they never reach a
+  `preconditionFailure` or remote transport.
+- Cancellation is control flow, not optional-endpoint absence. HTTP clients,
+  probe fallbacks, aggregate snapshots, member-delay fallbacks, smart-weight
+  fallbacks, and optional metadata reads must rethrow `CancellationError` and
+  stop before starting the next transport or endpoint.
 - Backend/controller capabilities may add a mature Swift package when it materially improves protocol correctness, security, performance, or maintenance. The package boundary must remain typed, capability-gated, cancellable, and generation-safe; macOS 27/Swift 6.2 support, maintenance, license, transitive cost, and tests are required before adoption.
 
 ## 4. Validation & Error Matrix
@@ -56,6 +66,8 @@ public func MihomoClient.proxies() async throws -> ProxiesResponse
 | sing-box reports a trace log | Preserve the `trace` level; do not collapse it into `debug`. |
 | A group reports `selectable: false` | Preserve members and test data; reject node-selection writes. |
 | A connection ID is blank | Keep the row visible, but reject deletion before any request is sent. |
+| A persisted or newly saved endpoint is malformed | Reject the profile with `RouterProfileEndpointError` or `DecodingError.dataCorrupted`; do not create HTTP/gRPC transport. |
+| An optional endpoint is cancelled | Propagate `CancellationError`; do not convert it to `nil`, an empty snapshot, or a connection failure. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -82,6 +94,11 @@ public func MihomoClient.proxies() async throws -> ProxiesResponse
   their DTO-to-presentation boundaries.
 - Assert read-only groups cannot start selection writes and blank connection IDs
   cannot reach the HTTP transport.
+- Assert invalid saved/decoded endpoints fail before HTTP/gRPC transport and
+  direct IPv4/IPv6 LAN hosts still form valid URLs.
+- Assert cancellation stops HTTP-to-Surge-to-sing-box probing and propagates
+  through optional snapshot endpoints, smart-weight fallbacks, and bounded
+  member-delay task groups.
 
 ## 7. Wrong vs Correct
 
@@ -98,4 +115,18 @@ proxyOrder.compactMap { name in
 // Correct generic presentation boundary: consume the backend-specific catalog
 // order and place GLOBAL last when visible.
 ProxyProjection.arrangedGroups(groups, mode: mode, visibility: visibility)
+```
+
+```swift
+// Wrong: cancellation is silently reclassified as missing optional data.
+let providers = try? await client.proxyProviders()
+
+// Correct: tolerate ordinary optional-endpoint failures, but preserve cancellation.
+do {
+    providers = try await client.proxyProviders()
+} catch is CancellationError {
+    throw CancellationError()
+} catch {
+    providers = nil
+}
 ```

@@ -175,7 +175,7 @@ public actor MihomoClient {
                 throw aggregateError
             }
 
-            guard let fallback = await legacySmartWeights(forGroups: groupNames) else {
+            guard let fallback = try await legacySmartWeights(forGroups: groupNames) else {
                 throw aggregateError
             }
             return fallback
@@ -378,7 +378,10 @@ public actor MihomoClient {
             return GroupDelayResponse(delay: [:])
         }
 
-        let delays = await withTaskGroup(of: (String, Int).self, returning: [String: Int].self) { taskGroup in
+        let delays = try await withThrowingTaskGroup(
+            of: (String, Int).self,
+            returning: [String: Int].self
+        ) { taskGroup in
             var iterator = probes.makeIterator()
             let concurrency = min(32, probes.count)
 
@@ -388,7 +391,7 @@ public actor MihomoClient {
             }
 
             var results: [String: Int] = [:]
-            while let (name, delay) = await taskGroup.next() {
+            while let (name, delay) = try await taskGroup.next() {
                 results[name] = delay
                 if let probe = iterator.next() {
                     addDelayTask(probe, url: url, timeout: timeout, to: &taskGroup)
@@ -404,7 +407,7 @@ public actor MihomoClient {
         _ probe: ProxyDelayProbe,
         url: String,
         timeout: Int,
-        to taskGroup: inout TaskGroup<(String, Int)>
+        to taskGroup: inout ThrowingTaskGroup<(String, Int), any Error>
     ) {
         taskGroup.addTask { [self] in
             do {
@@ -420,6 +423,10 @@ public actor MihomoClient {
                     response = try await proxyDelay(name: probe.name, url: url, timeout: timeout)
                 }
                 return (probe.name, response.delay)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch MihomoClientError.connectionFailure(.cancelled) {
+                throw CancellationError()
             } catch {
                 return (probe.name, 0)
             }
@@ -457,15 +464,23 @@ public actor MihomoClient {
     private func loadData(for request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await transport.data(for: request)
-        } catch let error as URLError {
-            throw Self.clientError(for: error)
         } catch {
-            throw MihomoClientError.connectionFailure(.other)
+            let mapped = Self.clientError(for: error)
+            if case .connectionFailure(.cancelled) = mapped {
+                throw CancellationError()
+            }
+            throw mapped
         }
     }
 
     private func makeURLRequest(_ endpoint: MihomoEndpoint) throws -> URLRequest {
-        let url = try endpoint.url(relativeTo: profile.baseURL)
+        let baseURL: URL
+        do {
+            baseURL = try profile.baseURL()
+        } catch {
+            throw MihomoClientError.invalidURL(endpoint.pathDescription)
+        }
+        let url = try endpoint.url(relativeTo: baseURL)
         var request = URLRequest(url: url, timeoutInterval: 8)
         request.httpMethod = endpoint.method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -478,7 +493,13 @@ public actor MihomoClient {
     }
 
     private func makeStreamRequest(_ endpoint: MihomoEndpoint) throws -> URLRequest {
-        let httpURL = try endpoint.url(relativeTo: profile.baseURL)
+        let baseURL: URL
+        do {
+            baseURL = try profile.baseURL()
+        } catch {
+            throw MihomoClientError.invalidURL(endpoint.pathDescription)
+        }
+        let httpURL = try endpoint.url(relativeTo: baseURL)
         guard var components = URLComponents(url: httpURL, resolvingAgainstBaseURL: false) else {
             throw MihomoClientError.invalidURL(endpoint.pathDescription)
         }
@@ -572,8 +593,8 @@ public actor MihomoClient {
         }
     }
 
-    private func legacySmartWeights(forGroups groupNames: [String]) async -> SmartWeightsResponse? {
-        await withTaskGroup(
+    private func legacySmartWeights(forGroups groupNames: [String]) async throws -> SmartWeightsResponse? {
+        try await withThrowingTaskGroup(
             of: SmartWeightFallbackResult.self,
             returning: SmartWeightsResponse?.self
         ) { taskGroup in
@@ -585,6 +606,10 @@ public actor MihomoClient {
                             groupName: groupName,
                             weights: response.weights
                         )
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch MihomoClientError.connectionFailure(.cancelled) {
+                        throw CancellationError()
                     } catch {
                         return SmartWeightFallbackResult(groupName: groupName, weights: nil)
                     }
@@ -593,7 +618,7 @@ public actor MihomoClient {
 
             var didLoadAnyGroup = false
             var weightsByGroup: [String: [SmartNodeRankSnapshot]] = [:]
-            for await result in taskGroup {
+            for try await result in taskGroup {
                 guard let weights = result.weights else { continue }
                 didLoadAnyGroup = true
                 weightsByGroup[result.groupName] = weights

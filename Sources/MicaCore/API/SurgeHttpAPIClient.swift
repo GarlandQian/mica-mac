@@ -155,10 +155,10 @@ public actor SurgeHttpAPIClient {
         let policies = try await policies()
         let policyGroups = try await policyGroups()
         let activeRequests = try await activeRequests()
-        let recentRequestResponse = try? await recentRequests()
+        let recentRequestResponse = try await loadOptionalValue { try await self.recentRequests() }
         let rules = try await rules()
         let traffic = try await traffic()
-        let dnsCache = try? await dnsCache()
+        let dnsCacheResponse = try await loadOptionalValue { try await self.dnsCache() }
 
         return SurgeControlSnapshot(
             platform: profile.surgePlatform,
@@ -170,8 +170,20 @@ public actor SurgeHttpAPIClient {
             recentRequests: recentRequestResponse ?? SurgeActiveRequestsResponse(requests: []),
             rules: rules,
             traffic: traffic,
-            dnsCache: dnsCache ?? SurgeDNSCacheResponse()
+            dnsCache: dnsCacheResponse ?? SurgeDNSCacheResponse()
         )
+    }
+
+    private func loadOptionalValue<Value: Sendable>(
+        _ operation: @Sendable () async throws -> Value
+    ) async throws -> Value? {
+        do {
+            return try await operation()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
     }
 
     private func request<Response: Decodable>(
@@ -202,15 +214,23 @@ public actor SurgeHttpAPIClient {
     private func loadData(for request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await transport.data(for: request)
-        } catch let error as URLError {
-            throw Self.clientError(for: error)
         } catch {
-            throw SurgeHttpAPIError.connectionFailure(.other)
+            let mapped = Self.clientError(for: error)
+            if case .connectionFailure(.cancelled) = mapped {
+                throw CancellationError()
+            }
+            throw mapped
         }
     }
 
     private func makeURLRequest(_ endpoint: SurgeEndpoint, body: Data? = nil) throws -> URLRequest {
-        let url = try endpoint.url(relativeTo: profile.baseURL)
+        let baseURL: URL
+        do {
+            baseURL = try profile.baseURL()
+        } catch {
+            throw SurgeHttpAPIError.invalidURL(endpoint.pathDescription)
+        }
+        let url = try endpoint.url(relativeTo: baseURL)
         var request = URLRequest(url: url, timeoutInterval: 8)
         request.httpMethod = endpoint.method.rawValue
         request.httpBody = body
@@ -240,6 +260,23 @@ public actor SurgeHttpAPIClient {
         default:
             throw SurgeHttpAPIError.unexpectedStatus(httpResponse.statusCode)
         }
+    }
+
+    private static func clientError(for error: Error) -> SurgeHttpAPIError {
+        if let error = error as? SurgeHttpAPIError {
+            return error
+        }
+        if let error = error as? URLError {
+            return clientError(for: error)
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return clientError(for: URLError(URLError.Code(rawValue: nsError.code)))
+        }
+        if error is CancellationError {
+            return .connectionFailure(.cancelled)
+        }
+        return .connectionFailure(.other)
     }
 
     private static func clientError(for error: URLError) -> SurgeHttpAPIError {

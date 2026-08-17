@@ -1,3 +1,4 @@
+import Foundation
 import MicaCore
 import Testing
 @testable import Mica
@@ -15,6 +16,68 @@ private actor ControllerConnectionTestRecorder {
 }
 
 struct ControllerVariantCapabilityTests {
+    @MainActor
+    @Test func runtimeMaintenanceRevalidatesLiveStateAndConcreteVariant() {
+        let connecting = RouterProfile(
+            displayName: "Connecting",
+            host: "192.0.2.10",
+            controllerKind: .mihomoCompatible
+        )
+        let connectingModel = AppModel(
+            routers: [connecting],
+            selectedRouterID: connecting.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        connectingModel.controllerSession.begin(controllerID: connecting.id)
+
+        connectingModel.performDiagnosticsRuntimeOperation("dns-flush")
+        connectingModel.updateControllerConfig(.allowLAN(true))
+
+        #expect(connectingModel.runtimeOperationTask == nil)
+        #expect(connectingModel.runningRuntimeOperationID == nil)
+        #expect(connectingModel.configTask == nil)
+        #expect(connectingModel.dashboard.config.allowLan == nil)
+
+        let stash = RouterProfile(
+            displayName: "Stash",
+            host: "192.0.2.11",
+            controllerKind: .stashCompatible
+        )
+        let stashModel = AppModel(
+            routers: [stash],
+            selectedRouterID: stash.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        stashModel.controllerSession.begin(controllerID: stash.id)
+        stashModel.controllerSession.commitBaseline(at: Date())
+        stashModel.controllerSession.state = .live
+
+        stashModel.performDiagnosticsRuntimeOperation("memory")
+        #expect(stashModel.runtimeOperationTask == nil)
+        #expect(stashModel.runningRuntimeOperationID == nil)
+
+        let cmfa = RouterProfile(
+            displayName: "CMFA",
+            host: "192.0.2.12",
+            controllerKind: .cmfaCompatible
+        )
+        let cmfaModel = AppModel(
+            routers: [cmfa],
+            selectedRouterID: cmfa.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        cmfaModel.controllerSession.begin(controllerID: cmfa.id)
+        cmfaModel.controllerSession.commitBaseline(at: Date())
+        cmfaModel.controllerSession.state = .live
+
+        cmfaModel.performDiagnosticsRuntimeOperation("core-restart")
+        #expect(cmfaModel.runtimeOperationTask == nil)
+        #expect(cmfaModel.runningRuntimeOperationID == nil)
+    }
+
     @MainActor
     @Test func stashCapabilityMatrixUsesDelayFallbackButHidesUnsupportedRuntimeOperations() throws {
         let model = readyModel(runtimeKind: .stashCompatible)

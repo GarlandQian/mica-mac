@@ -75,6 +75,7 @@ final class AppModel {
     var dashboard: DashboardSnapshot
     var controllerMetadata: ControllerMetadataSnapshot
     var policyGroupCatalog: PolicyGroupCatalogSnapshot
+    private(set) var policyGroupCatalogRevision: UInt64
     // Per-domain published snapshots split out of `dashboard` so a high-frequency
     // write to one domain (connections/logs every ~1s during downloads) does not
     // invalidate views observing an unrelated domain. Every dashboard publication
@@ -205,6 +206,7 @@ final class AppModel {
     /// Offline GeoIP enrichment for Overview network info (G1). Session-scoped cache;
     /// never performs online HTTP lookups.
     @ObservationIgnored let geoIPCoordinator = GeoIPSessionCoordinator()
+    @ObservationIgnored let routerProfileMutationCoordinator = RouterProfileMutationCoordinator()
 
     @ObservationIgnored var loadTask: Task<Void, Never>?
     @ObservationIgnored var refreshTask: Task<Void, Never>?
@@ -318,6 +320,7 @@ final class AppModel {
         self.dashboard = dashboard
         self.controllerMetadata = ControllerMetadataSnapshot(dashboard: dashboard)
         self.policyGroupCatalog = PolicyGroupCatalogSnapshot(dashboard: dashboard)
+        self.policyGroupCatalogRevision = 0
         self.connectionsCatalog = ConnectionsCatalogSnapshot(dashboard: dashboard)
         self.logsCatalog = .empty
         self.routingCatalog = RoutingCatalogSnapshot(dashboard: dashboard)
@@ -411,6 +414,7 @@ final class AppModel {
         let next = PolicyGroupCatalogSnapshot(dashboard: dashboard)
         guard next != policyGroupCatalog else { return }
         policyGroupCatalog = next
+        policyGroupCatalogRevision &+= 1
     }
 
     func synchronizeControllerMetadata() {

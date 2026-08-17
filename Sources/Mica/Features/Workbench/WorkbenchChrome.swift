@@ -160,7 +160,7 @@ struct WorkbenchRootView: View {
             .toolbar {
                 if destination == .overview {
                     ToolbarItem(placement: .primaryAction) {
-                        OverviewDashboardToolbarControl()
+                        OverviewPreferencesToolbarControl()
                     }
                     .sharedBackgroundVisibility(.hidden)
                 }
@@ -194,7 +194,7 @@ struct WorkbenchRootView: View {
 
 private struct WorkbenchRootLifecycleObserver: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(OverviewDashboardWindowCoordinator.self) private var overviewCoordinator
+    @Environment(OverviewWindowRuntime.self) private var overviewRuntime
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
 
     let destination: WorkbenchDestination
@@ -209,20 +209,20 @@ private struct WorkbenchRootLifecycleObserver: View {
                     retainControllers(appModel.routers)
                 }
                 appModel.registerLiveSessionWindowDemand(
-                    overviewCoordinator.liveSessionWindowDemandID,
+                    overviewRuntime.liveSessionWindowDemandID,
                     destination: destination.liveSessionVisibleDestination
                 )
             }
             .onDisappear {
                 workspaceStore.flushPendingPersistence()
                 appModel.unregisterLiveSessionWindowDemand(
-                    overviewCoordinator.liveSessionWindowDemandID
+                    overviewRuntime.liveSessionWindowDemandID
                 )
             }
             .onChange(of: destination) { _, destination in
                 workspaceStore.flushPendingPersistence()
                 appModel.updateLiveSessionWindowDemand(
-                    overviewCoordinator.liveSessionWindowDemandID,
+                    overviewRuntime.liveSessionWindowDemandID,
                     destination: destination.liveSessionVisibleDestination
                 )
             }
@@ -235,13 +235,13 @@ private struct WorkbenchRootLifecycleObserver: View {
                     workspaceStore.clearSessionBoundState(controllerID: previous)
                 }
                 appModel.updateLiveSessionWindowDemand(
-                    overviewCoordinator.liveSessionWindowDemandID,
+                    overviewRuntime.liveSessionWindowDemandID,
                     destination: destination.liveSessionVisibleDestination
                 )
             }
             .onChange(of: appModel.controllerSessionPresentation.state) { _, state in
                 guard state == .stopped else { return }
-                overviewCoordinator.runtimeRegistry.clear()
+                overviewRuntime.registry.clear()
                 if let controllerID = appModel.selectedRouterID {
                     workspaceStore.clearSessionBoundState(controllerID: controllerID)
                 }

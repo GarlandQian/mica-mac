@@ -8,7 +8,7 @@ struct WorkbenchOverviewView: View {
     var body: some View {
         WorkbenchPageScaffold(
             commands: {
-                OverviewDashboardEditorBar()
+                OverviewPreferencesBar()
             },
             content: {
                 OverviewAvailabilityRegion(destination: $destination)
@@ -19,9 +19,8 @@ struct WorkbenchOverviewView: View {
 
 private struct OverviewAvailabilityRegion: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(OverviewDashboardLayoutStore.self) private var layoutStore
-    @Environment(OverviewDashboardWindowCoordinator.self) private var layoutCoordinator
-    @Environment(\.micaAppLanguage) private var language
+    @Environment(OverviewPreferencesStore.self) private var preferencesStore
+    @Environment(OverviewWindowRuntime.self) private var overviewRuntime
 
     @Binding var destination: WorkbenchDestination
 
@@ -29,20 +28,13 @@ private struct OverviewAvailabilityRegion: View {
         switch appModel.controllerSessionPresentation.state {
         case .live, .partial, .staleReconnecting:
             if let controllerID = appModel.selectedRouterID {
-                let effectiveState = layoutStore.effectiveState(for: controllerID)
-                let layout = layoutCoordinator.targetControllerID == controllerID
-                    ? layoutCoordinator.draft ?? effectiveState.layout
-                    : effectiveState.layout
-
-                OverviewDashboardCanvas(
+                OverviewFixedCanvas(
                     controllerID: controllerID,
                     generation: appModel.controllerSessionPresentation.generation,
-                    layout: layout,
+                    preferences: preferencesStore.preferences,
+                    overviewRuntime: overviewRuntime,
                     destination: $destination
                 )
-                .onChange(of: effectiveState.revisionToken) {
-                    reconcileLayoutCoordinator()
-                }
             } else {
                 unavailableState
             }
@@ -104,47 +96,47 @@ private struct OverviewAvailabilityRegion: View {
         guard let router = appModel.selectedRouter else { return false }
         return appModel.runtimeControllerKind(for: router) == .unsupported
     }
-
-    private func reconcileLayoutCoordinator() {
-        let targetExists = layoutCoordinator.targetControllerID.map { targetID in
-            appModel.routers.contains { $0.id == targetID }
-        } ?? true
-        layoutCoordinator.reconcile(
-            selectedControllerID: appModel.selectedRouterID,
-            targetControllerExists: targetExists
-        )
-    }
 }
 
-private struct OverviewDashboardCanvas: View {
-    @Environment(OverviewDashboardWindowCoordinator.self) private var coordinator
-
+private struct OverviewFixedCanvas: View {
     let controllerID: RouterProfile.ID
     let generation: UUID
-    let layout: OverviewDashboardLayout
+    let preferences: OverviewPreferences
+    let overviewRuntime: OverviewWindowRuntime
     @Binding var destination: WorkbenchDestination
 
     var body: some View {
         GeometryReader { geometry in
             let pagePadding = MicaBounds.pagePadding(for: geometry.size.width)
             let availableWidth = max(geometry.size.width - pagePadding * 2, 0)
-            let widthMode = widthMode(for: availableWidth)
-            let rows = OverviewDashboardRowPacker.rows(
-                for: layout,
-                widthMode: widthMode
+            let telemetryRuntime = overviewRuntime.registry.telemetryRuntime(
+                controllerID: controllerID,
+                generation: generation,
+                preferredWindow: preferences.timelineWindow
+            )
+            let topologyRuntime = overviewRuntime.registry.topologyRuntime(
+                controllerID: controllerID,
+                generation: generation
             )
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: MicaSpacing.section) {
-                    ForEach(rows) { row in
-                        OverviewDashboardResponsiveRow(
-                            row: row,
-                            widthMode: widthMode,
-                            availableWidth: availableWidth,
-                            controllerID: controllerID,
-                            generation: generation,
-                            layout: layout,
-                            destination: $destination
+                LazyVStack(alignment: .leading, spacing: MicaSpacing.space6) {
+                    OverviewTelemetrySection(
+                        availableWidth: availableWidth,
+                        visibleMetrics: preferences.visibleMetrics,
+                        preferredTimelineWindow: preferences.timelineWindow,
+                        runtime: telemetryRuntime
+                    )
+
+                    OverviewTopologySection(
+                        runtime: topologyRuntime,
+                        destination: $destination
+                    )
+
+                    ForEach(visibleOptionalModules) { module in
+                        optionalModule(
+                            module,
+                            availableWidth: availableWidth
                         )
                     }
                 }
@@ -154,7 +146,7 @@ private struct OverviewDashboardCanvas: View {
             }
             .micaObserveScrollPerformance()
             .onAppear {
-                coordinator.runtimeRegistry.prepare(
+                overviewRuntime.registry.prepare(
                     controllerID: controllerID,
                     generation: generation
                 )
@@ -162,148 +154,30 @@ private struct OverviewDashboardCanvas: View {
         }
     }
 
-    private func widthMode(for width: CGFloat) -> OverviewDashboardGridWidthMode {
-        if width >= 900 {
-            return .wide
-        }
-        if width >= 560 {
-            return .medium
-        }
-        return .narrow
-    }
-}
-
-private struct OverviewDashboardResponsiveRow: View {
-    @Environment(OverviewDashboardWindowCoordinator.self) private var coordinator
-
-    let row: OverviewDashboardPackedRow
-    let widthMode: OverviewDashboardGridWidthMode
-    let availableWidth: CGFloat
-    let controllerID: RouterProfile.ID
-    let generation: UUID
-    let layout: OverviewDashboardLayout
-    @Binding var destination: WorkbenchDestination
-
-    var body: some View {
-        OverviewDashboardSpanLayout(
-            spans: row.modules.map(\.columnSpan),
-            columnCount: widthMode.columnCount,
-            spacing: MicaSpacing.section
-        ) {
-            ForEach(row.modules) { module in
-                moduleView(
-                    module.configuration,
-                    availableWidth: estimatedWidth(for: module)
-                )
-                .allowsHitTesting(!coordinator.isEditing)
-                .disabled(coordinator.isEditing)
-            }
-        }
+    private var visibleOptionalModules: [OverviewOptionalModuleID] {
+        OverviewOptionalModuleID.allCases.filter(
+            preferences.visibleOptionalModules.contains
+        )
     }
 
     @ViewBuilder
-    private func moduleView(
-        _ configuration: OverviewDashboardModuleConfiguration,
+    private func optionalModule(
+        _ module: OverviewOptionalModuleID,
         availableWidth: CGFloat
     ) -> some View {
-        switch configuration.id {
+        switch module {
         case .instrumentRail:
             OverviewInstrumentRailSection(
                 availableWidth: availableWidth,
-                metrics: layout.contentPreferences.instrumentMetrics
-            )
-        case .telemetry:
-            let runtime = coordinator.runtimeRegistry.telemetryRuntime(
-                controllerID: controllerID,
-                generation: generation,
-                preferredWindow: layout.contentPreferences.timelineWindow
-            )
-            OverviewTelemetrySection(
-                availableWidth: availableWidth,
-                preferredTimelineWindow: layout.contentPreferences.timelineWindow,
-                runtime: runtime
+                visibleMetrics: preferences.visibleMetrics
             )
         case .operationalSummaries:
             OverviewHighlightsSection(
                 availableWidth: availableWidth,
-                configurations: layout.contentPreferences.summaryCategories,
-                destination: $destination
-            )
-        case .routeTopology:
-            let runtime = coordinator.runtimeRegistry.topologyRuntime(
-                controllerID: controllerID,
-                generation: generation
-            )
-            OverviewTopologySection(
-                runtime: runtime,
                 destination: $destination
             )
         case .networkInformation:
-            OverviewNetworkFactsSection(
-                groupOrder: layout.contentPreferences.networkGroups
-            )
-        }
-    }
-
-    private func estimatedWidth(
-        for module: OverviewDashboardPackedModule
-    ) -> CGFloat {
-        let unit = (availableWidth + MicaSpacing.section)
-            / CGFloat(widthMode.columnCount)
-        return max(unit * CGFloat(module.columnSpan) - MicaSpacing.section, 0)
-    }
-}
-
-private struct OverviewDashboardSpanLayout: Layout {
-    let spans: [Int]
-    let columnCount: Int
-    let spacing: CGFloat
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        let width = proposal.width
-            ?? subviews.reduce(CGFloat.zero) {
-                $0 + $1.sizeThatFits(.unspecified).width
-            }
-        let widths = childWidths(totalWidth: width, count: subviews.count)
-        let height = zip(subviews, widths).reduce(CGFloat.zero) { result, pair in
-            max(
-                result,
-                pair.0.sizeThatFits(
-                    ProposedViewSize(width: pair.1, height: proposal.height)
-                ).height
-            )
-        }
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        let widths = childWidths(totalWidth: bounds.width, count: subviews.count)
-        var x = bounds.minX
-        for (subview, width) in zip(subviews, widths) {
-            subview.place(
-                at: CGPoint(x: x, y: bounds.minY),
-                anchor: .topLeading,
-                proposal: ProposedViewSize(width: width, height: nil)
-            )
-            x += width + spacing
-        }
-    }
-
-    private func childWidths(totalWidth: CGFloat, count: Int) -> [CGFloat] {
-        guard count > 0, columnCount > 0 else { return [] }
-        let unit = (totalWidth + spacing) / CGFloat(columnCount)
-        return (0..<count).map { index in
-            let span = index < spans.count ? spans[index] : columnCount
-            return max(unit * CGFloat(span) - spacing, 0)
+            OverviewNetworkFactsSection()
         }
     }
 }
@@ -347,16 +221,26 @@ struct OverviewSymbolMark: View {
     let size: Size
 
     var body: some View {
-        Image(systemName: systemName)
-            .symbolRenderingMode(.hierarchical)
-            .font(size.font)
-            .foregroundStyle(tint)
-            .frame(width: size.frameSize, height: size.frameSize)
-            .background {
-                RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
-                    .fill(tint.opacity(size.fillOpacity))
-            }
-            .accessibilityHidden(true)
+        ZStack {
+            RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
+                .fill(MicaStyle.secondaryContentFill.opacity(0.86))
+            RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [tint.opacity(0.78), tint.opacity(0.16)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+            Image(systemName: systemName)
+                .symbolRenderingMode(.hierarchical)
+                .font(size.font)
+                .foregroundStyle(tint)
+        }
+        .frame(width: size.frameSize, height: size.frameSize)
+        .shadow(color: tint.opacity(0.16), radius: 5)
+        .accessibilityHidden(true)
     }
 }
 
@@ -386,6 +270,17 @@ struct OverviewFlatSection<Accessory: View, Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MicaSpacing.module) {
             HStack(spacing: MicaSpacing.row) {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [tint, MicaStyle.signalViolet.opacity(0.62)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 3, height: 28)
+                    .shadow(color: tint.opacity(0.28), radius: 5)
+                    .accessibilityHidden(true)
                 HStack(spacing: MicaSpacing.row) {
                     OverviewSymbolMark(
                         systemName: systemImage,
@@ -403,9 +298,7 @@ struct OverviewFlatSection<Accessory: View, Content: View>: View {
 
             content
         }
-        .padding(.top, MicaSpacing.module)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider() }
     }
 }
 
@@ -430,105 +323,89 @@ private struct OverviewHighlightsSection: View {
     @Environment(\.micaAppLanguage) private var language
 
     let availableWidth: CGFloat
-    let configurations: [OverviewDashboardSummaryCategoryConfiguration]
     @Binding var destination: WorkbenchDestination
-    @State private var selectedPane = OverviewDashboardSummaryCategoryID.latency
+    @State private var selectedPane = OverviewSummaryCategoryID.latency
 
     var body: some View {
-        let visibleConfigurations = configurations.filter(\.isVisible)
-
         OverviewFlatSection(
             "overview.operational_summary",
             systemImage: "gauge.with.dots.needle.67percent"
         ) {
-            if availableWidth >= 860 {
-                HStack(alignment: .top, spacing: MicaSpacing.section) {
-                    ForEach(
-                        Array(visibleConfigurations.enumerated()),
-                        id: \.element.id
-                    ) { index, configuration in
-                        if index > 0 {
-                            Divider()
-                        }
-                        summaryView(for: configuration)
-                            .frame(
-                                minWidth: 220,
-                                maxWidth: .infinity,
-                                alignment: .topLeading
-                            )
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: MicaSpacing.module) {
-                    Picker(
-                        MicaStrings.localizedKey(
-                            "overview.operational_summary",
-                            language: language
-                        ),
-                        selection: $selectedPane
-                    ) {
-                        ForEach(visibleConfigurations) { configuration in
-                            Text(
-                                MicaStrings.localizedKey(
-                                    configuration.id.titleKey,
-                                    language: language
+            Group {
+                if availableWidth >= 860 {
+                    HStack(alignment: .top, spacing: MicaSpacing.section) {
+                        ForEach(
+                            Array(OverviewSummaryCategoryID.allCases.enumerated()),
+                            id: \.element
+                        ) { index, category in
+                            if index > 0 {
+                                Divider()
+                            }
+                            summaryView(for: category)
+                                .frame(
+                                    minWidth: 220,
+                                    maxWidth: .infinity,
+                                    alignment: .topLeading
                                 )
-                            )
-                            .tag(configuration.id)
                         }
                     }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .fixedSize()
+                } else {
+                    VStack(alignment: .leading, spacing: MicaSpacing.module) {
+                        Picker(
+                            MicaStrings.localizedKey(
+                                "overview.operational_summary",
+                                language: language
+                            ),
+                            selection: $selectedPane
+                        ) {
+                            ForEach(OverviewSummaryCategoryID.allCases) { category in
+                                Text(
+                                    MicaStrings.localizedKey(
+                                        category.titleKey,
+                                        language: language
+                                    )
+                                )
+                                .tag(category)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .fixedSize()
 
-                    if let selectedConfiguration {
-                        summaryView(for: selectedConfiguration)
+                        summaryView(for: selectedPane)
                     }
                 }
             }
+            .padding(MicaSpacing.module)
+            .overviewCyberSurface(.auxiliary)
         }
-        .onChange(of: visibleConfigurations.map(\.id), initial: true) {
-            guard !visibleConfigurations.contains(where: { $0.id == selectedPane }),
-                  let first = visibleConfigurations.first else {
-                return
-            }
-            selectedPane = first.id
-        }
-    }
-
-    private var selectedConfiguration:
-        OverviewDashboardSummaryCategoryConfiguration?
-    {
-        configurations.first {
-            $0.isVisible && $0.id == selectedPane
-        } ?? configurations.first(where: \.isVisible)
     }
 
     @ViewBuilder
     private func summaryView(
-        for configuration: OverviewDashboardSummaryCategoryConfiguration
+        for category: OverviewSummaryCategoryID
     ) -> some View {
-        switch configuration.id {
+        switch category {
         case .latency:
             OverviewLatencyHighlightsSection(
-                maximumCount: configuration.itemCount.rawValue,
+                maximumCount: 3,
                 destination: $destination
             )
         case .ruleHits:
             OverviewRuleHighlightsSection(
-                maximumCount: configuration.itemCount.rawValue,
+                maximumCount: 3,
                 destination: $destination
             )
         case .activeConnections:
             OverviewConnectionHighlightsSection(
-                maximumCount: configuration.itemCount.rawValue,
+                maximumCount: 3,
                 destination: $destination
             )
         }
     }
 }
 
-private extension OverviewDashboardSummaryCategoryID {
+private extension OverviewSummaryCategoryID {
     var titleKey: String {
         switch self {
         case .latency:
@@ -772,14 +649,11 @@ private struct OverviewNetworkFactsSection: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
 
-    let groupOrder: [OverviewDashboardNetworkGroupID]
-
     var body: some View {
         let groups = OverviewProjection.networkFactGroups(
             router: appModel.selectedRouter,
             metadata: appModel.controllerMetadata,
-            language: language,
-            order: groupOrder
+            language: language
         )
 
         OverviewFlatSection(
@@ -811,18 +685,13 @@ private struct OverviewNetworkFactsSection: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                 }
-                .background(MicaStyle.contentFill)
-                .clipShape(.rect(cornerRadius: MicaBounds.moduleRadius))
-                .overlay {
-                    RoundedRectangle(cornerRadius: MicaBounds.moduleRadius)
-                        .stroke(MicaStyle.separator.opacity(0.5), lineWidth: 1)
-                }
+                .overviewCyberSurface(.auxiliary)
             }
         }
     }
 }
 
-private extension OverviewDashboardNetworkGroupID {
+private extension OverviewNetworkGroupID {
     var titleKey: String {
         switch self {
         case .controllerIdentity:

@@ -19,7 +19,7 @@ extension AppModel {
             return
         }
 
-        guard controllerSupports(
+        guard controllerSupportsLiveAction(
             mutation.action,
             router: router,
             action: mutation.action.micaLabel(language: presentationLanguage)

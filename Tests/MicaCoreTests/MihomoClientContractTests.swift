@@ -20,6 +20,42 @@ final class MihomoClientContractTests: XCTestCase {
         XCTAssertNil(request.httpBody)
     }
 
+    func testDirectTransportCancellationRemainsCancellation() async throws {
+        let profile = RouterProfile(
+            displayName: "Cancelled",
+            host: "controller.example"
+        )
+        let client = MihomoClient(profile: profile) { _ in
+            throw CancellationError()
+        }
+
+        do {
+            _ = try await client.version()
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // The client must not reclassify cancellation as a network outage.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testInvalidProfileFailsBeforeTransport() async throws {
+        let profile = RouterProfile(
+            displayName: "Invalid",
+            host: "bad host"
+        )
+        let client = MihomoClient(profile: profile)
+
+        do {
+            _ = try await client.version()
+            XCTFail("Expected invalid URL")
+        } catch MihomoClientError.invalidURL(let path) {
+            XCTAssertEqual(path, "/version")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testConfigsDecodesUpstreamShapedFixture() async throws {
         let fixture = MihomoHTTPFixture(data: try fixtureData("configs-success"))
         let client = makeClient(fixture: fixture)
@@ -117,6 +153,39 @@ final class MihomoClientContractTests: XCTestCase {
             response.weights["Smart B"],
             [SmartNodeRankSnapshot(name: "Node B", rank: "RarelyUsed")]
         )
+    }
+
+    func testSmartWeightsFallbackPropagatesCancellation() async throws {
+        let profile = RouterProfile(
+            displayName: "Cancelled",
+            host: "controller.example"
+        )
+        let client = MihomoClient(profile: profile) { request in
+            guard let url = request.url else {
+                throw URLError(.badURL)
+            }
+            if url.path == "/group/weights" {
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 500,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: nil
+                    )
+                )
+                return (Data(), response)
+            }
+            throw CancellationError()
+        }
+
+        do {
+            _ = try await client.smartWeights(forGroups: ["Smart A"])
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // A fallback child cancellation must fail the structured group.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
     }
 
     func testConfigurationReloadSendsPutWithAnEmptyJSONObject() async throws {

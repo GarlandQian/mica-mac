@@ -21,15 +21,15 @@ The directory contains exactly:
 - `WorkbenchDesignSystem.swift`
 - `WorkbenchVisualSystem.swift`
 - `WorkbenchDashboard.swift`
-- `WorkbenchOverviewTelemetry.swift`
 - `WorkbenchOverviewEditor.swift`
-- `WorkbenchOverviewPersonalization.swift`
-- `WorkbenchOverviewLayoutStore.swift`
-- `WorkbenchOverviewWindowCoordinator.swift`
+- `WorkbenchOverviewPolicyHUD.swift`
+- `WorkbenchOverviewPreferences.swift`
 - `WorkbenchOverviewProjection.swift`
-- `WorkbenchOverviewRuntimes.swift`
+- `WorkbenchOverviewTelemetry.swift`
 - `WorkbenchOverviewTopology.swift`
 - `WorkbenchOverviewTopologyView.swift`
+- `WorkbenchOverviewVisualSystem.swift`
+- `WorkbenchOverviewWindowRuntime.swift`
 - `WorkbenchProxyGroupPanels.swift`
 - `WorkbenchProxyInteraction.swift`
 - `WorkbenchProxyPresentation.swift`
@@ -76,10 +76,13 @@ Overview keeps root/module composition in
 `WorkbenchDashboard.swift`, instrument/telemetry and chart composition in
 `WorkbenchOverviewTelemetry.swift`, topology geometry/cache in
 `WorkbenchOverviewTopology.swift`, and topology SwiftUI/Canvas rendering in
-`WorkbenchOverviewTopologyView.swift`. Its layout model, persistence actor, and
-window draft/conflict coordinator live in `WorkbenchOverviewPersonalization.swift`,
-`WorkbenchOverviewLayoutStore.swift`, and
-`WorkbenchOverviewWindowCoordinator.swift` respectively.
+`WorkbenchOverviewTopologyView.swift`. Global compact preferences and immediate
+controls live in `WorkbenchOverviewPreferences.swift` and
+`WorkbenchOverviewEditor.swift`; policy inspection/HUD projection and placement
+live in `WorkbenchOverviewPolicyHUD.swift`; Overview-only surfaces and finite
+motion live in `WorkbenchOverviewVisualSystem.swift`; each window's demand ID and
+session-scoped telemetry/topology runtimes live in
+`WorkbenchOverviewWindowRuntime.swift`.
 
 Connections keeps row/intent/navigation projection in
 `WorkbenchConnections.swift`, high-frequency pulse/cache/cadence logic in
@@ -154,9 +157,11 @@ a split.
 - Choose the page archetype before changing its styling. Do not make a data
   browser, monitoring canvas, selector, form, and diagnostic outline share one
   generic card composition.
-- Overview is a monitoring canvas: three primary real-time charts for upload,
-  download, and active connections, followed by complete topology and network
-  facts. Charts expose selection, cursor, pause, and same-window drill-in
+- Overview is a monitoring canvas: its fixed core is three primary real-time
+  charts for upload, download, and active connections followed by complete
+  topology. Optional instrument, operational-summary, and grouped-network
+  modules follow the fixed core only when globally enabled. Charts expose
+  selection, cursor, pause, and same-window drill-in
   instead of acting as decoration. The monitoring canvas fills the remaining
   content width after page padding; it does not inherit the bounded reading
   width used by management forms.
@@ -216,8 +221,10 @@ a split.
   row with a rectangular interaction shape. Do not impose one global touch
   height on this pointer-driven macOS navigation.
 - Native window/sidebar/toolbar material is allowed. Workbench content contains
-  no custom `.glassEffect`, `GlassEffectContainer`, gradients used as
-  decoration, nested cards, or repeated floating panels.
+  no custom `.glassEffect`, `GlassEffectContainer`, nested cards, or repeated
+  floating panels. Overview alone may use restrained semantic gradient edges and
+  finite data-arrival energy accents; they never become ambient decoration or an
+  idle animation loop.
 - The window container, native toolbar, command bars, and management canvas use
   the same adaptive page fill across every destination. Loading, unavailable,
   filtered-empty, and empty states paint that fill explicitly; `contentFill` is
@@ -226,9 +233,10 @@ a split.
   pages use a 1040-point limit. The native Settings window uses one centered
   grouped form limited to 820 points, with no duplicate Workbench route or
   repeated in-page title. Data browsers remain width-filling.
-- Overview uses flat modules and separators. Its default layout contains only
-  telemetry, complete route topology, and network information. The instrument
-  rail and operational summaries remain optional personalization modules.
+- Overview uses a fixed core and opaque cyber-neon surfaces. Its default contains
+  telemetry followed by complete route topology. Instrument rail, operational
+  summaries, and grouped network information are optional and hidden by default.
+  Their order is fixed after topology; none can be resized or reordered.
 - Telemetry is one module containing equal-weight upload, download, and active-
   connection panels. Wide layouts use three columns, medium layouts use two
   traffic columns plus a full connection row, and narrow layouts stack them.
@@ -346,29 +354,27 @@ a split.
   switching is disabled in both presentation and AppModel.
 - Connections without a non-blank controller ID remain readable but do not show
   single-close commands and are excluded from grouped close projections.
-- Overview is a personalized summary, not another data browser. Its five unique
-  modules are instrument rail, telemetry, operational summaries, complete route
-  topology, and grouped network information. Full connection fields remain on
-  the Connections inspector; Overview never restores a raw connection selector
-  or retained-closed aggregation.
-- One app-owned layout store persists a global default and optional
-  per-controller overrides. Each window owns a transactional draft, UndoManager
-  history, conflict state, and stable module runtimes. Normal edits remain
-  inline; Done persists once, Cancel discards, and external commits require
-  explicit Reload or Keep Mine.
-- Reset records an explicit remove-override transaction, so it continues to
-  inherit a global default changed by another window before Done. A global
-  default commit compares both the target controller's effective revision and
-  the global revision before it may remove that target override.
-- Controller-layout cleanup starts only after profile loading completes and
-  removes IDs observed as actually deleted. A transient empty cold-launch
-  snapshot never prunes persisted overrides.
-- Module order, legal size, visibility, presets, instrument order/visibility,
-  timeline window, summary order/visibility/count, and network-group order are
-  customizable. At least one module, instrument, and visible summary category
-  remain. Network fields themselves are never hidden. Complete route topology
-  is always a full-row module so its complete chain cannot be squeezed beside
-  another module.
+- Overview is a focused summary, not another data browser. Its fixed core is
+  primary telemetry followed by complete route topology. Instrument rail,
+  operational summaries, and grouped network information are optional modules
+  in that declaration order. Full connection fields remain on the Connections
+  inspector; Overview never restores a raw connection selector or retained-
+  closed aggregation.
+- `MicaApp` owns one `OverviewPreferencesStore` shared across every controller
+  and window. The persisted value contains only visible primary metrics, one
+  timeline window, and optional-module visibility. At least one primary metric
+  remains visible. Changes apply and persist immediately; Reset restores all
+  metrics, five minutes, and no optional modules.
+- Overview has no per-controller overrides, drafts, Done/Cancel transaction,
+  UndoManager history, conflict resolution, migration, module order, module
+  size, row packing, or preset compatibility. The existing v1 persistence key
+  now carries the `mica.overview.fixed-core.v1` schema. A missing, corrupt,
+  wrong-schema, or superseded layout payload returns the new default without
+  migration.
+- Each window owns one `OverviewWindowRuntime`: a stable live-session demand ID,
+  a window-local preferences disclosure, and session-keyed telemetry/topology
+  runtimes. Controller ID or generation changes discard obsolete runtimes so
+  hover, pin, pause, and cached presentation cannot leak into another session.
 - The topology admits every active connection and every reported chain hop.
   Missing source or chain metadata creates an explicit unavailable path record,
   not a fabricated edge. Each layer owns a distinct node identity, nodes sort by
@@ -382,26 +388,33 @@ a split.
   vertically with its densest column. Visible node bars win hit testing first,
   ribbons win over overlapping invisible node padding, and bounded label-adjacent
   node targets use a local 28-point acquisition size while ribbons use a
-  10-point baseline tolerance. Hover/pin detail occupies a readable 80-point
-  reserved graph header inset, so appearing, clearing, or changing selection
-  never moves node/ribbon geometry or the current scroll position. It remains
-  unframed: idle state shows the real connection and unavailable-path counts;
-  full label and description lead after selection, a pin symbol appears only
-  for a fixed selection, and the only visible command is eligible Connections
-  navigation. Pause and full-path commands share the section heading row, and
-  no second topology icon/summary repeats the section identity. Do not turn
-  this inset into a nested card or path toolbar. The graph is one native focusable
-  surface: direction keys step through complete paths, Escape clears local
-  selection, and a native context menu mirrors path stepping, pin/unpin, clear,
-  and eligible Connections navigation. Accessible path controls announce
-  pinned state instead of treating transient hover as selection. Ordered path
-  IDs and their index map are built with the topology index so each path-step
-  lookup stays constant-time during hover. Canvas labels resolve the complete
+  10-point baseline tolerance. The layout builds `nodeGeometryByID` once so HUD
+  anchoring stays constant-time and never changes node/ribbon or scroll geometry.
+  Policy-node hover presents a complete node-adjacent field HUD; click pins the
+  same complete composition, transient hover temporarily wins over a pin and restores that pin on exit,
+  and Escape or blank-canvas activation clears selection. The HUD uses only the
+  already-published policy catalog and exact case-sensitive names. A duplicate
+  or missing match falls back to truthful route detail; inspection never starts
+  network work or rebuilds topology structure/layout. Hover and pinned states
+  include current choice/member group, ordered members, availability, latency,
+  type, provider, interface, hidden/fixed/icon values, every reported transport
+  state including `false`, SMART rank, latest test detail and URL, plus every
+  additional controller field in stable key order. Pinning preserves the HUD;
+  it is not a gate hiding fields, and additional metadata has no arbitrary item
+  cap. Placement scores trailing,
+  leading, above, and below candidates against graph bounds, labels, and node
+  obstacles, then clamps inside the graph. Eligible Proxies and Connections
+  navigation remains same-window. The graph is one native focusable surface:
+  direction keys step through complete paths, Escape clears local selection,
+  and one native context menu mirrors path stepping, pin/unpin, clear, and
+  eligible navigation. VoiceOver exposes policy nodes and paths with pinned
+  state, factual HUD values, and direct navigation. Ordered path IDs and their
+  index map keep path stepping constant-time. Canvas labels resolve the complete
   reported node name at the active Mica font scale and clip it to the local
-  label rectangle; never rewrite reported names with fixed character-count truncation,
-  and never index a node label target across the complete distance to the next
-  column. Sparse topology keeps a width-responsive 680-to-920-point minimum
-  flow area; dense columns may continue growing beyond it.
+  label rectangle; never rewrite reported names with fixed character-count
+  truncation or extend a label target to the next column. Sparse topology keeps
+  a width-responsive 680-to-920-point minimum flow area; dense columns may grow
+  beyond it.
 - Actions availability is the intersection of current controller identity and
   generation, session readiness, controller capability, operation readiness,
   and an adapter-appropriate dispatcher. Static support, observed runtime state,
@@ -635,15 +648,19 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   states do not construct diagnostic runtime rows. Full diagnostic evidence may
   read authoritative session runtime, but that evidence is enriched only after
   the shared command rows are built and is never passed into Actions.
-- Overview telemetry, summaries, grouped network facts, and topology are
-  separate invalidation subtrees. A traffic sample rebuilds the telemetry
-  subtree only.
-- The Overview vertical scroll uses lazy construction. Below-viewport charts,
-  topology, and network facts are not created eagerly.
-- Hidden modules are filtered before constructing their subtree. Sequential
-  12/6/1-column row packing preserves user order and never moves a later module
-  ahead to fill a gap. Window runtime objects preserve timeline and topology
-  caches across reorder/resize while hidden modules perform no work.
+- Overview telemetry, topology, HUD/accessibility inspection, operational
+  summaries, and grouped network facts are separate invalidation subtrees. A
+  traffic sample rebuilds telemetry only; a policy catalog change may rebuild
+  its inspection index but cannot rebuild topology structure or layout.
+- The Overview vertical scroll uses lazy construction. Optional modules are
+  filtered before subtree construction and hidden modules perform no work.
+  Telemetry and topology are always constructed in fixed order; there is no row
+  packer, size negotiation, reorder runtime, or alternate layout tree.
+- Overview finite motion is triggered only by a newly received real sample,
+  topology structure/traffic/metrics revision, explicit selection, or HUD state change. Reduce Motion,
+  inactive windows, local pause, and global dashboard pause resolve to a static
+  equivalent. Do not introduce `TimelineView`, repeating timers, particles,
+  scan lines, or perpetual phase animation.
 - Live chart collections use stable identities and bounded real samples. Do not
   format, sort, group, or rebuild search text inside a mark or row body.
 - Traffic, memory, and active-connection timelines append only controller-received
@@ -653,6 +670,13 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   click/keyboard selection, and pause only presentation while retained session
   data continues to advance. The nearest real memory sample annotates the
   connection chart instead of creating a fourth plot.
+- Current Overview values read the latest raw AppModel-published timeline sample
+  directly; downsampling caches prepare plot history only and never become the
+  authority for the current rate/count/timestamp. Instrument rate labels never
+  format `ConnectionsCatalogSnapshot.traffic` cumulative totals as `/s`.
+- Timeline projection cache signatures include receipt-time boundaries in
+  addition to count and IDs. A reconnect/replacement that reuses sample IDs but
+  carries new receipt times must invalidate the cached plot.
 - Every window root owns one stable `LiveSessionWindowDemandID` and updates only
   its own `LiveSessionVisibleDestination`. Effective live domains are the union
   across windows; child pages never create their own demand or refresh loop.
@@ -709,11 +733,15 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   remains in stable key order and renders as selectable scalar rows or
   recursively disclosed objects/arrays, never as one machine JSON paragraph.
 - Overview keeps bounded Top-K summaries and cached/downsampled received
-  timelines. Topology stores indexed nodes, edges, path memberships, and
-  segment-cell hit regions; hover/selection cannot rebuild graph structure.
+  timelines. Topology stores indexed nodes, node geometry, edges, path
+  memberships, and segment-cell hit regions; hover/selection/HUD projection
+  cannot rebuild graph structure or scan node geometry. Policy inspection builds
+  a bounded index once per AppModel-published catalog revision; unchanged HUD
+  interaction checks the scalar revision instead of comparing the complete
+  catalog and performs no network access.
   Overview is the sole scroll owner. The complete topology fits the available
-  width without a nested horizontal viewport and expands its cached render
-  bands vertically.
+  width without a nested horizontal viewport and expands cached render bands
+  vertically.
 - Expensive presentation work may be deferred during scrolling, chart dragging,
   or filter typing, but one latest result must survive the interaction window.
   For Proxies, a deferrable catalog update remains pending while any proxy

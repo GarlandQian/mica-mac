@@ -640,7 +640,6 @@ struct OverviewTopologyLayout: Sendable {
 
     static let renderBandHeight: CGFloat = 352
     static let columnHeaderHeight: CGFloat = 40
-    static let selectionDetailHeight: CGFloat = 80
     fileprivate static let hitCellSize: CGFloat = 96
 
     let size: CGSize
@@ -648,8 +647,14 @@ struct OverviewTopologyLayout: Sendable {
     let nodes: [NodeGeometry]
     let edges: [EdgeGeometry]
     let renderBands: [RenderBand]
+    let hudObstacles: [CGRect]
     let operationCounts: OperationCounts
+    private let nodeGeometryByID: [String: NodeGeometry]
     private let hitIndex: [HitCell: [HitTarget]]
+
+    func nodeGeometry(id: String) -> NodeGeometry? {
+        nodeGeometryByID[id]
+    }
 
     func hitTest(at point: CGPoint) -> OverviewTopologySelection? {
         hitTestWithOperationCounts(at: point).selection
@@ -702,7 +707,11 @@ struct OverviewTopologyLayout: Sendable {
         self.nodes = nodes
         self.edges = edges
         self.renderBands = renderBands
+        hudObstacles = nodes.flatMap { [$0.rect, $0.labelRect] }
         self.operationCounts = operationCounts
+        nodeGeometryByID = Dictionary(
+            uniqueKeysWithValues: nodes.map { ($0.node.id, $0) }
+        )
         self.hitIndex = hitIndex
     }
 
@@ -793,8 +802,7 @@ enum OverviewTopologyLayoutBuilder {
         availableWidth: CGFloat,
         minimumFlowHeight: CGFloat
     ) async throws -> OverviewTopologyLayout {
-        let topInset = OverviewTopologyLayout.columnHeaderHeight
-            + OverviewTopologyLayout.selectionDetailHeight
+        let topInset = OverviewTopologyLayout.columnHeaderHeight + 12
         let sideInset: CGFloat = 20
         let bottomInset: CGFloat = 32
         let graphWidth = max(availableWidth.rounded(.down), 1)

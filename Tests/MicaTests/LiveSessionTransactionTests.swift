@@ -60,6 +60,60 @@ private actor TransactionSecretStore: SecretStore {
     }
 }
 
+private actor InterleavingProfileStore: RouterProfileStore {
+    private var profiles: [RouterProfile]
+    private var saveCount = 0
+    private var firstSaveRelease: CheckedContinuation<Void, Never>?
+    private var firstSaveDidSuspend = false
+    private var firstSaveWaiters: [CheckedContinuation<Void, Never>] = []
+    private var secondSaveOverlappedFirst = false
+
+    init(profiles: [RouterProfile]) {
+        self.profiles = profiles
+    }
+
+    func loadProfiles() async throws -> [RouterProfile] {
+        profiles
+    }
+
+    func saveProfiles(_ profiles: [RouterProfile]) async throws {
+        saveCount += 1
+        if saveCount == 1 {
+            self.profiles = profiles
+            await withCheckedContinuation { continuation in
+                firstSaveRelease = continuation
+                firstSaveDidSuspend = true
+                let waiters = firstSaveWaiters
+                firstSaveWaiters.removeAll()
+                waiters.forEach { $0.resume() }
+            }
+            return
+        }
+
+        if firstSaveRelease != nil {
+            secondSaveOverlappedFirst = true
+        }
+        self.profiles = profiles
+    }
+
+    func waitUntilFirstSaveSuspends() async {
+        guard !firstSaveDidSuspend else { return }
+        await withCheckedContinuation { continuation in
+            firstSaveWaiters.append(continuation)
+        }
+    }
+
+    func releaseFirstSave() {
+        let continuation = firstSaveRelease
+        firstSaveRelease = nil
+        continuation?.resume()
+    }
+
+    func snapshot() -> (profiles: [RouterProfile], overlapped: Bool) {
+        (profiles, secondSaveOverlappedFirst)
+    }
+}
+
 private actor ControllerProbeScript {
     private var attempts = 0
 
@@ -84,6 +138,18 @@ private actor ControllerProbeScript {
 }
 
 struct LiveSessionTransactionTests {
+    @Test func genericCancellationAndEndpointValidationUseTerminalCategories() {
+        #expect(RouterTrialFailureCategory(error: CancellationError()) == .cancelled)
+        #expect(
+            RouterTrialFailureCategory(error: RouterProfileEndpointError.invalidHost)
+                == .invalidURL
+        )
+        #expect(
+            RouterTrialFailureCategory(error: RouterProfileEndpointError.invalidHost)
+                .retryDisposition == .terminal
+        )
+    }
+
     @Test func laneStateCoalescesOneFollowUpAndResetsRetryAfterSuccess() {
         var state = SessionRefreshLaneState()
 
@@ -128,6 +194,59 @@ struct LiveSessionTransactionTests {
         state.consumeScheduledRetry()
         state.recordSuccess()
         #expect(state.reserveDelay(jitter: 0) == .seconds(2))
+    }
+
+    @MainActor
+    @Test func profileWritesSerializeAcrossEditorSaveAndConnectionMetadata() async throws {
+        let active = RouterProfile(
+            displayName: "Active",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let inactive = RouterProfile(
+            displayName: "Inactive",
+            host: "127.0.0.2",
+            controllerKind: .mihomoCompatible
+        )
+        let store = InterleavingProfileStore(profiles: [active, inactive])
+        let model = AppModel(
+            routers: [active, inactive],
+            selectedRouterID: active.id,
+            profileStore: store,
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: active.id)
+        let generation = model.controllerSession.generation
+
+        var draft = RouterDraft(profile: inactive, secret: "")
+        draft.displayName = "Edited Inactive"
+        let editorSave = Task {
+            try await model.upsertRouter(from: draft)
+        }
+
+        await store.waitUntilFirstSaveSuspends()
+        let connectionMetadataSave = Task {
+            await model.recordSuccessfulConnection(for: active.id, generation: generation)
+        }
+
+        for _ in 0 ..< 20 {
+            await Task.yield()
+        }
+        await store.releaseFirstSave()
+        _ = try await editorSave.value
+        await connectionMetadataSave.value
+
+        let stored = await store.snapshot()
+        let storedActive = try #require(stored.profiles.first { $0.id == active.id })
+        let storedInactive = try #require(stored.profiles.first { $0.id == inactive.id })
+        let visibleActive = try #require(model.routers.first { $0.id == active.id })
+        let visibleInactive = try #require(model.routers.first { $0.id == inactive.id })
+
+        #expect(!stored.overlapped)
+        #expect(storedActive.lastConnectedAt != nil)
+        #expect(storedInactive.displayName == "Edited Inactive")
+        #expect(visibleActive.lastConnectedAt != nil)
+        #expect(visibleInactive.displayName == "Edited Inactive")
     }
 
     @MainActor

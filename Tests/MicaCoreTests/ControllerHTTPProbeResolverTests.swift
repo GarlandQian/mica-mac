@@ -111,6 +111,29 @@ final class ControllerHTTPProbeResolverTests: XCTestCase {
         XCTAssertEqual(requests.map(\.url?.path), ["/version"])
     }
 
+    func testCancellationStopsBeforeSurgeProbe() async throws {
+        let recorder = ControllerProbeCancellationRecorder()
+        let resolver = ControllerHTTPProbeResolver { request in
+            await recorder.record(request)
+            throw CancellationError()
+        }
+
+        do {
+            _ = try await resolver.resolve(
+                profile: profile(),
+                credential: nil
+            )
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Cancellation must not fall through to another HTTP family.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let paths = await recorder.paths()
+        XCTAssertEqual(paths, ["/version"])
+    }
+
     private func resolver(fixture: ControllerProbeFixture) -> ControllerHTTPProbeResolver {
         ControllerHTTPProbeResolver { request in
             try await fixture.load(request)
@@ -140,6 +163,18 @@ final class ControllerHTTPProbeResolverTests: XCTestCase {
             throw CocoaError(.fileNoSuchFile)
         }
         return try Data(contentsOf: url)
+    }
+}
+
+private actor ControllerProbeCancellationRecorder {
+    private var requests: [URLRequest] = []
+
+    func record(_ request: URLRequest) {
+        requests.append(request)
+    }
+
+    func paths() -> [String] {
+        requests.compactMap { $0.url?.path }
     }
 }
 

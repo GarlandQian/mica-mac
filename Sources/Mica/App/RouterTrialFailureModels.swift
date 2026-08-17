@@ -45,6 +45,16 @@ enum RouterTrialFailureCategory: Equatable {
     }
 
     init(error: Error) {
+        if error is CancellationError {
+            self = .cancelled
+            return
+        }
+
+        if error is RouterProfileEndpointError {
+            self = .invalidURL
+            return
+        }
+
         if let surgeError = error as? SurgeHttpAPIError {
             self = Self.category(for: surgeError)
             return

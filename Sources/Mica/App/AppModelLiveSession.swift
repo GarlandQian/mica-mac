@@ -812,7 +812,8 @@ extension AppModel {
                 return
             }
 
-            if let smartWeights = try? await client.smartWeights(forGroups: smartGroups) {
+            do {
+                let smartWeights = try await client.smartWeights(forGroups: smartGroups)
                 try ensureCurrentSession(routerID: router.id, generation: generation)
                 controllerSession.endpointCache.smartWeights = smartWeights
                 publishMihomoPresentation(
@@ -820,6 +821,11 @@ extension AppModel {
                     health: nextHealth,
                     domains: [.policyGroups, .insight]
                 )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Smart weights are optional controller metadata. Keep the last
+                // successful values visible when only this endpoint is absent.
             }
 
         case .slow:
@@ -1137,6 +1143,15 @@ extension AppModel {
         if domains.contains(.connections) {
             dashboard.connections = projected.connections
             dashboard.traffic = projected.traffic
+            trafficTimeline = controllerSession.trafficTimeline
+            connectionCountTimeline = controllerSession.connectionCountTimeline
+            if let latest = controllerSession.trafficTimeline.samples.last {
+                liveTrafficRate = TrafficSnapshot(
+                    upload: latest.upload,
+                    download: latest.download
+                )
+                liveStreamUpdatedAt = latest.receivedAt
+            }
         }
         if domains.contains(.routing) {
             dashboard.rules = projected.rules
@@ -2464,7 +2479,7 @@ extension AppModel {
             snapshot,
             router: router,
             connectionRatesReceivedAt: checkedAt,
-            domains: []
+            domains: [.connections]
         )
         completeLiveTransportIngestion(
             receivedAt: checkedAt,

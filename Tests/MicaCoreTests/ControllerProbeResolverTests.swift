@@ -127,6 +127,31 @@ final class ControllerProbeResolverTests: XCTestCase {
         XCTAssertEqual(callCount, 1)
     }
 
+    func testHTTPCancellationDoesNotStartSingBoxProbe() async throws {
+        let recorder = ProbeInvocationRecorder()
+        let resolver = ControllerProbeResolver(
+            httpProbe: { _, _, _ in
+                throw CancellationError()
+            },
+            singBoxProbe: { _, _ in
+                await recorder.record()
+                return SingBoxVersion(version: "unexpected", apiVersion: 1)
+            }
+        )
+
+        do {
+            _ = try await resolver.resolve(profile: profile(), credential: nil)
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Cancellation must terminate protocol probing.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let callCount = await recorder.callCount()
+        XCTAssertEqual(callCount, 0)
+    }
+
     private func profile() -> RouterProfile {
         RouterProfile(
             displayName: "Auto",

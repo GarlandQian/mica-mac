@@ -6,6 +6,21 @@ import XCTest
 @testable import MicaCore
 
 final class SingBoxGRPCClientTests: XCTestCase {
+    func testInvalidProfileFailsBeforeGRPCTransportCreation() {
+        let profile = RouterProfile(
+            displayName: "Invalid sing-box",
+            host: "controller.local",
+            port: 0,
+            controllerKind: .singBoxCompatible
+        )
+
+        XCTAssertThrowsError(
+            try SingBoxGRPCClient(profile: profile, credential: nil)
+        ) { error in
+            XCTAssertEqual(error as? RouterProfileEndpointError, .invalidPort(0))
+        }
+    }
+
     func testAuthorizationMetadataUsesBearerScheme() {
         let metadata = SingBoxGRPCMetadata.make(credential: "fixture-secret")
         XCTAssertEqual(

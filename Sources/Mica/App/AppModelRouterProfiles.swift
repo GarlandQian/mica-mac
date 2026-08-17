@@ -1,9 +1,42 @@
 import Foundation
 import MicaCore
 
+actor RouterProfileMutationCoordinator {
+    private var tail: Task<Void, Never>?
+
+    func run<Value: Sendable>(
+        _ operation: @escaping @MainActor @Sendable () async throws -> Value
+    ) async throws -> Value {
+        let predecessor = tail
+        let task = Task<Value, Error> {
+            if let predecessor {
+                await predecessor.value
+            }
+            try Task.checkCancellation()
+            return try await operation()
+        }
+
+        tail = Task {
+            _ = try? await task.value
+        }
+
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+}
+
 extension AppModel {
     @discardableResult
     func upsertRouter(from draft: RouterDraft) async throws -> RouterProfile {
+        try await routerProfileMutationCoordinator.run { [self] in
+            try await upsertRouterTransaction(from: draft)
+        }
+    }
+
+    private func upsertRouterTransaction(from draft: RouterDraft) async throws -> RouterProfile {
         let draftProfile = draft.profile
         let commandID = beginCommand(.saveRouter, router: draftProfile, summary: localized("operation.saving_profile"))
         let isExistingRouter = routers.contains { $0.id == draftProfile.id }
@@ -84,6 +117,12 @@ extension AppModel {
     }
 
     func deleteRouterTransaction(_ router: RouterProfile) async throws {
+        try await routerProfileMutationCoordinator.run { [self] in
+            try await performDeleteRouterTransaction(router)
+        }
+    }
+
+    private func performDeleteRouterTransaction(_ router: RouterProfile) async throws {
         guard let originalIndex = routers.firstIndex(where: { $0.id == router.id }) else { return }
 
         let originalRouters = routers
@@ -133,6 +172,12 @@ extension AppModel {
     }
 
     func moveRouter(_ routerID: RouterProfile.ID, to targetIndex: Int) async throws {
+        try await routerProfileMutationCoordinator.run { [self] in
+            try await performMoveRouter(routerID, to: targetIndex)
+        }
+    }
+
+    private func performMoveRouter(_ routerID: RouterProfile.ID, to targetIndex: Int) async throws {
         guard let sourceIndex = routers.firstIndex(where: { $0.id == routerID }) else { return }
         guard routers.indices.contains(targetIndex) else { return }
 
@@ -217,43 +262,49 @@ extension AppModel {
 
         didLoadPersistedState = true
 
-        loadTask = Task {
-            do {
-                let loadedProfiles = try await profileStore.loadProfiles()
-
-                if loadedProfiles.isEmpty {
-                    routers = []
-                    selectedRouterID = nil
-                    persistSelectedRouterID(nil)
-                    operationState = nil
-                    didFinishLoadingPersistedState = true
-                    return
-                }
-
-                routers = loadedProfiles
-                let restoredID = persistedSelectedRouterID()
-                let restoredRouter = loadedProfiles.first { $0.id == restoredID }
-                    ?? loadedProfiles.first
-                selectedRouterID = restoredRouter?.id
-                persistSelectedRouterID(restoredRouter?.id)
-                connectionState = .disconnected
-                replaceDashboard(.empty)
-                unifiedSnapshot = .empty
-                surgeSnapshot = .empty
-                rulesSnapshotState = .idle
-                providersSnapshotState = .idle
-                providerUpdateFailures = [:]
-                providerHealthCheckFailures = [:]
-                controllerHealth = .idle(language: presentationLanguage)
-                didFinishLoadingPersistedState = true
-                try await loadCachedSecrets(for: loadedProfiles)
-                operationState = nil
-                if let restoredRouter, mainWindowCount > 0, !sessionSuspendedForSleep {
-                    enterLiveSession(for: restoredRouter)
-                }
-            } catch {
-                operationState = .error(localized("operation.profiles_load_failed"), nextStep: localized("action.edit_router"))
+        loadTask = Task { [self] in
+            try? await routerProfileMutationCoordinator.run { [self] in
+                await loadPersistedStateTransaction()
             }
+        }
+    }
+
+    private func loadPersistedStateTransaction() async {
+        do {
+            let loadedProfiles = try await profileStore.loadProfiles()
+
+            if loadedProfiles.isEmpty {
+                routers = []
+                selectedRouterID = nil
+                persistSelectedRouterID(nil)
+                operationState = nil
+                didFinishLoadingPersistedState = true
+                return
+            }
+
+            routers = loadedProfiles
+            let restoredID = persistedSelectedRouterID()
+            let restoredRouter = loadedProfiles.first { $0.id == restoredID }
+                ?? loadedProfiles.first
+            selectedRouterID = restoredRouter?.id
+            persistSelectedRouterID(restoredRouter?.id)
+            connectionState = .disconnected
+            replaceDashboard(.empty)
+            unifiedSnapshot = .empty
+            surgeSnapshot = .empty
+            rulesSnapshotState = .idle
+            providersSnapshotState = .idle
+            providerUpdateFailures = [:]
+            providerHealthCheckFailures = [:]
+            controllerHealth = .idle(language: presentationLanguage)
+            didFinishLoadingPersistedState = true
+            try await loadCachedSecrets(for: loadedProfiles)
+            operationState = nil
+            if let restoredRouter, mainWindowCount > 0, !sessionSuspendedForSleep {
+                enterLiveSession(for: restoredRouter)
+            }
+        } catch {
+            operationState = .error(localized("operation.profiles_load_failed"), nextStep: localized("action.edit_router"))
         }
     }
 
@@ -281,6 +332,16 @@ extension AppModel {
     }
 
     func recordSuccessfulConnection(
+        for routerID: RouterProfile.ID,
+        generation: UUID
+    ) async {
+        try? await routerProfileMutationCoordinator.run { [self] in
+            try Task.checkCancellation()
+            await performRecordSuccessfulConnection(for: routerID, generation: generation)
+        }
+    }
+
+    private func performRecordSuccessfulConnection(
         for routerID: RouterProfile.ID,
         generation: UUID
     ) async {
