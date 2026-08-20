@@ -2,7 +2,11 @@
 
 ## Scope
 
-Apply this contract to the owned files in `Sources/Mica/Features/Workbench/`.
+Apply this contract to the owned files in `Sources/Mica/Features/Workbench/`
+and to the app-wide design system in `Sources/Mica/Design/`. The
+design system is two files: `MicaTheme.swift` owns the Mica Ops color,
+typography, spacing, shape, metrics, and motion tokens, and
+`MicaThemeComponents.swift` owns the shared SwiftUI primitives built on them.
 The controller/data layer is stable; no previous Workbench View, presenter,
 projector, interaction store, layout helper, file split, or UI-test type is a
 compatibility requirement.
@@ -18,17 +22,14 @@ The directory contains exactly:
 - `WorkbenchControllerSelector.swift`
 - `WorkbenchWorkspaceView.swift`
 - `WorkbenchWorkspaceStore.swift`
-- `WorkbenchDesignSystem.swift`
-- `WorkbenchVisualSystem.swift`
 - `WorkbenchDashboard.swift`
 - `WorkbenchOverviewEditor.swift`
-- `WorkbenchOverviewPolicyHUD.swift`
+- `WorkbenchOverviewPolicyInspection.swift`
 - `WorkbenchOverviewPreferences.swift`
 - `WorkbenchOverviewProjection.swift`
 - `WorkbenchOverviewTelemetry.swift`
 - `WorkbenchOverviewTopology.swift`
 - `WorkbenchOverviewTopologyView.swift`
-- `WorkbenchOverviewVisualSystem.swift`
 - `WorkbenchOverviewWindowRuntime.swift`
 - `WorkbenchProxyGroupPanels.swift`
 - `WorkbenchProxyInteraction.swift`
@@ -65,9 +66,13 @@ The directory contains exactly:
 Files follow ownership and update frequency. The shell keeps destination/root
 lifecycle in `WorkbenchChrome.swift`, window/editor coordination in
 `WorkbenchWindow.swift`, navigation in `WorkbenchSidebar.swift`, and session or
-operation status in `WorkbenchStatusBar.swift`. `WorkbenchDesignSystem.swift`
-owns tokens, typography, bounds, and motion; `WorkbenchVisualSystem.swift` owns
-shared SwiftUI primitives. Data interaction/scroll coordination,
+operation status in `WorkbenchStatusBar.swift`. The design system is shared
+app-wide from `Sources/Mica/Design/`: `MicaTheme.swift` owns tokens, typography,
+spacing, shape, metrics, and motion; `MicaThemeComponents.swift` owns the shared
+SwiftUI primitives (the `Mica*` panel, hairline separator, mono metric, status
+dot/badge, section header, and empty-state family, plus the `Workbench*`
+symbol, page-scaffold, command-bar, section, state-view, status-badge,
+stale-notice, and icon-command primitives). Data interaction/scroll coordination,
 controller-neutral presentation helpers, and shared data-browser SwiftUI
 composition remain separate in `WorkbenchDataInteraction.swift`,
 `WorkbenchDataPresentation.swift`, and `WorkbenchDataShared.swift`.
@@ -78,9 +83,9 @@ Overview keeps root/module composition in
 `WorkbenchOverviewTopology.swift`, and topology SwiftUI/Canvas rendering in
 `WorkbenchOverviewTopologyView.swift`. Global compact preferences and immediate
 controls live in `WorkbenchOverviewPreferences.swift` and
-`WorkbenchOverviewEditor.swift`; policy inspection/HUD projection and placement
-live in `WorkbenchOverviewPolicyHUD.swift`; Overview-only surfaces and finite
-motion live in `WorkbenchOverviewVisualSystem.swift`; each window's demand ID and
+`WorkbenchOverviewEditor.swift`; the policy inspection index, projection, cache,
+and policy inspector content live in
+`WorkbenchOverviewPolicyInspection.swift`; each window's demand ID and
 session-scoped telemetry/topology runtimes live in
 `WorkbenchOverviewWindowRuntime.swift`.
 
@@ -88,16 +93,16 @@ Connections keeps row/intent/navigation projection in
 `WorkbenchConnections.swift`, high-frequency pulse/cache/cadence logic in
 `WorkbenchConnectionCache.swift`, the live Table workspace in
 `WorkbenchConnectionsView.swift`, pulse rendering in
-`WorkbenchConnectionPulseView.swift`, and selection-driven details in
+`WorkbenchConnectionPulseView.swift`, and the connection inspector content in
 `WorkbenchConnectionDetails.swift`. Logs, Rules, and Sources each split pure
-presentation/cache logic from their root Table view; Rules and Sources also keep
-selection-driven detail UI in `WorkbenchRuleDetails.swift` and
-`WorkbenchSourceDetails.swift`.
+presentation/cache logic from their root Table view; the log inspector content
+lives in `WorkbenchLogs.swift`, and Rules and Sources also keep their inspector
+content in `WorkbenchRuleDetails.swift` and `WorkbenchSourceDetails.swift`.
 
 `WorkbenchManagement.swift` owns only primitives shared by management
 destinations. Controller list/test projections live in
 `WorkbenchControllerPresentation.swift`; `WorkbenchControllers.swift` owns the
-native management workspace. Actions separates its pure availability,
+full-width native list workspace and the controller inspector content. Actions separates its pure availability,
 dispatcher, target-scope, and command projection from root composition across
 `WorkbenchActionsPresentation.swift` and `WorkbenchActions.swift`; sing-box
 Tailscale rendering remains in `WorkbenchTailscale.swift`. Diagnostics separates
@@ -120,8 +125,12 @@ a split.
 
 - Use one `NavigationSplitView` and ten fixed destinations: Overview,
   Proxies, Connections, Logs, Rules, Sources, Controllers, Configuration,
-  Actions, and Diagnostics. Application preferences live only in the native
-  Settings scene opened from the app menu (`Command-,`).
+  Actions, and Diagnostics. The sidebar presents them in three fixed groups —
+  Operate (Overview, Proxies, Connections, Rules), Observe (Logs, Sources,
+  Diagnostics), and Manage (Controllers, Configuration, Actions) — and the six
+  controller-data destinations (Overview through Sources) keep their
+  `Command-1`…`Command-6` View-menu shortcuts. Application preferences live
+  only in the native Settings scene opened from the app menu (`Command-,`).
 - The sidebar starts with a collapsed inline controller switcher above the
   ten destinations. Expanding it reveals persisted-order controller rows
   plus Add and Manage actions in the same window; the full management surface
@@ -133,6 +142,19 @@ a split.
   canvas may mirror its direct canvas and keyboard selection commands in one native context menu;
   no business data or command may exist only there. A native confirmation is
   reserved for destructive/high-risk actions or a dirty-window close.
+- The right-side `.inspector` column is the single detail-reveal mechanism for
+  the whole workbench. `WorkbenchChrome.swift` attaches it once on the
+  workspace, and `WorkbenchInspectorContainer` (in `WorkbenchWorkspaceView.swift`)
+  renders the typed `WorkbenchInspectorSelection` owned by
+  `WorkbenchWorkspaceStore`: `.proxyGroup`/`.proxyNode`, `.connection(id:)`,
+  `.rule(type:payload:)`, `.log(id:)`, `.source(id:)`, and `.controller(id:)`.
+  Connections, Rules, Logs, and Sources register live row resolvers on the
+  store so the inspector always shows current-generation data; controller
+  detail resolves its profile directly from the app model. Selecting an
+  inspectable item reveals the inspector and stays in two-way sync with the
+  owning page's selection; inspector selection is window-level, session-bound,
+  and never persisted. No destination attaches a page-level `.inspector`, and
+  hover presents a standard tooltip only.
 - The inline switcher observes only profiles, selected ID, and the controller
   fields it renders. Traffic/log frames must not rebuild the expanded list.
   It starts collapsed and closes while the controller editor is active.
@@ -166,9 +188,9 @@ a split.
   content width after page padding; it does not inherit the bounded reading
   width used by management forms.
 - Connections, Logs, Rules, and Sources are data browsers: one native `Table`,
-  toolbar search/filter/sort controls, stable rows, and an optional same-window
-  inspector. Loading and empty states occupy the table region without changing
-  the command-bar geometry.
+  toolbar search/filter/sort controls, stable rows, and row detail in the
+  workspace inspector. Loading and empty states occupy the table region without
+  changing the command-bar geometry.
 - Proxies is an ordered selection workspace: controller-reported groups remain
   in order, expand inline, and expose node selection and filtering without a
   modal. Selection hierarchy matters more than dashboard metrics.
@@ -176,8 +198,9 @@ a split.
   canvas. Actions is a state-aware command workspace: checking/recovery uses a
   compact unframed target/status composition, while ready/partial uses bounded
   flat command groups in two measured-width columns or one compact column.
-  The Controllers list remains a native split-view list, and the native Settings
-  scene keeps its own bounded grouped form outside Workbench navigation.
+  The Controllers destination is one full-width native `List` whose selection
+  opens the workspace inspector for detail, and the native Settings scene keeps
+  its own bounded grouped form outside Workbench navigation.
 - `WorkbenchFormRow` owns the only visible label for every management field.
   Embedded text fields, secure fields, pickers, toggles, and nested configuration
   controls inherit hidden native labels from that shared row instead of adding
@@ -195,45 +218,47 @@ a split.
   component and one current native macOS reference. Record any deliberate
   exception here before introducing a second layout model.
 
-- Use the exact accessible Midnight Instrument adaptive palette (dark-first "墨蓝黑",
-  light "实验室白"):
-  - page `#E7E9F2` / `#0E0F1A`
-  - content `#FBFBFE` / `#161827`
-  - elevated `#DEE1EE` / `#1E2133`
-  - tertiary `#D9DCE9` / `#2A2E45`
-  - accent (electric indigo) `#4F5BD5` / `#8B93FF`
-  - cyan (info) `#1E7A93` / `#6FD3E7`
-  - mint (ok) `#2E7D54` / `#7FD4A8`
-  - amber (warning) `#9A6410` / `#F2BE6E`
-  - red (error) `#B23A52` / `#F28B9E`
-  - violet (debug/trace) `#6C4FD1` / `#B79CFF`
-- The four signal hues stay at least 30 degrees away from the accent so color
-  never carries meaning alone. A soft accent fill (`accentSoft`) backs navigation
-  and table-row selection. Numeric values use monospaced-digit/SF Mono styling so
-  live refreshes never shift layout. Motion in `WorkbenchMotion` animates only
-  value or structural changes and degrades to static under Reduce Motion.
-- Text uses semantic primary/secondary foreground styles.
+- Use the exact Mica Ops tokens from `MicaTheme` (light / dark):
+  - canvas `#FFFFFF` / `#0D0E10` (window background)
+  - surface `#F5F6F7` / `#15171A` (panels, sidebar selections)
+  - surfaceRaised `#FFFFFF` / `#1C1F23` (inspector, popovers)
+  - separator `#D9DBDF` / `#2A2D32` (opaque hairlines only)
+  - textPrimary/textSecondary/textTertiary: system label-color ramps in both
+    appearances
+  - accent (signal teal) `#0B8F66` / `#34D1A3`
+  - statusOK/statusWarning/statusError: system green/orange/red
+- The accent never decorates: it marks selection, the active topology path,
+  primary actions, and live indicators only. Status colors carry
+  controller-reported state only and never brand chrome. Navigation and
+  table-row selection use a 14% accent fill over the surface. Numeric values
+  use the monospaced `data*` text roles with tabular numerals so live refreshes
+  never shift layout. Motion in `MicaTheme.Motion` (120–200ms ease-out)
+  animates only value or structural state changes and degrades to static under
+  Reduce Motion; there are no idle loops.
+- Text uses the semantic textPrimary/textSecondary/textTertiary ramps. Primary
+  text contrast stays at least 4.5:1 and secondary/large data at least 3:1.
 - Sidebar navigation remains a native virtualized list, but destination rows
   own their button selection semantics. Selection uses a 14% accent fill,
   a three-point leading indicator, monochrome symbols, and primary text rather
-  than the saturated system-wide selection block. Rows use callout content plus
-  compact vertical padding, and the native button label fills the complete list
+  than the saturated system-wide selection block. Rows use the label text role
+  plus compact vertical padding, and the native button label fills the complete list
   row with a rectangular interaction shape. Do not impose one global touch
   height on this pointer-driven macOS navigation.
 - Native window/sidebar/toolbar material is allowed. Workbench content contains
   no custom `.glassEffect`, `GlassEffectContainer`, nested cards, or repeated
-  floating panels. Overview alone may use restrained semantic gradient edges and
-  finite data-arrival energy accents; they never become ambient decoration or an
-  idle animation loop.
+  floating panels. Content surfaces are flat color fills separated by hairlines —
+  no glow, decorative gradients, elevation shadows, or ambient animation loops
+  anywhere.
 - The window container, native toolbar, command bars, and management canvas use
-  the same adaptive page fill across every destination. Loading, unavailable,
-  filtered-empty, and empty states paint that fill explicitly; `contentFill` is
-  reserved for real tables and intentionally raised data surfaces. Management
-  pages center a responsive canvas with an 1180-point reading limit; form-heavy
-  pages use a 1040-point limit. The native Settings window uses one centered
-  grouped form limited to 820 points, with no duplicate Workbench route or
-  repeated in-page title. Data browsers remain width-filling.
-- Overview uses a fixed core and opaque cyber-neon surfaces. Its default contains
+  the same `MicaTheme.canvas` page fill across every destination. Loading,
+  unavailable, filtered-empty, and empty states paint that fill explicitly;
+  `MicaTheme.surface` and `MicaTheme.surfaceRaised` are reserved for panels,
+  sidebar selections, and the raised inspector/popover surfaces. Management
+  pages use a leading-anchored bounded canvas with an 1180-point limit;
+  form-heavy pages use a 1040-point limit. The native Settings window uses one
+  centered grouped form limited to 820 points, with no duplicate Workbench route
+  or repeated in-page title. Data browsers remain width-filling.
+- Overview uses a fixed core on flat `MicaPanel` surfaces. Its default contains
   telemetry followed by complete route topology. Instrument rail, operational
   summaries, and grouped network information are optional and hidden by default.
   Their order is fixed after topology; none can be resized or reordered.
@@ -245,11 +270,11 @@ a split.
   context on the connection panel instead of a fourth chart. Plot height follows
   effective panel width within a stable 240-to-300-point range, so the three
   charts remain the first visual layer across narrow, medium, and wide windows.
-  Overview section titles use 34-point low-opacity semantic marks and metric
-  titles use 28-point marks. Section/category marks consistently use the
-  informational cyan role; mint, amber, red, and violet remain reserved for
-  actual healthy, warning, failure, debug/trace, or data-series meaning. Both
-  use hierarchical native SF Symbols; dense rows keep unbacked monochrome
+  Overview section titles use 34-point framed marks and metric titles use
+  28-point framed marks: a hierarchical monochrome SF Symbol tinted
+  `textSecondary` on a flat surface plate with a hairline border. The status
+  colors remain reserved for actual healthy, warning, or failure meaning.
+  Dense rows keep unbacked monochrome
   symbols so the marks do not become decorative cards.
   The telemetry
   header has exactly two width-driven compositions: regular keeps title, state,
@@ -258,12 +283,16 @@ a split.
   Font preference never chooses the composition directly. Transient hover
   updates chart readouts and indicators but does not change the header from
   Live to Selected; only a pinned sample owns that chrome state.
-- Radius is 8 points or less except native system controls. Badges may be pills.
+- Corners come from `MicaTheme.Shape` and `MicaTheme.Metrics`: 6-point panels,
+  10-point window-level surfaces, 8-point group modules, and 5-point badges.
+  Native system controls keep their own geometry.
 - Command summaries, section headings, and metric labels render SF Symbols
   through the shared `WorkbenchSymbol` primitive with monochrome rendering, a
   stable frame, and an explicit semantic tint. Do not rely on an inherited
   `LabelStyle` or secondary foreground alone for these navigation cues.
-- Mica interface text uses `micaFont` semantic roles and the selected
+- Mica interface text uses `micaThemeFont` semantic roles (`MicaTheme.TextRole`:
+  caption/label/body/title3/title/hero/heroLarge, plus the SF Mono `data*`
+  variants reserved for live data) and the selected
   `AppFontScale` multiplier (`0.92`, `1.0`, `1.16`, `1.32`). Dynamic Type remains
   a native-control fallback. Window, sidebar, table, hit-target, toolbar, and
   status-bar geometry do not multiply by the font preference. Do not add direct
@@ -322,12 +351,12 @@ a split.
   latency, and current-selection state when those values exist. Clicking its
   main body inspects it and invokes the existing capability-gated switch action;
   latency testing remains a visually secondary, separate command.
-- The selection-driven node detail is inserted below its own group as one flat
-  information shelf, not a field-card wall. Overview, reported `true` and
+- The selection-driven node detail renders in the workspace inspector as one
+  flat field composition, not a field-card wall. Overview, reported `true` and
   `false` transport states, and testing/latency use adaptive key-value columns.
-  Known fields must not be repeated under additional controller fields. Extra
-  fields remain folded by default, individually selectable in stable key order;
-  arrays and objects use deterministic compact JSON.
+  Known fields must not be repeated under additional controller fields.
+  Additional controller fields render in stable key order as monospaced
+  key-value rows; arrays and objects use deterministic compact JSON.
 - Closing details clears only the local inspection selection and never changes
   the controller-selected node.
 - Build the complete reported-field rows only for the selected node detail.
@@ -379,36 +408,41 @@ a split.
   Missing source or chain metadata creates an explicit unavailable path record,
   not a fabricated edge. Each layer owns a distinct node identity, nodes sort by
   reported name within that layer, and aggregated edges retain their real count
-  while display width uses `log10(count + 1) * 10`. The width-fitted Sankey uses
-  20-point node bars, 8-point gaps, curved gradient ribbons, and full-trajectory
-  hover/pin highlighting. Hover and explicit pause freeze only the presented
+  while layout band width uses `log10(count + 1) * 10`. The width-fitted Sankey uses
+  20-point node bars, 8-point gaps, flat cubic edge strokes, and full-trajectory
+  hover/pin highlighting. Edges render as quiet 1.5-point neutral strokes and
+  the active, hovered, or pinned trajectory redraws at 2 points in the signal
+  accent; node bars fill with the controller-reported status color when one
+  exists, the neutral raised surface with a hairline border otherwise, and the
+  accent when the path is active. Hover and explicit pause freeze only the presented
   snapshot; ingestion continues and resume catches up to the latest real frame.
   Inline expansion, complete accessible path rows, and navigation to Connections
   stay in the same window. The graph has no nested scroll axis and grows
   vertically with its densest column. Visible node bars win hit testing first,
   ribbons win over overlapping invisible node padding, and bounded label-adjacent
   node targets use a local 28-point acquisition size while ribbons use a
-  10-point baseline tolerance. The layout builds `nodeGeometryByID` once so HUD
-  anchoring stays constant-time and never changes node/ribbon or scroll geometry.
-  Policy-node hover presents a complete node-adjacent field HUD; click pins the
-  same complete composition, transient hover temporarily wins over a pin and restores that pin on exit,
-  and Escape or blank-canvas activation clears selection. The HUD uses only the
-  already-published policy catalog and exact case-sensitive names. A duplicate
+  10-point baseline tolerance. The layout builds `nodeGeometryByID` once so hit
+  testing and policy inspection stay constant-time and never change node/ribbon
+  or scroll geometry.
+  Policy-node hover presents a standard tooltip with the truthful route label;
+  clicking a policy node pins the canvas selection and opens the workspace
+  inspector with the complete field composition, and Escape or blank-canvas
+  activation clears selection. Policy inspection resolves names through
+  `OverviewPolicyInspectionIndex` using only the already-published policy
+  catalog and exact case-sensitive names. A duplicate
   or missing match falls back to truthful route detail; inspection never starts
-  network work or rebuilds topology structure/layout. Hover and pinned states
-  include current choice/member group, ordered members, availability, latency,
+  network work or rebuilds topology structure/layout. The inspector composition
+  includes current choice/member group, ordered members, availability, latency,
   type, provider, interface, hidden/fixed/icon values, every reported transport
   state including `false`, SMART rank, latest test detail and URL, plus every
-  additional controller field in stable key order. Pinning preserves the HUD;
-  it is not a gate hiding fields, and additional metadata has no arbitrary item
-  cap. Placement scores trailing,
-  leading, above, and below candidates against graph bounds, labels, and node
-  obstacles, then clamps inside the graph. Eligible Proxies and Connections
+  additional controller field in stable key order; selection is not a gate
+  hiding fields, and additional metadata has no arbitrary item cap.
+  Eligible Proxies and Connections
   navigation remains same-window. The graph is one native focusable surface:
   direction keys step through complete paths, Escape clears local selection,
   and one native context menu mirrors path stepping, pin/unpin, clear, and
   eligible navigation. VoiceOver exposes policy nodes and paths with pinned
-  state, factual HUD values, and direct navigation. Ordered path IDs and their
+  state, factual inspection values, and direct navigation. Ordered path IDs and their
   index map keep path stepping constant-time. Canvas labels resolve the complete
   reported node name at the active Mica font scale and clip it to the local
   label rectangle; never rewrite reported names with fixed character-count
@@ -648,7 +682,7 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   states do not construct diagnostic runtime rows. Full diagnostic evidence may
   read authoritative session runtime, but that evidence is enriched only after
   the shared command rows are built and is never passed into Actions.
-- Overview telemetry, topology, HUD/accessibility inspection, operational
+- Overview telemetry, topology, policy inspection, operational
   summaries, and grouped network facts are separate invalidation subtrees. A
   traffic sample rebuilds telemetry only; a policy catalog change may rebuild
   its inspection index but cannot rebuild topology structure or layout.
@@ -657,7 +691,7 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   Telemetry and topology are always constructed in fixed order; there is no row
   packer, size negotiation, reorder runtime, or alternate layout tree.
 - Overview finite motion is triggered only by a newly received real sample,
-  topology structure/traffic/metrics revision, explicit selection, or HUD state change. Reduce Motion,
+  topology structure/traffic/metrics revision, or explicit selection. Reduce Motion,
   inactive windows, local pause, and global dashboard pause resolve to a static
   equivalent. Do not introduce `TimelineView`, repeating timers, particles,
   scan lines, or perpetual phase animation.
@@ -734,10 +768,10 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   recursively disclosed objects/arrays, never as one machine JSON paragraph.
 - Overview keeps bounded Top-K summaries and cached/downsampled received
   timelines. Topology stores indexed nodes, node geometry, edges, path
-  memberships, and segment-cell hit regions; hover/selection/HUD projection
+  memberships, and segment-cell hit regions; hover/selection/inspection projection
   cannot rebuild graph structure or scan node geometry. Policy inspection builds
-  a bounded index once per AppModel-published catalog revision; unchanged HUD
-  interaction checks the scalar revision instead of comparing the complete
+  a bounded index once per AppModel-published catalog revision; unchanged
+  inspection selections check the scalar revision instead of comparing the complete
   catalog and performs no network access.
   Overview is the sole scroll owner. The complete topology fits the available
   width without a nested horizontal viewport and expands cached render bands

@@ -12,21 +12,21 @@ struct WorkbenchConnectionPulseStrip: View {
             regularLayout
             compactLayout
         }
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaDesignTokens.contentFill)
+        .background(MicaTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .contain)
     }
 
     private var regularLayout: some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             metrics
                 .fixedSize(horizontal: true, vertical: false)
 
             Divider()
-                .padding(.vertical, MicaSpacing.tight)
+                .padding(.vertical, MicaTheme.Spacing.space1)
 
             WorkbenchConnectionOwnerDistribution(
                 owners: projection.owners,
@@ -39,7 +39,7 @@ struct WorkbenchConnectionPulseStrip: View {
     }
 
     private var compactLayout: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             metrics
 
             WorkbenchConnectionOwnerDistribution(
@@ -59,7 +59,7 @@ struct WorkbenchConnectionPulseStrip: View {
     }
 
     private var metricsRow: some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             countMetric
             uploadMetric
             downloadMetric
@@ -71,8 +71,8 @@ struct WorkbenchConnectionPulseStrip: View {
     private var metricsGrid: some View {
         Grid(
             alignment: .leading,
-            horizontalSpacing: MicaSpacing.module,
-            verticalSpacing: MicaSpacing.row
+            horizontalSpacing: MicaTheme.Spacing.space3,
+            verticalSpacing: MicaTheme.Spacing.space2
         ) {
             GridRow {
                 countMetric
@@ -94,7 +94,7 @@ struct WorkbenchConnectionPulseStrip: View {
                 ? "point.3.connected.trianglepath.dotted"
                 : "clock",
             tint: projection.scope == .active
-                ? MicaDesignTokens.signalMint
+                ? MicaTheme.statusOK
                 : .secondary
         )
     }
@@ -105,7 +105,7 @@ struct WorkbenchConnectionPulseStrip: View {
             value: uploadValue,
             detail: uploadDetail,
             systemImage: "arrow.up",
-            tint: MicaDesignTokens.signalCyan
+            tint: MicaTheme.textSecondary
         )
     }
 
@@ -115,7 +115,7 @@ struct WorkbenchConnectionPulseStrip: View {
             value: downloadValue,
             detail: downloadDetail,
             systemImage: "arrow.down",
-            tint: MicaDesignTokens.signalViolet
+            tint: MicaTheme.textSecondary
         )
     }
 
@@ -125,7 +125,7 @@ struct WorkbenchConnectionPulseStrip: View {
             value: bytes(projection.totalBytes),
             detail: nil,
             systemImage: "sum",
-            tint: MicaDesignTokens.signalAmber
+            tint: MicaTheme.textSecondary
         )
     }
 
@@ -210,7 +210,7 @@ private struct WorkbenchConnectionPulseMetric: View {
     let tint: Color
 
     var body: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: systemImage,
                 tint: tint,
@@ -220,11 +220,11 @@ private struct WorkbenchConnectionPulseMetric: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
 
                 Text(verbatim: value)
-                    .micaFont(.callout, weight: .semibold, design: .monospaced)
+                    .micaThemeFont(.dataLabel, weight: .semibold)
                     .monospacedDigit()
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -232,7 +232,7 @@ private struct WorkbenchConnectionPulseMetric: View {
 
                 if let detail = detail?.dataNonEmpty {
                     Text(verbatim: detail)
-                        .micaFont(.caption2, design: .monospaced)
+                        .micaThemeFont(.dataCaption)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -253,11 +253,11 @@ private struct WorkbenchConnectionOwnerDistribution: View {
     let totalCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-            HStack(spacing: MicaSpacing.tight) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
                 WorkbenchSymbol(
                     systemName: "person.2",
-                    tint: MicaDesignTokens.signalCyan,
+                    tint: MicaTheme.textSecondary,
                     font: .caption.weight(.semibold),
                     frameSize: 16
                 )
@@ -268,19 +268,19 @@ private struct WorkbenchConnectionOwnerDistribution: View {
                         language: language
                     )
                 )
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
             }
 
             distributionBar
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: MicaSpacing.module) {
+                HStack(spacing: MicaTheme.Spacing.space3) {
                     legendItems
                 }
                 .fixedSize(horizontal: true, vertical: false)
 
-                VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                     legendItems
                 }
             }
@@ -349,18 +349,18 @@ private struct WorkbenchConnectionOwnerDistribution: View {
     }
 
     private func legendItem(label: String, count: Int, color: Color) -> some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             Circle()
                 .fill(color)
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
 
             Text(verbatim: label)
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .lineLimit(1)
 
             Text(verbatim: count.formatted())
-                .micaFont(.caption, weight: .semibold, design: .monospaced)
+                .micaThemeFont(.dataCaption, weight: .semibold)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
@@ -389,9 +389,9 @@ private struct WorkbenchConnectionOwnerDistribution: View {
 
     private func color(at index: Int) -> Color {
         switch index {
-        case 0: MicaDesignTokens.signalCyan
-        case 1: MicaDesignTokens.signalViolet
-        default: MicaDesignTokens.signalMint
+        case 0: MicaTheme.accent
+        case 1: MicaTheme.textSecondary
+        default: MicaTheme.textTertiary
         }
     }
 }

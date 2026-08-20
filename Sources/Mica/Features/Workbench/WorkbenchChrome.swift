@@ -16,37 +16,54 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
     case diagnostics
 
     enum Group: CaseIterable, Identifiable {
-        case workbench
-        case controllerManagement
+        case operate
+        case observe
+        case manage
 
         var id: Self { self }
 
         var titleKey: String {
             switch self {
-            case .workbench: "sidebar.group_workbench"
-            case .controllerManagement: "sidebar.group_controller_management"
+            case .operate: "sidebar.group_operate"
+            case .observe: "sidebar.group_observe"
+            case .manage: "sidebar.group_manage"
             }
         }
     }
 
     var id: String { rawValue }
 
+    /// The six controller-data destinations reachable via ⌘1…⌘6 and listed in
+    /// the View menu, in fixed product order.
     static let workbenchTabCases: [Self] = [
         .overview, .proxies, .connections, .logs, .rules, .sources,
     ]
 
-    static let controllerManagementCases: [Self] = [
-        .controllers, .configuration, .actions, .diagnostics,
+    /// Operate: the primary operations workflow surfaces (Mica Ops IA).
+    static let operateCases: [Self] = [
+        .overview, .proxies, .connections, .rules,
     ]
 
-    static let sidebarCases = workbenchTabCases + controllerManagementCases
+    /// Observe: read-only monitoring and troubleshooting surfaces.
+    static let observeCases: [Self] = [
+        .logs, .sources, .diagnostics,
+    ]
+
+    /// Manage: controller and application management surfaces.
+    static let manageCases: [Self] = [
+        .controllers, .configuration, .actions,
+    ]
+
+    static let sidebarCases = operateCases + observeCases + manageCases
 
     var group: Group {
         switch self {
-        case .overview, .proxies, .connections, .logs, .rules, .sources:
-            .workbench
-        case .controllers, .configuration, .actions, .diagnostics:
-            .controllerManagement
+        case .overview, .proxies, .connections, .rules:
+            .operate
+        case .logs, .sources, .diagnostics:
+            .observe
+        case .controllers, .configuration, .actions:
+            .manage
         }
     }
 
@@ -141,6 +158,7 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
 
 struct WorkbenchRootView: View {
     @Environment(\.micaAppLanguage) private var language
+    @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
 
     @Binding var destination: WorkbenchDestination
 
@@ -148,11 +166,24 @@ struct WorkbenchRootView: View {
     let onEditController: (RouterProfile) -> Void
 
     var body: some View {
+        @Bindable var workspaceStore = workspaceStore
+
         WorkbenchWorkspaceView(
             destination: $destination,
             onAddController: onAddController,
             onEditController: onEditController
         )
+            .inspector(isPresented: $workspaceStore.isInspectorPresented) {
+                WorkbenchInspectorContainer(
+                            destination: $destination,
+                            onEditController: onEditController
+                        )
+                    .inspectorColumnWidth(
+                        min: MicaTheme.Metrics.inspectorMin,
+                        ideal: MicaTheme.Metrics.inspectorIdeal,
+                        max: MicaTheme.Metrics.inspectorMax
+                    )
+            }
             .navigationTitle(
                 MicaStrings.localizedKey(destination.titleKey, language: language)
             )
@@ -179,6 +210,13 @@ struct WorkbenchRootView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     WorkbenchSessionControlButton(kind: .pause)
+                }
+                .sharedBackgroundVisibility(.hidden)
+
+                ToolbarItem(placement: .primaryAction) {
+                    WorkbenchInspectorToggleButton(
+                        isPresented: $workspaceStore.isInspectorPresented
+                    )
                 }
                 .sharedBackgroundVisibility(.hidden)
             }

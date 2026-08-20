@@ -114,9 +114,9 @@ struct ContentView: View {
                 onAddController: presentAddController
             )
                 .navigationSplitViewColumnWidth(
-                    min: MicaBounds.sidebarMin,
-                    ideal: MicaBounds.sidebarIdeal,
-                    max: MicaBounds.sidebarMax
+                    min: MicaTheme.Metrics.sidebarMin,
+                    ideal: MicaTheme.Metrics.sidebarIdeal,
+                    max: MicaTheme.Metrics.sidebarMax
                 )
         } detail: {
             VStack(spacing: 0) {

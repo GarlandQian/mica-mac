@@ -20,14 +20,14 @@ private struct RouterEditorHandshakeRow: View {
     var body: some View {
         Group {
             if widthMode == .compact {
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     label
                     valueLabel
                 }
             } else {
-                HStack(alignment: .top, spacing: MicaSpacing.module) {
+                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                     label
-                        .frame(width: MicaBounds.formLabelWidth, alignment: .leading)
+                        .frame(width: MicaTheme.Metrics.formLabelWidth, alignment: .leading)
                     valueLabel
                 }
             }
@@ -41,14 +41,14 @@ private struct RouterEditorHandshakeRow: View {
 
     private var label: some View {
         Label(title, systemImage: state.iconName)
-            .micaFont(.callout, weight: .medium)
+            .micaThemeFont(.label, weight: .medium)
             .labelStyle(MicaStatusLabelStyle(tint: state.tint))
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private var valueLabel: some View {
         Text(verbatim: value)
-            .micaFont(.callout)
+            .micaThemeFont(.label)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)

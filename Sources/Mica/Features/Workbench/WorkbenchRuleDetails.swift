@@ -11,27 +11,27 @@ struct WorkbenchRuleDecisionPathRail: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: MicaSpacing.module) {
+            HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
                 horizontalPath
-                Spacer(minLength: MicaSpacing.section)
+                Spacer(minLength: MicaTheme.Spacing.space4)
                 statistics
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 compactPath
                 statistics
             }
         }
-        .padding(.horizontal, MicaSpacing.module)
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.horizontal, MicaTheme.Spacing.space3)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaDesignTokens.contentFill)
+        .background(MicaTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .contain)
     }
 
     private var horizontalPath: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             typeStep
             WorkbenchDecisionPathConnector()
             payloadStep
@@ -54,7 +54,7 @@ struct WorkbenchRuleDecisionPathRail: View {
 
     private var compactConnector: some View {
         Image(systemName: "chevron.down")
-            .micaFont(.caption2, weight: .semibold)
+            .micaThemeFont(.caption, weight: .semibold)
             .foregroundStyle(.tertiary)
             .padding(.leading, 10)
             .accessibilityHidden(true)
@@ -65,7 +65,7 @@ struct WorkbenchRuleDecisionPathRail: View {
             titleKey: "dashboard.col_type",
             value: reported(projection.type),
             systemImage: "line.3.horizontal.decrease.circle",
-            tint: MicaDesignTokens.signalViolet,
+            tint: MicaTheme.textSecondary,
             monospaced: true
         )
     }
@@ -75,7 +75,7 @@ struct WorkbenchRuleDecisionPathRail: View {
             titleKey: "dashboard.col_payload",
             value: reported(projection.payload),
             systemImage: "scope",
-            tint: MicaDesignTokens.signalCyan,
+            tint: MicaTheme.textSecondary,
             monospaced: true
         )
     }
@@ -88,7 +88,7 @@ struct WorkbenchRuleDecisionPathRail: View {
                 ? "arrow.right.circle"
                 : "point.3.connected.trianglepath.dotted",
             tint: targetIsNavigable
-                ? MicaDesignTokens.accent
+                ? MicaTheme.accent
                 : .secondary,
             actionHelpKey: targetIsNavigable
                 ? "traffic.open_target_policy"
@@ -99,19 +99,19 @@ struct WorkbenchRuleDecisionPathRail: View {
 
     private var statistics: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.section) {
+            HStack(spacing: MicaTheme.Spacing.space4) {
                 statusReadout
                 activityReadout
                 hitReadout
                 missReadout
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-                HStack(spacing: MicaSpacing.section) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                HStack(spacing: MicaTheme.Spacing.space4) {
                     statusReadout
                     activityReadout
                 }
-                HStack(spacing: MicaSpacing.section) {
+                HStack(spacing: MicaTheme.Spacing.space4) {
                     hitReadout
                     missReadout
                 }
@@ -134,7 +134,7 @@ struct WorkbenchRuleDecisionPathRail: View {
             titleKey: "dashboard.active_sessions",
             value: projection.activeConnections.formatted(),
             systemImage: "point.3.connected.trianglepath.dotted",
-            tint: MicaDesignTokens.signalCyan
+            tint: MicaTheme.textSecondary
         )
     }
 
@@ -143,7 +143,7 @@ struct WorkbenchRuleDecisionPathRail: View {
             titleKey: "traffic.rule_hits",
             value: reported(projection.hitCount),
             systemImage: "scope",
-            tint: MicaDesignTokens.signalMint
+            tint: MicaTheme.textSecondary
         )
     }
 
@@ -152,14 +152,14 @@ struct WorkbenchRuleDecisionPathRail: View {
             titleKey: "traffic.rule_misses",
             value: reported(projection.missCount),
             systemImage: "circle.slash",
-            tint: MicaDesignTokens.signalAmber
+            tint: MicaTheme.textSecondary
         )
     }
 
     private var statusTint: Color {
         switch projection.isDisabled {
-        case true: MicaDesignTokens.signalAmber
-        case false: MicaDesignTokens.signalMint
+        case true: MicaTheme.statusWarning
+        case false: MicaTheme.statusOK
         case nil: .secondary
         }
     }
@@ -215,7 +215,7 @@ struct WorkbenchRuleInspector: View {
                         )
                         .toggleStyle(.switch)
                         .disabled(!canMutate || isUpdating)
-                        .frame(minHeight: MicaBounds.controlMinHeight)
+                        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
                         if isUpdating {
                             ProgressView {
@@ -233,7 +233,7 @@ struct WorkbenchRuleInspector: View {
                                 .textSelection(.enabled)
                         } icon: {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(MicaDesignTokens.signalRed)
+                                .foregroundStyle(MicaTheme.statusError)
                         }
                     }
                 }
@@ -255,8 +255,8 @@ struct WorkbenchRuleInspector: View {
 
     private func statusTint(_ rule: RuleViewState) -> Color {
         switch rule.disabled {
-        case true: MicaDesignTokens.signalAmber
-        case false: MicaDesignTokens.signalMint
+        case true: MicaTheme.statusWarning
+        case false: MicaTheme.statusOK
         case nil: .secondary
         }
     }

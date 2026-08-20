@@ -47,12 +47,33 @@ struct WorkbenchRulesView: View {
             pageContent
         }
         .onAppear {
+            let projectionCacheBinding = $projectionCache
+            let selectedRowIDBinding = $selectedRowID
+            workspaceStore.ruleRowResolver = { type, payload in
+                let cache = projectionCacheBinding.wrappedValue
+                if let selected = cache.row(id: selectedRowIDBinding.wrappedValue),
+                   selected.rule.type == type,
+                   selected.rule.payload == payload {
+                    return selected
+                }
+                return WorkbenchRuleNavigationResolver.resolve(
+                    type: type,
+                    payload: payload,
+                    in: cache.allRows
+                )
+            }
+            if let selectedRowID, let row = projectionCache.row(id: selectedRowID) {
+                workspaceStore.selectInspector(
+                    .rule(type: row.rule.type, payload: row.rule.payload)
+                )
+            }
             isProjectionActive = true
             restoreWorkspace()
             rebuildRows(reconcileSelection: true, update: .source)
             consumeRuleNavigation()
         }
         .onDisappear {
+            workspaceStore.ruleRowResolver = nil
             isProjectionActive = false
         }
         .onChange(of: appModel.selectedRouterID) {
@@ -90,6 +111,18 @@ struct WorkbenchRulesView: View {
         }
         .onChange(of: selectedRowID) { _, selection in
             persistSelection(selection)
+            if let selection, let row = projectionCache.row(id: selection) {
+                workspaceStore.selectInspector(
+                    .rule(type: row.rule.type, payload: row.rule.payload)
+                )
+            } else if case .rule = workspaceStore.inspectorSelection {
+                workspaceStore.selectInspector(.none)
+            }
+        }
+        .onChange(of: workspaceStore.inspectorSelection) { _, selection in
+            if case .none = selection, selectedRowID != nil {
+                selectedRowID = nil
+            }
         }
     }
 
@@ -161,29 +194,6 @@ struct WorkbenchRulesView: View {
             )
         case .content:
             ruleTable
-                .inspector(isPresented: inspectorPresented) {
-                    WorkbenchRuleInspector(
-                        row: selectedRow,
-                        canMutate: selectedRow.map(canMutate) ?? false,
-                        isUpdating: appModel.updatingRuleID == selectedRow?.rule.id,
-                        failure: selectedRow.flatMap {
-                            appModel.ruleUpdateFailures[$0.rule.id]
-                        },
-                        close: { selectedRowID = nil },
-                        disabled: Binding(
-                            get: { selectedRow?.rule.disabled ?? false },
-                            set: { disabled in
-                                guard let rule = selectedRow?.rule else { return }
-                                appModel.setRuleDisabled(rule, disabled: disabled)
-                            }
-                        )
-                    )
-                    .inspectorColumnWidth(
-                        min: MicaBounds.inspectorMin,
-                        ideal: MicaBounds.inspectorIdeal,
-                        max: MicaBounds.inspectorMax
-                    )
-                }
         }
     }
 
@@ -295,9 +305,9 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleStateCell(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             ruleStateLabel(row)
-            Spacer(minLength: MicaSpacing.tight)
+            Spacer(minLength: MicaTheme.Spacing.space1)
             ruleAction(row)
         }
         .frame(
@@ -308,7 +318,7 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleTypeCell(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(ruleStatusTint(row.rule).opacity(0.72))
                 .frame(width: 3, height: 28)
@@ -329,7 +339,7 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleActivityCell(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             ruleMetric(
                 value: row.activeConnectionsText,
                 systemImage: "point.3.connected.trianglepath.dotted",
@@ -353,11 +363,11 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleCompactSummary(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             VStack(alignment: .leading, spacing: 1) {
                 WorkbenchDataText(value: row.targetText)
 
-                HStack(spacing: MicaSpacing.module) {
+                HStack(spacing: MicaTheme.Spacing.space3) {
                     ruleStateLabel(row)
                     ruleMetric(
                         value: row.activeConnectionsText,
@@ -372,7 +382,7 @@ struct WorkbenchRulesView: View {
                 }
             }
 
-            Spacer(minLength: MicaSpacing.tight)
+            Spacer(minLength: MicaTheme.Spacing.space1)
             ruleAction(row)
         }
         .frame(
@@ -383,9 +393,9 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleStackedRow(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             ruleIdentity(row)
-            Spacer(minLength: MicaSpacing.row)
+            Spacer(minLength: MicaTheme.Spacing.space2)
 
             VStack(alignment: .trailing, spacing: 1) {
                 WorkbenchDataText(
@@ -394,7 +404,7 @@ struct WorkbenchRulesView: View {
                     alignment: .trailing
                 )
 
-                HStack(spacing: MicaSpacing.row) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
                     ruleStateLabel(row)
                     ruleMetric(
                         value: row.activeConnectionsText,
@@ -418,14 +428,14 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleStateLabel(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             Circle()
                 .fill(ruleStatusTint(row.rule))
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
 
             Text(verbatim: row.statusText)
-                .micaFont(.caption)
+                .micaThemeFont(.dataCaption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -443,7 +453,7 @@ struct WorkbenchRulesView: View {
         } icon: {
             Image(systemName: systemImage)
         }
-        .micaFont(.caption)
+        .micaThemeFont(.dataCaption)
         .foregroundStyle(.secondary)
         .labelStyle(.titleAndIcon)
         .accessibilityLabel(accessibilityText)
@@ -454,7 +464,7 @@ struct WorkbenchRulesView: View {
         if appModel.updatingRuleID == row.rule.id {
             ProgressView()
                 .controlSize(.small)
-                .frame(minWidth: MicaBounds.iconControlSize, minHeight: MicaBounds.iconControlSize)
+                .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
         } else if row.rule.hasMutableExtra, row.rule.index != nil {
             WorkbenchIconCommand(
                 titleKey: "action.set_rule_state",
@@ -574,17 +584,10 @@ struct WorkbenchRulesView: View {
         destination = .proxies
     }
 
-    private var inspectorPresented: Binding<Bool> {
-        Binding(
-            get: { selectedRowID != nil },
-            set: { if !$0 { selectedRowID = nil } }
-        )
-    }
-
     private func ruleStatusTint(_ rule: RuleViewState) -> Color {
         switch rule.disabled {
-        case true: MicaDesignTokens.signalAmber
-        case false: MicaDesignTokens.signalMint
+        case true: MicaTheme.statusWarning
+        case false: MicaTheme.statusOK
         case nil: .secondary
         }
     }

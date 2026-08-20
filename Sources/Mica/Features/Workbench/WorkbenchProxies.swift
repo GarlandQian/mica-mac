@@ -32,7 +32,7 @@ struct WorkbenchPolicyGroupsView: View {
                 } controls: {
                     WorkbenchStatusBadge(
                         text: modeBadgeText,
-                        tint: MicaStyle.signalCyan
+                        tint: MicaTheme.textSecondary
                     )
                 }
 
@@ -89,7 +89,7 @@ struct WorkbenchPolicyGroupsView: View {
             emptyState
         } else {
             ScrollView {
-                LazyVStack(spacing: MicaSpacing.section) {
+                LazyVStack(spacing: MicaTheme.Spacing.space4) {
                     ForEach(groupPresentations) { presentation in
                         ProxyPolicyGroupPanel(
                             presentation: presentation,
@@ -114,19 +114,16 @@ struct WorkbenchPolicyGroupsView: View {
                             },
                             onClearFixed: {
                                 clearFixedSelection(in: presentation.id)
-                            },
-                            onCloseInspector: {
-                                closeMemberInspector(in: presentation.id)
                             }
                         )
                     }
                 }
-                .padding(MicaSpacing.section)
+                .padding(MicaTheme.Spacing.space4)
                 .frame(maxWidth: 1_320, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollIndicators(.automatic)
-            .background(MicaDesignTokens.contentFill)
+            .background(MicaTheme.canvas)
             .proxyScrollInteraction(
                 in: .nodes,
                 coordinator: presentationCoordinator,
@@ -403,19 +400,6 @@ struct WorkbenchPolicyGroupsView: View {
             destination: .proxies
         ) { stored in
             stored.groupFilters[groupID] = value
-        }
-    }
-
-    private func closeMemberInspector(in groupID: String) {
-        guard hasCurrentGroupProjection(groupID) else { return }
-        workspaceStore.update(
-            controllerID: appModel.selectedRouterID,
-            destination: .proxies
-        ) { stored in
-            stored = ProxyWorkspaceProjection.closingInspector(
-                for: groupID,
-                in: stored
-            )
         }
     }
 

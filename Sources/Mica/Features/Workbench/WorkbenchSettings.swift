@@ -29,10 +29,10 @@ private struct WorkbenchPreferenceMenu<Option: Hashable & Identifiable>: View {
                 }
             }
         } label: {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 Image(systemName: optionSystemImage(selection))
                     .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(MicaDesignTokens.accent)
+                    .foregroundStyle(MicaTheme.accent)
                     .frame(width: 18)
                     .accessibilityHidden(true)
 
@@ -40,16 +40,16 @@ private struct WorkbenchPreferenceMenu<Option: Hashable & Identifiable>: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Spacer(minLength: MicaSpacing.tight)
+                Spacer(minLength: MicaTheme.Spacing.space1)
 
                 Image(systemName: "chevron.down")
-                    .micaFont(.caption2, weight: .semibold)
+                    .micaThemeFont(.caption, weight: .semibold)
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
-            .micaFont(.callout)
+            .micaThemeFont(.label)
             .frame(width: MicaSettingsMetrics.controlColumnWidth, alignment: .leading)
-            .frame(minHeight: MicaBounds.controlMinHeight, alignment: .leading)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
             .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
@@ -86,7 +86,7 @@ private struct WorkbenchPreferenceRow<Control: View>: View {
         Group {
             switch widthMode {
             case .regular:
-                HStack(alignment: .center, spacing: MicaSpacing.space6) {
+                HStack(alignment: .center, spacing: MicaTheme.Spacing.space5) {
                     explanation
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .layoutPriority(1)
@@ -96,24 +96,24 @@ private struct WorkbenchPreferenceRow<Control: View>: View {
                         .frame(alignment: .trailing)
                 }
             case .compact:
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     explanation
                     control
                         .fixedSize(horizontal: true, vertical: false)
                 }
             }
         }
-        .padding(.vertical, MicaSpacing.tight)
+        .padding(.vertical, MicaTheme.Spacing.space1)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var explanation: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(localized(titleKey))
-                .micaFont(.callout, weight: .medium)
+                .micaThemeFont(.label, weight: .medium)
 
             Text(localized(detailKey))
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -129,7 +129,7 @@ struct MicaSettingsSceneView: View {
 
     var body: some View {
         WorkbenchPreferenceForm()
-            .background(MicaDesignTokens.pageFill)
+            .background(MicaTheme.canvas)
             .navigationTitle(
                 MicaStrings.localizedKey("workbench.settings", language: language)
             )
@@ -141,7 +141,7 @@ private struct WorkbenchPreferenceForm: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let horizontalMargin = MicaBounds.pagePadding(for: geometry.size.width)
+            let horizontalMargin = MicaTheme.Metrics.pagePadding(for: geometry.size.width)
             let availableContentWidth = max(
                 0,
                 min(
@@ -188,7 +188,7 @@ private struct WorkbenchPreferenceForm: View {
             horizontalMargin,
             for: .scrollContent
         )
-        .contentMargins(.vertical, MicaSpacing.section, for: .scrollContent)
+        .contentMargins(.vertical, MicaTheme.Spacing.space4, for: .scrollContent)
         .frame(
             maxWidth: MicaSettingsMetrics.readingWidth,
             maxHeight: .infinity,
@@ -200,11 +200,11 @@ private struct WorkbenchPreferenceForm: View {
     private func sectionHeader(_ titleKey: String, systemImage: String) -> some View {
         Label {
             Text(localized(titleKey))
-                .micaFont(.headline, weight: .semibold)
+                .micaThemeFont(.body, weight: .semibold)
         } icon: {
             WorkbenchSymbol(
                 systemName: systemImage,
-                tint: MicaDesignTokens.signalCyan,
+                tint: MicaTheme.textSecondary,
                 size: .inline
             )
         }

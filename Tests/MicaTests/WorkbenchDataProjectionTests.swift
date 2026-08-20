@@ -2222,7 +2222,7 @@ struct WorkbenchDataProjectionTests {
                 == "2026-07-29T12:00:00Z"
         )
         #expect(WorkbenchDataRowGeometry.height == 40)
-        #expect(WorkbenchDataRowGeometry.height > MicaBounds.controlMinHeight)
+        #expect(WorkbenchDataRowGeometry.height > MicaTheme.Metrics.controlMinHeight)
     }
 
     private static func connection(

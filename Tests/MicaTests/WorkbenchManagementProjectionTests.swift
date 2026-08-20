@@ -7,17 +7,17 @@ struct WorkbenchManagementProjectionTests {
     @Test func managementRowsUseOneRootWidthMode() {
         #expect(
             WorkbenchManagementWidthMode(
-                availableWidth: MicaBounds.wideThreshold - 1
+                availableWidth: MicaTheme.Metrics.wideThreshold - 1
             ) == .compact
         )
         #expect(
             WorkbenchManagementWidthMode(
-                availableWidth: MicaBounds.wideThreshold
+                availableWidth: MicaTheme.Metrics.wideThreshold
             ) == .regular
         )
         #expect(
             WorkbenchManagementWidthMode(
-                availableWidth: MicaBounds.wideThreshold + 400
+                availableWidth: MicaTheme.Metrics.wideThreshold + 400
             ) == .regular
         )
     }

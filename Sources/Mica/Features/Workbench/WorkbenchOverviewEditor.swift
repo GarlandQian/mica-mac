@@ -33,48 +33,48 @@ struct OverviewPreferencesBar: View {
 
     var body: some View {
         if runtime.showsPreferences {
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 ViewThatFits(in: .horizontal) {
                     regularLayout
                     compactLayout
                 }
             }
-            .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-            .padding(.vertical, MicaSpacing.row)
-            .background(MicaDesignTokens.pageFill)
-            .overlay(alignment: .bottom) { WorkbenchChromeSeparator() }
+            .padding(.horizontal, MicaTheme.Spacing.space3)
+            .padding(.vertical, MicaTheme.Spacing.space2)
+            .background(MicaTheme.canvas)
+            .overlay(alignment: .bottom) { MicaHairlineSeparator() }
             .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
     private var regularLayout: some View {
-        HStack(alignment: .center, spacing: MicaSpacing.section) {
+        HStack(alignment: .center, spacing: MicaTheme.Spacing.space4) {
             preferencesLabel
             metricControls
-            Divider().frame(height: 26)
+            MicaHairlineSeparator(axis: .vertical).frame(height: 26)
             timelinePicker
-            Divider().frame(height: 26)
+            MicaHairlineSeparator(axis: .vertical).frame(height: 26)
             optionalModuleControls
-            Spacer(minLength: MicaSpacing.row)
+            Spacer(minLength: MicaTheme.Spacing.space2)
             resetButton
             closeButton
         }
     }
 
     private var compactLayout: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
-            HStack(spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 preferencesLabel
-                Spacer(minLength: MicaSpacing.row)
+                Spacer(minLength: MicaTheme.Spacing.space2)
                 resetButton
                 closeButton
             }
             ScrollView(.horizontal) {
-                HStack(spacing: MicaSpacing.section) {
+                HStack(spacing: MicaTheme.Spacing.space4) {
                     metricControls
-                    Divider().frame(height: 26)
+                    MicaHairlineSeparator(axis: .vertical).frame(height: 26)
                     timelinePicker
-                    Divider().frame(height: 26)
+                    MicaHairlineSeparator(axis: .vertical).frame(height: 26)
                     optionalModuleControls
                 }
             }
@@ -90,20 +90,20 @@ struct OverviewPreferencesBar: View {
             ),
             systemImage: "slider.horizontal.3"
         )
-        .micaFont(.callout, weight: .semibold)
+        .micaThemeFont(.label, weight: .semibold)
         .fixedSize()
     }
 
     private var metricControls: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             Text(
                 MicaStrings.localizedKey(
                     "overview.preferences_metrics",
                     language: language
                 )
             )
-            .micaFont(.caption, weight: .semibold)
-            .foregroundStyle(.secondary)
+            .micaThemeFont(.caption, weight: .semibold)
+            .foregroundStyle(MicaTheme.textSecondary)
 
             ForEach(OverviewMetricID.allCases) { metric in
                 Toggle(
@@ -146,15 +146,15 @@ struct OverviewPreferencesBar: View {
     }
 
     private var optionalModuleControls: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             Text(
                 MicaStrings.localizedKey(
                     "overview.preferences_optional",
                     language: language
                 )
             )
-            .micaFont(.caption, weight: .semibold)
-            .foregroundStyle(.secondary)
+            .micaThemeFont(.caption, weight: .semibold)
+            .foregroundStyle(MicaTheme.textSecondary)
 
             ForEach(OverviewOptionalModuleID.allCases) { module in
                 Toggle(

@@ -132,7 +132,7 @@ struct WorkbenchConfigurationView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+                    .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
                     .disabled(configWriteDisabled)
                 } else {
                     configurationValue(
@@ -250,7 +250,7 @@ struct WorkbenchConfigurationView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+            .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
             .disabled(configWriteDisabled)
         }
     }
@@ -291,7 +291,7 @@ struct WorkbenchConfigurationView: View {
         placeholder: Bool = false
     ) -> some View {
         Text(verbatim: value)
-            .micaFont(.body, design: monospaced ? .monospaced : .default)
+            .micaThemeFont(monospaced ? .dataBody : .body)
             .foregroundStyle(placeholder ? .secondary : .primary)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
@@ -518,13 +518,13 @@ private struct WorkbenchPortField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 TextField(
                     "",
                     text: $text
                 )
                 .textFieldStyle(.roundedBorder)
-                .micaFont(.body).monospacedDigit()
+                .micaThemeFont(.body).monospacedDigit()
                 .multilineTextAlignment(.trailing)
                 .frame(width: 104)
                 .focused($isFocused)
@@ -532,7 +532,7 @@ private struct WorkbenchPortField: View {
 
                 Button(action: commit) {
                     Image(systemName: "checkmark")
-                        .frame(width: MicaBounds.iconControlSize, height: MicaBounds.iconControlSize)
+                        .frame(width: MicaTheme.Metrics.iconControlSize, height: MicaTheme.Metrics.iconControlSize)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
@@ -545,8 +545,8 @@ private struct WorkbenchPortField: View {
 
             if showsValidationError {
                 Text(MicaStrings.localizedKey("editor.validation_port_range", language: language))
-                    .micaFont(.caption)
-                    .foregroundStyle(MicaDesignTokens.signalRed)
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.statusError)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

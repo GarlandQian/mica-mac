@@ -28,23 +28,23 @@ extension ControllerKind {
     var sidebarTint: Color {
         switch self {
         case .autoDetect:
-            MicaStyle.signalCyan
+            MicaTheme.textSecondary
         case .mihomoCompatible:
-            MicaStyle.signalMint
+            MicaTheme.statusOK
         case .nikkiMihomoCompatible:
-            MicaStyle.signalViolet
+            MicaTheme.textSecondary
         case .openClashMihomoCompatible:
-            MicaStyle.signalAmber
+            MicaTheme.statusWarning
         case .surgeCompatible:
-            MicaStyle.signalRed
+            MicaTheme.statusError
         case .singBoxCompatible:
-            MicaStyle.signalCyan
+            MicaTheme.textSecondary
         case .cmfaCompatible, .stashCompatible, .stashCmfaCompatible:
-            MicaStyle.signalViolet
+            MicaTheme.textSecondary
         case .unknown:
             .secondary
         case .unsupported:
-            MicaStyle.signalRed
+            MicaTheme.statusError
         }
     }
 }
@@ -53,11 +53,11 @@ extension ConnectionState {
     var sidebarTint: Color {
         switch self {
         case .connected:
-            MicaStyle.signalMint
+            MicaTheme.statusOK
         case .connecting:
-            MicaStyle.signalCyan
+            MicaTheme.textSecondary
         case .failed:
-            MicaStyle.signalRed
+            MicaTheme.statusError
         case .disconnected:
             .secondary
         }
@@ -121,11 +121,11 @@ extension ControllerHealthSummary {
     var sidebarTint: Color {
         switch self {
         case .ready:
-            MicaStyle.signalMint
+            MicaTheme.statusOK
         case .partial, .checking:
-            MicaStyle.signalAmber
+            MicaTheme.statusWarning
         case .authFailed, .wrongTarget, .offline:
-            MicaStyle.signalRed
+            MicaTheme.statusError
         case .unknown:
             .secondary
         }
@@ -170,11 +170,11 @@ extension TrialSessionHealth {
         case .idle:
             .secondary
         case .fresh:
-            MicaStyle.signalMint
+            MicaTheme.statusOK
         case .stale, .partial:
-            MicaStyle.signalAmber
+            MicaTheme.statusWarning
         case .failed:
-            MicaStyle.signalRed
+            MicaTheme.statusError
         }
     }
 

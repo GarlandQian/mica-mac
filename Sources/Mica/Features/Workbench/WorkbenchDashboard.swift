@@ -107,7 +107,7 @@ private struct OverviewFixedCanvas: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let pagePadding = MicaBounds.pagePadding(for: geometry.size.width)
+            let pagePadding = MicaTheme.Metrics.pagePadding(for: geometry.size.width)
             let availableWidth = max(geometry.size.width - pagePadding * 2, 0)
             let telemetryRuntime = overviewRuntime.registry.telemetryRuntime(
                 controllerID: controllerID,
@@ -120,7 +120,7 @@ private struct OverviewFixedCanvas: View {
             )
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: MicaSpacing.space6) {
+                LazyVStack(alignment: .leading, spacing: MicaTheme.Spacing.space5) {
                     OverviewTelemetrySection(
                         availableWidth: availableWidth,
                         visibleMetrics: preferences.visibleMetrics,
@@ -207,13 +207,6 @@ struct OverviewSymbolMark: View {
             case .metric: 6
             }
         }
-
-        var fillOpacity: Double {
-            switch self {
-            case .section: 0.14
-            case .metric: 0.11
-            }
-        }
     }
 
     let systemName: String
@@ -221,26 +214,22 @@ struct OverviewSymbolMark: View {
     let size: Size
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
-                .fill(MicaStyle.secondaryContentFill.opacity(0.86))
-            RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [tint.opacity(0.78), tint.opacity(0.16)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-            Image(systemName: systemName)
-                .symbolRenderingMode(.hierarchical)
-                .font(size.font)
-                .foregroundStyle(tint)
-        }
-        .frame(width: size.frameSize, height: size.frameSize)
-        .shadow(color: tint.opacity(0.16), radius: 5)
-        .accessibilityHidden(true)
+        // Flat Mica Ops mark: one semantic tint on a surface plate with a
+        // hairline border. No gradients, no glow (design.md §2 anti-goals).
+        Image(systemName: systemName)
+            .symbolRenderingMode(.hierarchical)
+            .font(size.font)
+            .foregroundStyle(tint)
+            .frame(width: size.frameSize, height: size.frameSize)
+            .background(
+                MicaTheme.surface,
+                in: RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
+                    .strokeBorder(MicaTheme.separator, lineWidth: MicaTheme.Shape.hairline)
+            }
+            .accessibilityHidden(true)
     }
 }
 
@@ -256,7 +245,7 @@ struct OverviewFlatSection<Accessory: View, Content: View>: View {
     init(
         _ titleKey: String,
         systemImage: String,
-        tint: Color = MicaStyle.signalCyan,
+        tint: Color = MicaTheme.textSecondary,
         @ViewBuilder accessory: () -> Accessory,
         @ViewBuilder content: () -> Content
     ) {
@@ -268,33 +257,24 @@ struct OverviewFlatSection<Accessory: View, Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
-            HStack(spacing: MicaSpacing.row) {
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [tint, MicaStyle.signalViolet.opacity(0.62)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 3, height: 28)
-                    .shadow(color: tint.opacity(0.28), radius: 5)
-                    .accessibilityHidden(true)
-                HStack(spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
                     OverviewSymbolMark(
                         systemName: systemImage,
                         tint: tint,
                         size: .section
                     )
                     Text(MicaStrings.localizedKey(titleKey, language: language))
-                        .micaFont(.title3, weight: .semibold)
+                        .micaThemeFont(.title3)
                 }
                 .accessibilityElement(children: .combine)
 
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 accessory
             }
+
+            MicaHairlineSeparator()
 
             content
         }
@@ -306,7 +286,7 @@ extension OverviewFlatSection where Accessory == EmptyView {
     init(
         _ titleKey: String,
         systemImage: String,
-        tint: Color = MicaStyle.signalCyan,
+        tint: Color = MicaTheme.textSecondary,
         @ViewBuilder content: () -> Content
     ) {
         self.init(
@@ -333,7 +313,7 @@ private struct OverviewHighlightsSection: View {
         ) {
             Group {
                 if availableWidth >= 860 {
-                    HStack(alignment: .top, spacing: MicaSpacing.section) {
+                    HStack(alignment: .top, spacing: MicaTheme.Spacing.space4) {
                         ForEach(
                             Array(OverviewSummaryCategoryID.allCases.enumerated()),
                             id: \.element
@@ -350,7 +330,7 @@ private struct OverviewHighlightsSection: View {
                         }
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: MicaSpacing.module) {
+                    VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                         Picker(
                             MicaStrings.localizedKey(
                                 "overview.operational_summary",
@@ -376,8 +356,8 @@ private struct OverviewHighlightsSection: View {
                     }
                 }
             }
-            .padding(MicaSpacing.module)
-            .overviewCyberSurface(.auxiliary)
+            .padding(MicaTheme.Spacing.space3)
+                .micaPanel(padding: 0)
         }
     }
 
@@ -436,15 +416,15 @@ private struct OverviewSummaryColumn<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
-            HStack(spacing: MicaSpacing.tight) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
                 WorkbenchSymbol(
                     systemName: systemImage,
                     font: .caption.weight(.semibold),
                     frameSize: 16
                 )
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.caption, weight: .semibold)
+                    .micaThemeFont(.caption, weight: .semibold)
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -481,26 +461,26 @@ private struct OverviewLatencyHighlightsSection: View {
                     Button {
                         destination = .proxies
                     } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
+                        HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(verbatim: row.groupName)
-                                    .micaFont(.callout, weight: .medium)
+                                    .micaThemeFont(.label, weight: .medium)
                                     .textSelection(.enabled)
                                 Text(verbatim: row.nodeName)
-                                    .micaFont(.caption)
+                                    .micaThemeFont(.caption)
                                     .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                             }
-                            Spacer(minLength: MicaSpacing.row)
+                            Spacer(minLength: MicaTheme.Spacing.space2)
                             Text(verbatim: OverviewFormat.latency(row.delay))
-                                .micaFont(.body, design: .monospaced)
+                                .micaThemeFont(.dataBody)
                                 .foregroundStyle(OverviewFormat.latencyTint(row.delay))
                         }
                         .padding(.vertical, 3)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(minHeight: MicaBounds.controlMinHeight)
+                    .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
                     .accessibilityLabel("\(row.groupName), \(row.nodeName), \(OverviewFormat.latency(row.delay))")
                 }
             }
@@ -529,27 +509,27 @@ private struct OverviewRuleHighlightsSection: View {
                     Button {
                         destination = .rules
                     } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
+                        HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(verbatim: row.label.overviewNonBlank ?? unavailableText)
-                                    .micaFont(.callout, weight: .medium)
+                                    .micaThemeFont(.label, weight: .medium)
                                     .lineLimit(2)
                                     .textSelection(.enabled)
                                 Text(verbatim: row.proxy.overviewNonBlank ?? unavailableText)
-                                    .micaFont(.caption)
+                                    .micaThemeFont(.caption)
                                     .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                             }
-                            Spacer(minLength: MicaSpacing.row)
+                            Spacer(minLength: MicaTheme.Spacing.space2)
                             Text(verbatim: ruleCountText(row))
-                                .micaFont(.body, design: .monospaced)
-                                .foregroundStyle(MicaStyle.signalCyan)
+                                .micaThemeFont(.dataBody)
+                                .foregroundStyle(MicaTheme.textSecondary)
                         }
                         .padding(.vertical, 3)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(minHeight: MicaBounds.controlMinHeight)
+                    .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
                     .accessibilityLabel(
                         "\(row.label.overviewNonBlank ?? unavailableText), \(ruleCountText(row))"
                     )
@@ -597,29 +577,29 @@ private struct OverviewConnectionHighlightsSection: View {
                     Button {
                         openConnection(row.connectionID)
                     } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
+                        HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(verbatim: row.label.overviewNonBlank ?? unavailableText)
-                                    .micaFont(.callout, weight: .medium)
+                                    .micaThemeFont(.label, weight: .medium)
                                     .lineLimit(2)
                                     .textSelection(.enabled)
                                 if let connectionID = row.connectionID.overviewNonBlank {
                                     Text(verbatim: connectionID)
-                                        .micaFont(.caption, design: .monospaced)
+                                        .micaThemeFont(.dataCaption)
                                         .foregroundStyle(.secondary)
                                         .textSelection(.enabled)
                                 }
                             }
-                            Spacer(minLength: MicaSpacing.row)
+                            Spacer(minLength: MicaTheme.Spacing.space2)
                             Text(verbatim: row.totalTraffic.map(OverviewFormat.bytes) ?? unavailableText)
-                                .micaFont(.body, design: .monospaced)
-                                .foregroundStyle(MicaStyle.signalCyan)
+                                .micaThemeFont(.dataBody)
+                                .foregroundStyle(MicaTheme.textSecondary)
                         }
                         .padding(.vertical, 3)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(minHeight: MicaBounds.controlMinHeight)
+                    .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
                     .accessibilityLabel("\(row.label.overviewNonBlank ?? unavailableText), \(row.totalTraffic.map(OverviewFormat.bytes) ?? unavailableText)")
                 }
             }
@@ -668,7 +648,7 @@ private struct OverviewNetworkFactsSection: View {
             } else {
                 LazyVGrid(
                     columns: [
-                        GridItem(.adaptive(minimum: 320), spacing: MicaSpacing.section),
+                        GridItem(.adaptive(minimum: 320), spacing: MicaTheme.Spacing.space4),
                     ],
                     alignment: .leading,
                     spacing: 0
@@ -680,12 +660,12 @@ private struct OverviewNetworkFactsSection: View {
                                 OverviewNetworkFactCell(fact: fact)
                             }
                         }
-                        .padding(.horizontal, MicaSpacing.module)
-                        .padding(.bottom, MicaSpacing.row)
+                        .padding(.horizontal, MicaTheme.Spacing.space3)
+                        .padding(.bottom, MicaTheme.Spacing.space2)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                 }
-                .overviewCyberSurface(.auxiliary)
+                .micaPanel(padding: 0)
             }
         }
     }
@@ -721,7 +701,7 @@ private struct OverviewNetworkFactGroupHeader: View {
     let group: OverviewNetworkFactGroup
 
     var body: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             WorkbenchSymbol(
                 systemName: group.id.systemImage,
                 font: .caption.weight(.semibold),
@@ -733,11 +713,11 @@ private struct OverviewNetworkFactGroupHeader: View {
                     language: language
                 )
             )
-            .micaFont(.caption, weight: .semibold)
+            .micaThemeFont(.caption, weight: .semibold)
             .foregroundStyle(.secondary)
         }
-        .padding(.top, MicaSpacing.row)
-        .padding(.bottom, MicaSpacing.tight)
+        .padding(.top, MicaTheme.Spacing.space2)
+        .padding(.bottom, MicaTheme.Spacing.space1)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -749,19 +729,16 @@ private struct OverviewNetworkFactCell: View {
     let fact: OverviewNetworkFact
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
             Text(MicaStrings.localizedKey(fact.titleKey, language: language))
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
             Text(verbatim: fact.value)
-                .micaFont(
-                    fact.monospaced ? .body : .callout,
-                    design: fact.monospaced ? .monospaced : .default
-                )
+                .micaThemeFont(fact.monospaced ? .dataBody : .label)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .topLeading)
         .overlay(alignment: .top) { Divider() }
         .accessibilityElement(children: .combine)
@@ -775,19 +752,19 @@ struct OverviewInlineState: View {
     let detailKey: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             Image(systemName: "minus.circle")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.callout, weight: .medium)
+                    .micaThemeFont(.label, weight: .medium)
                 Text(MicaStrings.localizedKey(detailKey, language: language))
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -815,16 +792,19 @@ enum OverviewFormat {
         "\(value) ms"
     }
 
+    /// Delay thresholds are unchanged; only the palette moved to MicaTheme
+    /// status colors (healthy -> OK, slow -> warning, timeout -> error,
+    /// ungraded -> tertiary).
     static func latencyTint(_ value: Int) -> Color {
         switch LatencyHealthGrade.allCases.first(where: { $0.includes(delay: value) }) {
-        case .fast:
-            MicaStyle.signalMint
-        case .normal:
-            MicaStyle.signalCyan
+        case .fast, .normal:
+            MicaTheme.statusOK
         case .slow:
-            MicaStyle.signalAmber
-        case .timeout, .none:
-            MicaStyle.signalRed
+            MicaTheme.statusWarning
+        case .timeout:
+            MicaTheme.statusError
+        case .none:
+            MicaTheme.textTertiary
         }
     }
 }

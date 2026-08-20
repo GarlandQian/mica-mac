@@ -15,7 +15,7 @@ enum WorkbenchManagementWidthMode: Equatable, Sendable {
     case regular
 
     init(availableWidth: CGFloat) {
-        self = availableWidth < MicaBounds.wideThreshold ? .compact : .regular
+        self = availableWidth < MicaTheme.Metrics.wideThreshold ? .compact : .regular
     }
 }
 
@@ -37,11 +37,11 @@ struct WorkbenchManagementCanvas<Content: View>: View {
             )
 
             ScrollView {
-                VStack(alignment: .leading, spacing: MicaSpacing.section) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                     content
                 }
-                .padding(.horizontal, MicaBounds.pagePadding(for: geometry.size.width))
-                .padding(.vertical, MicaSpacing.section)
+                .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
+                .padding(.vertical, MicaTheme.Spacing.space4)
                 .frame(
                     maxWidth: WorkbenchManagementMetrics.maximumCanvasWidth,
                     alignment: .topLeading
@@ -75,10 +75,10 @@ struct WorkbenchManagementFormCanvas<Content: View>: View {
             .background(Color.clear)
             .contentMargins(
                 .horizontal,
-                MicaBounds.pagePadding(for: geometry.size.width),
+                MicaTheme.Metrics.pagePadding(for: geometry.size.width),
                 for: .scrollContent
             )
-            .contentMargins(.top, MicaSpacing.module, for: .scrollContent)
+            .contentMargins(.top, MicaTheme.Spacing.space3, for: .scrollContent)
             .micaObserveScrollPerformance()
             .frame(
                 maxWidth: WorkbenchManagementMetrics.formCanvasWidth,
@@ -98,23 +98,23 @@ struct WorkbenchManagementHeader: View {
     let titleKey: String
     var detail: String?
     var value: String?
-    var tint = MicaDesignTokens.signalCyan
+    var tint = MicaTheme.textSecondary
 
     var body: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
                 .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
+                HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                     Text(MicaStrings.localizedKey(titleKey, language: language))
-                        .micaFont(.headline)
+                        .micaThemeFont(.body, weight: .semibold)
 
                     if let value = value?.managementNonEmpty {
                         Text(verbatim: value)
-                            .micaFont(.caption, weight: .semibold, design: .monospaced)
+                            .micaThemeFont(.dataCaption, weight: .semibold)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
@@ -122,7 +122,7 @@ struct WorkbenchManagementHeader: View {
 
                 if let detail = detail?.managementNonEmpty {
                     Text(verbatim: detail)
-                        .micaFont(.caption)
+                        .micaThemeFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -142,7 +142,7 @@ struct WorkbenchManagementInlineState: View {
     var isLoading = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.module) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
             Group {
                 if isLoading {
                     ProgressView()
@@ -155,21 +155,21 @@ struct WorkbenchManagementInlineState: View {
             .frame(width: 20, height: 20)
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 Text(verbatim: title)
-                    .micaFont(.callout, weight: .semibold)
+                    .micaThemeFont(.label, weight: .semibold)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let detail = detail?.managementNonEmpty {
                     Text(verbatim: detail)
-                        .micaFont(.caption)
+                        .micaThemeFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
             }
         }
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -205,14 +205,14 @@ struct WorkbenchFormRow<Control: View>: View {
     var body: some View {
         Group {
             if usesStackedLayout {
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     label
                     controlColumn
                 }
             } else {
-                HStack(alignment: .top, spacing: MicaSpacing.module) {
+                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                     label
-                        .frame(width: MicaBounds.formLabelWidth, alignment: .leading)
+                        .frame(width: MicaTheme.Metrics.formLabelWidth, alignment: .leading)
                     controlColumn
                 }
             }
@@ -224,13 +224,13 @@ struct WorkbenchFormRow<Control: View>: View {
     private var label: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(MicaStrings.localizedKey(titleKey, language: language))
-                .micaFont(.callout, weight: .medium)
+                .micaThemeFont(.label, weight: .medium)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let detailKey {
                 Text(MicaStrings.localizedKey(detailKey, language: language))
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -238,7 +238,7 @@ struct WorkbenchFormRow<Control: View>: View {
     }
 
     private var controlColumn: some View {
-        HStack(alignment: .center, spacing: MicaSpacing.row) {
+        HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
             if isBusy {
                 ProgressView()
                     .controlSize(.small)
@@ -261,7 +261,7 @@ struct WorkbenchFormValue: View {
 
     var body: some View {
         Text(verbatim: value)
-            .micaFont(.body, design: monospaced ? .monospaced : .default)
+            .micaThemeFont(monospaced ? .dataBody : .body)
             .foregroundStyle(placeholder ? .secondary : .primary)
             .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
@@ -304,24 +304,24 @@ struct WorkbenchOperationLine<Command: View>: View {
         Group {
             switch widthMode {
             case .regular:
-                HStack(alignment: .top, spacing: MicaSpacing.module) {
+                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                     explanation
-                    Spacer(minLength: MicaSpacing.module)
+                    Spacer(minLength: MicaTheme.Spacing.space3)
                     commandColumn
                 }
             case .compact:
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     explanation
                     commandColumn
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: MicaBounds.controlMinHeight, alignment: .leading)
-        .padding(.vertical, MicaSpacing.tight)
+        .frame(maxWidth: .infinity, minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
+        .padding(.vertical, MicaTheme.Spacing.space1)
     }
 
     private var explanation: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
                 .frame(width: 20)
@@ -329,17 +329,17 @@ struct WorkbenchOperationLine<Command: View>: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.callout, weight: .medium)
+                    .micaThemeFont(.label, weight: .medium)
 
                 Text(MicaStrings.localizedKey(detailKey, language: language))
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let reason = reason?.managementNonEmpty {
                     Text(verbatim: reason)
-                        .micaFont(.caption)
-                        .foregroundStyle(MicaDesignTokens.signalAmber)
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(MicaTheme.statusWarning)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
@@ -349,7 +349,7 @@ struct WorkbenchOperationLine<Command: View>: View {
     }
 
     private var commandColumn: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             if isRunning {
                 ProgressView()
                     .controlSize(.small)
@@ -360,7 +360,7 @@ struct WorkbenchOperationLine<Command: View>: View {
         .frame(
             minWidth: 150,
             maxWidth: .infinity,
-            minHeight: MicaBounds.controlMinHeight,
+            minHeight: MicaTheme.Metrics.controlMinHeight,
             alignment: .trailing
         )
     }

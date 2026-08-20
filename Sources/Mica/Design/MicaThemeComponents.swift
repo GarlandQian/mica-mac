@@ -1,6 +1,226 @@
 import SwiftUI
 
-/// Subtle press feedback for icon commands and tappable rows (L1).
+// MARK: - Panel
+
+/// Flat Mica Ops panel (design.md §2/§3): surface fill, 6pt corner radius, and
+/// a 1px separator-token border. No shadow in either appearance - elevation is
+/// expressed by hairlines only.
+struct MicaPanel<Content: View>: View {
+    var fill: Color = MicaTheme.surface
+    var padding: CGFloat = MicaTheme.Spacing.panelPadding
+    var alignment: Alignment = .topLeading
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: alignment)
+            .background(
+                fill,
+                in: RoundedRectangle(
+                    cornerRadius: MicaTheme.Shape.panelRadius,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: MicaTheme.Shape.panelRadius,
+                    style: .continuous
+                )
+                .strokeBorder(MicaTheme.separator, lineWidth: MicaTheme.Shape.hairline)
+            }
+    }
+}
+
+extension View {
+    /// Wraps the view in a flat Mica Ops panel.
+    func micaPanel(
+        fill: Color = MicaTheme.surface,
+        padding: CGFloat = MicaTheme.Spacing.panelPadding,
+        alignment: Alignment = .topLeading
+    ) -> some View {
+        MicaPanel(fill: fill, padding: padding, alignment: alignment) { self }
+    }
+}
+
+// MARK: - Hairline separator
+
+/// 1px separator-token rule. The only divider in the Mica Ops system.
+struct MicaHairlineSeparator: View {
+    var axis: Axis = .horizontal
+    var color: Color = MicaTheme.separator
+
+    var body: some View {
+        switch axis {
+        case .horizontal:
+            color.frame(maxWidth: .infinity, maxHeight: MicaTheme.Shape.hairline)
+        case .vertical:
+            color.frame(maxWidth: MicaTheme.Shape.hairline, maxHeight: .infinity)
+        }
+    }
+}
+
+// MARK: - Mono metric
+
+/// Live-data metric: small secondary label above an SF Mono tabular value.
+/// Numeric changes roll via `.numericText()` unless the user prefers reduced
+/// motion, in which case the new value renders statically.
+struct MicaMonoMetric: View {
+    @Environment(\.micaAppLanguage) private var language
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Localization key resolved through `MicaStrings`; `nil` hides the label.
+    var labelKey: String? = nil
+    let value: String
+    var unit: String? = nil
+    var role: MicaTheme.TextRole = .dataBody
+    var valueColor: Color = MicaTheme.textPrimary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1 / 2) {
+            if let labelKey {
+                Text(MicaStrings.localizedKey(labelKey, language: language))
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.textSecondary)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space1) {
+                Text(value)
+                    .micaThemeFont(role)
+                    .foregroundStyle(valueColor)
+                    .contentTransition(reduceMotion ? .identity : .numericText())
+                if let unit {
+                    Text(unit)
+                        .micaThemeFont(.dataCaption)
+                        .foregroundStyle(MicaTheme.textTertiary)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Status dot and badge
+
+/// Status-colored dot for controller-reported state. Provide a localized
+/// `accessibilityLabel` when the dot carries meaning on its own; otherwise it
+/// stays hidden and the owning row speaks the status.
+struct MicaStatusDot: View {
+    let status: MicaTheme.Status
+    var size: CGFloat = 8
+    var accessibilityLabel: String? = nil
+
+    @ViewBuilder
+    var body: some View {
+        let dot = Circle()
+            .fill(status.color)
+            .frame(width: size, height: size)
+        if let accessibilityLabel {
+            dot.accessibilityLabel(accessibilityLabel)
+        } else {
+            dot.accessibilityHidden(true)
+        }
+    }
+}
+
+/// Compact status badge: semibold status-colored text on a status-tinted fill.
+/// `text` is controller-reported or already localized by the caller.
+struct MicaStatusBadge: View {
+    let status: MicaTheme.Status
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .micaThemeFont(.caption, weight: .semibold)
+            .foregroundStyle(status.color)
+            .padding(.horizontal, MicaTheme.Spacing.space2 - 2)
+            .padding(.vertical, MicaTheme.Spacing.space1 / 2)
+            .background(
+                status.color.opacity(0.14),
+                in: RoundedRectangle(
+                    cornerRadius: MicaTheme.Shape.panelRadius,
+                    style: .continuous
+                )
+            )
+            .accessibilityAddTraits(.isStaticText)
+    }
+}
+
+// MARK: - Section header
+
+/// Semibold section title with an optional trailing control. The title is a
+/// localization key resolved through `MicaStrings`.
+struct MicaSectionHeader<Trailing: View>: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let titleKey: String
+    @ViewBuilder let trailing: Trailing
+
+    init(titleKey: String, @ViewBuilder trailing: () -> Trailing) {
+        self.titleKey = titleKey
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            Text(MicaStrings.localizedKey(titleKey, language: language))
+                .micaThemeFont(.title3)
+                .foregroundStyle(MicaTheme.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: MicaTheme.Spacing.space2)
+            trailing
+        }
+    }
+}
+
+extension MicaSectionHeader where Trailing == EmptyView {
+    init(titleKey: String) {
+        self.init(titleKey: titleKey) { EmptyView() }
+    }
+}
+
+// MARK: - Empty state
+
+/// Density-first empty state for panels and data regions: tertiary symbol,
+/// secondary title, optional tertiary message. Keys resolve through
+/// `MicaStrings`; no hero whitespace.
+struct MicaEmptyState: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let systemImage: String
+    let titleKey: String
+    var messageKey: String? = nil
+
+    var body: some View {
+        VStack(spacing: MicaTheme.Spacing.space2) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(MicaTheme.textTertiary)
+                .accessibilityHidden(true)
+            Text(MicaStrings.localizedKey(titleKey, language: language))
+                .micaThemeFont(.title3)
+                .foregroundStyle(MicaTheme.textSecondary)
+            if let messageKey {
+                Text(MicaStrings.localizedKey(messageKey, language: language))
+                    .micaThemeFont(.body)
+                    .foregroundStyle(MicaTheme.textTertiary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(MicaTheme.Spacing.space5)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+
+// MARK: - Relocated Workbench primitives (Phase 4B)
+
+// The 19 shared Workbench primitives below moved out of the deleted
+// workbench visual-system file with every type name, initializer signature,
+// and member API kept byte-compatible; only the internals were restyled from
+// the previous design system onto MicaTheme tokens.
+
+/// Subtle press feedback for icon commands and tappable rows.
 struct WorkbenchPressableButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -8,14 +228,14 @@ struct WorkbenchPressableButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(reduceMotion ? nil : WorkbenchMotion.press, value: configuration.isPressed)
+            .animation(reduceMotion ? nil : MicaTheme.Motion.press, value: configuration.isPressed)
     }
 }
 
 struct WorkbenchSymbol: View {
-    /// Semantic symbol sizing (design.md 1.4): nav section headers, inline
-    /// row glyphs, and larger focus-area icons. Explicit font/frameSize
-    /// remain available for one-off cases.
+    /// Semantic symbol sizing: nav section headers, inline row glyphs, and
+    /// larger focus-area icons. Explicit font/frameSize remain available for
+    /// one-off cases.
     enum Size {
         case nav, inline, focus
 
@@ -37,13 +257,13 @@ struct WorkbenchSymbol: View {
     }
 
     let systemName: String
-    var tint: Color = MicaDesignTokens.signalCyan
+    var tint: Color = MicaTheme.textSecondary
     var font: Font = .body.weight(.semibold)
     var frameSize: CGFloat = 20
 
     init(
         systemName: String,
-        tint: Color = MicaDesignTokens.signalCyan,
+        tint: Color = MicaTheme.textSecondary,
         font: Font = .body.weight(.semibold),
         frameSize: CGFloat = 20
     ) {
@@ -53,7 +273,7 @@ struct WorkbenchSymbol: View {
         self.frameSize = frameSize
     }
 
-    init(systemName: String, tint: Color = MicaDesignTokens.signalCyan, size: Size) {
+    init(systemName: String, tint: Color = MicaTheme.textSecondary, size: Size) {
         self.init(systemName: systemName, tint: tint, font: size.font, frameSize: size.frame)
     }
 
@@ -75,7 +295,7 @@ struct WorkbenchDecisionPathStep: View {
     let titleKey: String
     let value: String
     let systemImage: String
-    var tint: Color = MicaDesignTokens.signalCyan
+    var tint: Color = MicaTheme.textSecondary
     var monospaced = false
     var actionHelpKey: String? = nil
     var action: (() -> Void)? = nil
@@ -99,12 +319,12 @@ struct WorkbenchDecisionPathStep: View {
                     .help(value)
             }
         }
-        .padding(.vertical, MicaSpacing.tight)
+        .padding(.vertical, MicaTheme.Spacing.space1)
         .accessibilityElement(children: .combine)
     }
 
     private var content: some View {
-        HStack(alignment: .center, spacing: MicaSpacing.row) {
+        HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: systemImage,
                 tint: tint,
@@ -119,14 +339,13 @@ struct WorkbenchDecisionPathStep: View {
                         language: language
                     )
                 )
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
 
                 Text(verbatim: value)
-                    .micaFont(
-                        .callout,
-                        weight: monospaced ? .regular : .medium,
-                        design: monospaced ? .monospaced : .default
+                    .micaThemeFont(
+                        monospaced ? .dataLabel : .label,
+                        weight: monospaced ? .regular : .medium
                     )
                     .foregroundStyle(
                         action == nil
@@ -136,7 +355,7 @@ struct WorkbenchDecisionPathStep: View {
                     .lineLimit(2)
             }
         }
-        .padding(.horizontal, MicaSpacing.tight)
+        .padding(.horizontal, MicaTheme.Spacing.space1)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -144,7 +363,7 @@ struct WorkbenchDecisionPathStep: View {
 struct WorkbenchDecisionPathConnector: View {
     var body: some View {
         Image(systemName: "chevron.right")
-            .micaFont(.caption2, weight: .semibold)
+            .micaThemeFont(.caption, weight: .semibold)
             .foregroundStyle(.tertiary)
             .frame(width: 12)
             .accessibilityHidden(true)
@@ -161,7 +380,7 @@ struct WorkbenchDecisionReadout: View {
     var monospaced = true
 
     var body: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             if let systemImage {
                 WorkbenchSymbol(
                     systemName: systemImage,
@@ -180,16 +399,15 @@ struct WorkbenchDecisionReadout: View {
             .foregroundStyle(.secondary)
 
             Text(verbatim: value)
-                .micaFont(
-                    .caption,
-                    weight: .semibold,
-                    design: monospaced ? .monospaced : .default
+                .micaThemeFont(
+                    monospaced ? .dataCaption : .caption,
+                    weight: .semibold
                 )
                 .foregroundStyle(tint)
                 .monospacedDigit()
                 .textSelection(.enabled)
         }
-        .micaFont(.caption)
+        .micaThemeFont(.caption)
         .accessibilityElement(children: .combine)
     }
 }
@@ -199,8 +417,8 @@ struct WorkbenchDecisionReadout: View {
 struct WorkbenchChromeSeparator: View {
     var body: some View {
         Rectangle()
-            .fill(MicaDesignTokens.chromeSeparator)
-            .frame(height: 1)
+            .fill(MicaTheme.separator)
+            .frame(height: MicaTheme.Shape.hairline)
             .accessibilityHidden(true)
     }
 }
@@ -222,9 +440,9 @@ struct WorkbenchPageScaffold<Commands: View, Content: View>: View {
             commands
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(MicaDesignTokens.pageFill)
+                .background(MicaTheme.canvas)
         }
-        .background(MicaDesignTokens.pageFill)
+        .background(MicaTheme.canvas)
     }
 }
 
@@ -251,17 +469,17 @@ struct WorkbenchCommandBar<Summary: View, Controls: View, Commands: View>: View 
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) {
+            HStack(spacing: MicaTheme.Spacing.space3) {
                 summary
                 controls
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 commands
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
-                HStack(spacing: MicaSpacing.module) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                HStack(spacing: MicaTheme.Spacing.space3) {
                     summary
-                    Spacer(minLength: MicaSpacing.row)
+                    Spacer(minLength: MicaTheme.Spacing.space2)
                     commands
                 }
                 controls
@@ -269,11 +487,11 @@ struct WorkbenchCommandBar<Summary: View, Controls: View, Commands: View>: View 
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: MicaBounds.commandBarHeight,
+            minHeight: MicaTheme.Metrics.commandBarHeight,
             alignment: .leading
         )
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .background(MicaDesignTokens.pageFill)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .background(MicaTheme.canvas)
         .overlay(alignment: .bottom) { WorkbenchChromeSeparator() }
     }
 }
@@ -296,7 +514,7 @@ struct WorkbenchCommandSummary: View {
     }
 
     private var inlineSummary: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             summaryIcon
             summaryTitle
 
@@ -305,7 +523,7 @@ struct WorkbenchCommandSummary: View {
                     .frame(height: 14)
 
                 Text(verbatim: detail)
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -313,7 +531,7 @@ struct WorkbenchCommandSummary: View {
     }
 
     private var stackedSummary: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             summaryIcon
 
             VStack(alignment: .leading, spacing: 1) {
@@ -321,7 +539,7 @@ struct WorkbenchCommandSummary: View {
 
                 if let detail {
                     Text(verbatim: detail)
-                        .micaFont(.caption)
+                        .micaThemeFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
@@ -335,16 +553,16 @@ struct WorkbenchCommandSummary: View {
     }
 
     private var summaryTitle: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             Text(verbatim: value)
-                .micaFont(.callout, weight: .semibold)
+                .micaThemeFont(.label, weight: .semibold)
             Text(
                 MicaStrings.localizedKey(
                     titleKey,
                     language: language
                 )
             )
-            .micaFont(.callout)
+            .micaThemeFont(.label)
             .foregroundStyle(.secondary)
         }
     }
@@ -356,8 +574,8 @@ struct WorkbenchSection<Content: View>: View {
     let titleKey: String
     var systemImage: String?
     var detailKey: String?
-    /// Grouped sections sit on the native grouped background with no opaque
-    /// card fill; raised sections keep the content band for data-reuse views.
+    /// Grouped sections sit on the canvas fill with no raised surface; raised
+    /// sections keep the flat content band for data-reuse views.
     var grouped = false
     private let content: Content
 
@@ -376,8 +594,8 @@ struct WorkbenchSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
-            HStack(alignment: .top, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
                 if let systemImage {
                     WorkbenchSymbol(
                         systemName: systemImage,
@@ -393,7 +611,7 @@ struct WorkbenchSection<Content: View>: View {
                             language: language
                         )
                     )
-                    .micaFont(.headline, weight: .semibold)
+                    .micaThemeFont(.body, weight: .semibold)
 
                     if let detailKey {
                         Text(
@@ -402,7 +620,7 @@ struct WorkbenchSection<Content: View>: View {
                                 language: language
                             )
                         )
-                        .micaFont(.caption)
+                        .micaThemeFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     }
@@ -418,9 +636,9 @@ struct WorkbenchSection<Content: View>: View {
 }
 
 struct WorkbenchContentBand<Content: View>: View {
-    /// Grouped surfaces sit on the native grouped background with hairline
-    /// row separators and no white card fill; raised surfaces keep the opaque
-    /// content band for data pages and summaries that need stronger separation.
+    /// Grouped surfaces sit on the canvas fill with hairline row separators;
+    /// raised surfaces keep the flat Mica Ops surface fill for data pages and
+    /// summaries that need stronger separation.
     enum Surface {
         case grouped
         case raised
@@ -436,13 +654,14 @@ struct WorkbenchContentBand<Content: View>: View {
 
     var body: some View {
         content
-            .padding(.horizontal, MicaSpacing.module)
-            .padding(.vertical, MicaSpacing.tight)
+            .padding(.horizontal, MicaTheme.Spacing.space3)
+            .padding(.vertical, MicaTheme.Spacing.space1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(surface == .raised ? MicaDesignTokens.contentFill : .clear)
+            .background(surface == .raised ? MicaTheme.surface : .clear)
     }
 }
-// MARK: - Dashboard
+
+// MARK: - Metrics
 
 struct WorkbenchMetricTile<Content: View>: View {
     private let content: Content
@@ -452,10 +671,10 @@ struct WorkbenchMetricTile<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
             content
         }
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
@@ -468,7 +687,7 @@ struct WorkbenchMetricLabel: View {
     var tint: Color = .secondary
 
     var body: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             WorkbenchSymbol(
                 systemName: systemImage,
                 tint: tint,
@@ -484,7 +703,7 @@ struct WorkbenchMetricLabel: View {
             )
             .foregroundStyle(.secondary)
         }
-        .micaFont(.caption)
+        .micaThemeFont(.caption)
         .accessibilityElement(children: .combine)
     }
 }
@@ -497,10 +716,10 @@ struct WorkbenchMetricValue: View {
 
     var body: some View {
         Text(verbatim: text)
-            .micaFont(.title2, weight: .semibold).monospacedDigit()
+            .micaThemeFont(.title, weight: .semibold).monospacedDigit()
             .foregroundStyle(tint)
-            .micaNumericTransition(reduceMotion: reduceMotion)
-            .animation(WorkbenchMotion.numeric, value: text)
+            .contentTransition(reduceMotion ? .identity : .numericText())
+            .animation(reduceMotion ? nil : MicaTheme.Motion.stateChange, value: text)
             .textSelection(.enabled)
     }
 }
@@ -528,8 +747,8 @@ enum WorkbenchStateKind {
 
     var tint: Color {
         switch self {
-        case .failed: MicaDesignTokens.signalRed
-        case .unsupported: MicaDesignTokens.signalAmber
+        case .failed: MicaTheme.statusError
+        case .unsupported: MicaTheme.statusWarning
         default: .secondary
         }
     }
@@ -556,7 +775,7 @@ struct WorkbenchStateView: View {
         ContentUnavailableView {
             Label {
                 Text(title)
-                    .micaFont(.headline, weight: .semibold)
+                    .micaThemeFont(.body, weight: .semibold)
             } icon: {
                 if kind == .loading {
                     ProgressView()
@@ -569,15 +788,15 @@ struct WorkbenchStateView: View {
                 }
             }
         } description: {
-            VStack(spacing: MicaSpacing.tight) {
+            VStack(spacing: MicaTheme.Spacing.space1) {
                 if let detail, detail != title {
                     Text(detail)
-                        .micaFont(.callout)
+                        .micaThemeFont(.label)
                 }
 
                 if let message, message != title, message != detail {
                     Text(verbatim: message)
-                        .micaFont(.callout)
+                        .micaThemeFont(.label)
                         .textSelection(.enabled)
                 }
             }
@@ -592,15 +811,15 @@ struct WorkbenchStateView: View {
                         ),
                         systemImage: actionSystemImage
                     )
-                    .micaFont(.callout, weight: .medium)
+                    .micaThemeFont(.label, weight: .medium)
                 }
                 .disabled(!isActionEnabled)
-                .frame(minHeight: MicaBounds.controlMinHeight)
+                .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
             }
         }
-        .padding(MicaSpacing.section)
+        .padding(MicaTheme.Spacing.space4)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(MicaDesignTokens.pageFill)
+        .background(MicaTheme.canvas)
     }
 }
 
@@ -609,7 +828,7 @@ struct WorkbenchStatusBadge: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             Circle()
                 .fill(tint)
                 .frame(width: 6, height: 6)
@@ -619,12 +838,12 @@ struct WorkbenchStatusBadge: View {
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
         }
-        .micaFont(.caption, weight: .medium)
-        .padding(.horizontal, MicaSpacing.row)
+        .micaThemeFont(.caption, weight: .medium)
+        .padding(.horizontal, MicaTheme.Spacing.space2)
         .padding(.vertical, 2)
         .background(
             RoundedRectangle(
-                cornerRadius: MicaBounds.badgeRadius,
+                cornerRadius: MicaTheme.Metrics.badgeRadius,
                 style: .continuous
             )
             .fill(tint.opacity(0.12))
@@ -642,14 +861,14 @@ struct WorkbenchStaleNotice: View {
                 .textSelection(.enabled)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(MicaDesignTokens.signalAmber)
+                .foregroundStyle(MicaTheme.statusWarning)
         }
-        .micaFont(.caption)
+        .micaThemeFont(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaDesignTokens.signalAmber.opacity(0.08))
+        .background(MicaTheme.statusWarning.opacity(0.08))
     }
 }
 
@@ -677,8 +896,8 @@ struct WorkbenchIconCommand: View {
         .disabled(!isEnabled)
         .help(MicaStrings.localizedKey(titleKey, language: language))
         .frame(
-            minWidth: MicaBounds.iconControlSize,
-            minHeight: MicaBounds.iconControlSize
+            minWidth: MicaTheme.Metrics.iconControlSize,
+            minHeight: MicaTheme.Metrics.iconControlSize
         )
         .contentShape(Rectangle())
     }

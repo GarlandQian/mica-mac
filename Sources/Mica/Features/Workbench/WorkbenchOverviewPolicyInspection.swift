@@ -1,6 +1,8 @@
-import CoreGraphics
 import Foundation
 import MicaCore
+import SwiftUI
+
+// MARK: - Inspection index (moved from the removed policy HUD)
 
 struct OverviewPolicyMemberInspection: Equatable {
     let name: String
@@ -133,7 +135,9 @@ final class OverviewPolicyInspectionCache {
     }
 }
 
-struct OverviewPolicyHUDField: Identifiable, Equatable {
+// MARK: - Inspection field composition
+
+struct OverviewPolicyInspectionField: Identifiable, Equatable {
     enum Label: Equatable {
         case localized(String)
         case verbatim(String)
@@ -163,85 +167,57 @@ struct OverviewPolicyHUDField: Identifiable, Equatable {
     var monospaced = false
 }
 
-struct OverviewPolicyHUDSection: Identifiable, Equatable {
+struct OverviewPolicyInspectionSection: Identifiable, Equatable {
     let id: String
     let titleKey: String
-    let fields: [OverviewPolicyHUDField]
+    let fields: [OverviewPolicyInspectionField]
 }
 
-struct OverviewPolicyHUDSnapshot: Equatable {
+struct OverviewPolicyInspectionSnapshot: Equatable {
     enum Kind: Equatable {
         case policyGroup
         case policyMember
-        case route
     }
 
-    let selection: OverviewTopologySelection
     let kind: Kind
     let title: String
     let subtitle: String?
-    let sections: [OverviewPolicyHUDSection]
-    let isExpanded: Bool
-    let canOpenProxies: Bool
+    let sections: [OverviewPolicyInspectionSection]
 
-    var fields: [OverviewPolicyHUDField] {
+    var fields: [OverviewPolicyInspectionField] {
         sections.flatMap(\.fields)
     }
 }
 
-enum OverviewPolicyHUDProjection {
+/// Complete policy-inspection field composition shown in the workspace
+/// inspector (task 08-17 Phase 3.3). This is the same complete field set the
+/// removed floating HUD rendered: group/member identity, type, selection,
+/// ordered members, availability, latency, provider, interface,
+/// hidden/fixed/icon, every reported transport state (including `false`),
+/// SMART rank, latest test detail + URL, and all additional controller fields
+/// in stable key order. Resolution is name-exact and unique-only; ambiguous or
+/// missing names return `nil` so callers can present the truthful fallback.
+enum OverviewPolicyInspectionProjection {
     static func snapshot(
-        selection: OverviewTopologySelection,
-        isPinned: Bool,
-        topologyIndex: OverviewTopologyIndex,
+        name: String,
         policyIndex: OverviewPolicyInspectionIndex,
         language: AppLanguage
-    ) -> OverviewPolicyHUDSnapshot {
-        guard case .node(let nodeID) = selection,
-              let node = topologyIndex.node(id: nodeID),
-              case .policyHop = node.columnID else {
-            return routeSnapshot(
-                selection: selection,
-                isPinned: isPinned,
-                topologyIndex: topologyIndex,
-                language: language,
-                canOpenProxies: false
-            )
-        }
-
-        switch policyIndex.resolve(name: node.name) {
+    ) -> OverviewPolicyInspectionSnapshot? {
+        switch policyIndex.resolve(name: name) {
         case .group(let group):
-            return groupSnapshot(
-                selection: selection,
-                group: group,
-                isPinned: isPinned,
-                language: language
-            )
+            return groupSnapshot(group: group, language: language)
         case .member(let member):
-            return memberSnapshot(
-                selection: selection,
-                member: member,
-                isPinned: isPinned,
-                language: language
-            )
+            return memberSnapshot(member: member, language: language)
         case .ambiguous, .missing:
-            return routeSnapshot(
-                selection: selection,
-                isPinned: isPinned,
-                topologyIndex: topologyIndex,
-                language: language,
-                canOpenProxies: true
-            )
+            return nil
         }
     }
 
     private static func groupSnapshot(
-        selection: OverviewTopologySelection,
         group: OverviewPolicyGroupInspection,
-        isPinned: Bool,
         language: AppLanguage
-    ) -> OverviewPolicyHUDSnapshot {
-        var overview: [OverviewPolicyHUDField] = []
+    ) -> OverviewPolicyInspectionSnapshot {
+        var overview: [OverviewPolicyInspectionField] = []
         append(
             id: "group-type",
             titleKey: "overview.hud.group_type",
@@ -256,7 +232,7 @@ enum OverviewPolicyHUDProjection {
             to: &overview
         )
         overview.append(
-            OverviewPolicyHUDField(
+            OverviewPolicyInspectionField(
                 id: "member-count",
                 label: .localized("overview.hud.member_count"),
                 value: group.memberCount.formatted(),
@@ -274,8 +250,7 @@ enum OverviewPolicyHUDProjection {
             language: language
         ))
 
-        return OverviewPolicyHUDSnapshot(
-            selection: selection,
+        return OverviewPolicyInspectionSnapshot(
             kind: .policyGroup,
             title: group.name,
             subtitle: nonBlank(group.type),
@@ -283,19 +258,15 @@ enum OverviewPolicyHUDProjection {
                 overview: overview,
                 member: group.selectedMember,
                 language: language
-            ),
-            isExpanded: isPinned,
-            canOpenProxies: true
+            )
         )
     }
 
     private static func memberSnapshot(
-        selection: OverviewTopologySelection,
         member: OverviewPolicyMemberInspection,
-        isPinned: Bool,
         language: AppLanguage
-    ) -> OverviewPolicyHUDSnapshot {
-        var overview: [OverviewPolicyHUDField] = []
+    ) -> OverviewPolicyInspectionSnapshot {
+        var overview: [OverviewPolicyInspectionField] = []
         append(
             id: "group",
             titleKey: "overview.hud.group",
@@ -310,8 +281,7 @@ enum OverviewPolicyHUDProjection {
         )
         overview.append(contentsOf: memberOverviewFields(member, language: language))
 
-        return OverviewPolicyHUDSnapshot(
-            selection: selection,
+        return OverviewPolicyInspectionSnapshot(
             kind: .policyMember,
             title: member.name,
             subtitle: nonBlank(member.detail?.type) ?? nonBlank(member.groupType),
@@ -319,17 +289,15 @@ enum OverviewPolicyHUDProjection {
                 overview: overview,
                 member: member,
                 language: language
-            ),
-            isExpanded: isPinned,
-            canOpenProxies: true
+            )
         )
     }
 
     private static func memberOverviewFields(
         _ member: OverviewPolicyMemberInspection,
         language: AppLanguage
-    ) -> [OverviewPolicyHUDField] {
-        var fields: [OverviewPolicyHUDField] = []
+    ) -> [OverviewPolicyInspectionField] {
+        var fields: [OverviewPolicyInspectionField] = []
         appendAvailability(member.detail?.alive, language: language, to: &fields)
         appendLatency(member.delay, id: "latency", to: &fields)
         guard let detail = member.detail else {
@@ -384,11 +352,11 @@ enum OverviewPolicyHUDProjection {
     }
 
     private static func memberSections(
-        overview: [OverviewPolicyHUDField],
+        overview: [OverviewPolicyInspectionField],
         member: OverviewPolicyMemberInspection,
         language: AppLanguage
-    ) -> [OverviewPolicyHUDSection] {
-        var sections: [OverviewPolicyHUDSection] = []
+    ) -> [OverviewPolicyInspectionSection] {
+        var sections: [OverviewPolicyInspectionSection] = []
         appendSection(
             id: "overview",
             titleKey: "routing.node_section_overview",
@@ -399,7 +367,7 @@ enum OverviewPolicyHUDProjection {
         guard let detail = member.detail else { return sections }
 
         let transports = detail.transportCapabilities.map { capability in
-            OverviewPolicyHUDField(
+            OverviewPolicyInspectionField(
                 id: "transport.\(capability.id)",
                 label: .verbatim(capability.name),
                 value: localizedBoolean(capability.isEnabled, language: language)
@@ -413,7 +381,7 @@ enum OverviewPolicyHUDProjection {
         )
 
         let detailProjection = ProxyMemberDetailProjection(detail: detail)
-        var testing: [OverviewPolicyHUDField] = []
+        var testing: [OverviewPolicyInspectionField] = []
         appendLatency(
             detailProjection.latestHistoryDelay,
             id: "test-delay",
@@ -429,7 +397,7 @@ enum OverviewPolicyHUDProjection {
         )
         if let history = detailProjection.history, !history.isEmpty {
             testing.append(
-                OverviewPolicyHUDField(
+                OverviewPolicyInspectionField(
                     id: "test-samples",
                     label: .localized("routing.delay_history"),
                     value: history.count.formatted(),
@@ -452,7 +420,7 @@ enum OverviewPolicyHUDProjection {
         )
 
         let reportedFields = detailProjection.reportedFields.map { field in
-            OverviewPolicyHUDField(
+            OverviewPolicyInspectionField(
                 id: "metadata.\(field.key)",
                 label: .verbatim(field.key),
                 value: field.value,
@@ -468,40 +436,14 @@ enum OverviewPolicyHUDProjection {
         return sections
     }
 
-    private static func routeSnapshot(
-        selection: OverviewTopologySelection,
-        isPinned: Bool,
-        topologyIndex: OverviewTopologyIndex,
-        language: AppLanguage,
-        canOpenProxies: Bool
-    ) -> OverviewPolicyHUDSnapshot {
-        OverviewPolicyHUDSnapshot(
-            selection: selection,
-            kind: .route,
-            title: OverviewTopologyProjection.selectionLabel(
-                selection,
-                in: topologyIndex,
-                language: language
-            ),
-            subtitle: OverviewTopologyProjection.selectionDescription(
-                selection,
-                in: topologyIndex,
-                language: language
-            ),
-            sections: [],
-            isExpanded: isPinned,
-            canOpenProxies: canOpenProxies
-        )
-    }
-
     private static func appendAvailability(
         _ alive: Bool?,
         language: AppLanguage,
-        to fields: inout [OverviewPolicyHUDField]
+        to fields: inout [OverviewPolicyInspectionField]
     ) {
         guard let alive else { return }
         fields.append(
-            OverviewPolicyHUDField(
+            OverviewPolicyInspectionField(
                 id: "availability",
                 label: .localized("overview.hud.availability"),
                 value: MicaStrings.localizedKey(
@@ -517,11 +459,11 @@ enum OverviewPolicyHUDProjection {
         _ delay: Int?,
         id: String,
         titleKey: String = "overview.hud.latency",
-        to fields: inout [OverviewPolicyHUDField]
+        to fields: inout [OverviewPolicyInspectionField]
     ) {
         guard let delay, delay > 0 else { return }
         fields.append(
-            OverviewPolicyHUDField(
+            OverviewPolicyInspectionField(
                 id: id,
                 label: .localized(titleKey),
                 value: OverviewFormat.latency(delay),
@@ -531,7 +473,7 @@ enum OverviewPolicyHUDProjection {
         )
     }
 
-    private static func latencyTone(_ delay: Int) -> OverviewPolicyHUDField.Tone {
+    private static func latencyTone(_ delay: Int) -> OverviewPolicyInspectionField.Tone {
         switch LatencyHealthGrade.allCases.first(where: { $0.includes(delay: delay) }) {
         case .fast: .healthy
         case .normal: .accent
@@ -544,13 +486,13 @@ enum OverviewPolicyHUDProjection {
         id: String,
         titleKey: String,
         value: String?,
-        tone: OverviewPolicyHUDField.Tone = .neutral,
+        tone: OverviewPolicyInspectionField.Tone = .neutral,
         monospaced: Bool = false,
-        to fields: inout [OverviewPolicyHUDField]
+        to fields: inout [OverviewPolicyInspectionField]
     ) {
         guard let value = nonBlank(value) else { return }
         fields.append(
-            OverviewPolicyHUDField(
+            OverviewPolicyInspectionField(
                 id: id,
                 label: .localized(titleKey),
                 value: value,
@@ -563,12 +505,12 @@ enum OverviewPolicyHUDProjection {
     private static func appendSection(
         id: String,
         titleKey: String,
-        fields: [OverviewPolicyHUDField],
-        to sections: inout [OverviewPolicyHUDSection]
+        fields: [OverviewPolicyInspectionField],
+        to sections: inout [OverviewPolicyInspectionSection]
     ) {
         guard !fields.isEmpty else { return }
         sections.append(
-            OverviewPolicyHUDSection(
+            OverviewPolicyInspectionSection(
                 id: id,
                 titleKey: titleKey,
                 fields: fields
@@ -592,150 +534,231 @@ enum OverviewPolicyHUDProjection {
     }
 }
 
-enum OverviewPolicyHUDSide: Int, CaseIterable, Equatable, Sendable {
-    case trailing
-    case leading
-    case above
-    case below
-}
+// MARK: - Workspace inspector content
 
-struct OverviewPolicyHUDPlacement: Equatable, Sendable {
-    let frame: CGRect
-    let side: OverviewPolicyHUDSide
-}
+/// Policy-group/member detail in the workspace inspector (design.md §3). This
+/// is the Phase 3.3 replacement for the removed node-anchored floating HUD:
+/// topology policy-node clicks select `.proxyGroup` / `.proxyNode` here and
+/// the inspector renders the complete inspection field composition with flat
+/// Mica Ops sections, mono data values, and hairline separators. The
+/// same-window Open Proxies / Open Connections actions keep their HUD-era
+/// eligibility rules (Open Proxies for every policy selection; Open
+/// Connections when exactly one live path routes through the selection).
+struct WorkbenchPolicyInspectorView: View {
+    @Environment(AppModel.self) private var appModel
+    @Environment(OverviewWindowRuntime.self) private var overviewRuntime
+    @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
+    @Environment(\.micaAppLanguage) private var language
 
-enum OverviewPolicyHUDPlacementResolver {
-    private static let gap: CGFloat = 12
+    let selection: WorkbenchInspectorSelection
+    @Binding var destination: WorkbenchDestination
 
-    static func resolve(
-        anchorRect: CGRect,
-        labelRect: CGRect,
-        hudSize: CGSize,
-        graphBounds: CGRect,
-        obstacles: [CGRect],
-        preferredSide: OverviewPolicyHUDSide
-    ) -> OverviewPolicyHUDPlacement {
-        let safeBounds = graphBounds.insetBy(dx: 10, dy: 10)
-        let candidates = OverviewPolicyHUDSide.allCases.map { side in
-            (side, candidateFrame(
-                side: side,
-                anchorRect: anchorRect,
-                labelRect: labelRect,
-                hudSize: hudSize
-            ))
+    @State private var inspectionCache = OverviewPolicyInspectionCache()
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
+                inspectionContent
+                actionSection
+            }
+            .padding(MicaTheme.Spacing.space3)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        let winner = candidates.min { left, right in
-            score(
-                frame: left.1,
-                side: left.0,
-                anchorRect: anchorRect,
-                graphBounds: safeBounds,
-                obstacles: obstacles,
-                preferredSide: preferredSide
-            ) < score(
-                frame: right.1,
-                side: right.0,
-                anchorRect: anchorRect,
-                graphBounds: safeBounds,
-                obstacles: obstacles,
-                preferredSide: preferredSide
-            )
-        } ?? (preferredSide, CGRect(origin: anchorRect.origin, size: hudSize))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
-        return OverviewPolicyHUDPlacement(
-            frame: clamp(winner.1, to: safeBounds),
-            side: winner.0
+    @ViewBuilder
+    private var inspectionContent: some View {
+        let policyIndex = inspectionCache.resolve(
+            revision: appModel.policyGroupCatalogRevision,
+            catalog: appModel.policyGroupCatalog
         )
-    }
-
-    static func preferredSide(
-        for labelSide: OverviewTopologyLayout.NodeGeometry.LabelSide
-    ) -> OverviewPolicyHUDSide {
-        switch labelSide {
-        case .leading: .leading
-        case .trailing: .trailing
+        if let snapshot = OverviewPolicyInspectionProjection.snapshot(
+            name: inspectedName,
+            policyIndex: policyIndex,
+            language: language
+        ) {
+            header(
+                title: snapshot.title,
+                subtitle: snapshot.subtitle,
+                systemImage: symbolName(for: snapshot.kind)
+            )
+            MicaHairlineSeparator()
+            ForEach(Array(snapshot.sections.enumerated()), id: \.element.id) {
+                index,
+                section in
+                if index > 0 {
+                    MicaHairlineSeparator()
+                }
+                fieldSection(section)
+            }
+        } else {
+            header(
+                title: inspectedName,
+                subtitle: nil,
+                systemImage: "point.3.connected.trianglepath.dotted"
+            )
+            MicaHairlineSeparator()
+            Text(
+                MicaStrings.localizedKey(
+                    "workbench.inspector_policy_unresolved",
+                    language: language
+                )
+            )
+            .micaThemeFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private static func candidateFrame(
-        side: OverviewPolicyHUDSide,
-        anchorRect: CGRect,
-        labelRect: CGRect,
-        hudSize: CGSize
-    ) -> CGRect {
-        let anchor = anchorRect.union(labelRect)
-        switch side {
-        case .trailing:
-            return CGRect(
-                x: anchor.maxX + gap,
-                y: anchor.midY - hudSize.height / 2,
-                width: hudSize.width,
-                height: hudSize.height
-            )
-        case .leading:
-            return CGRect(
-                x: anchor.minX - gap - hudSize.width,
-                y: anchor.midY - hudSize.height / 2,
-                width: hudSize.width,
-                height: hudSize.height
-            )
-        case .above:
-            return CGRect(
-                x: anchor.midX - hudSize.width / 2,
-                y: anchor.minY - gap - hudSize.height,
-                width: hudSize.width,
-                height: hudSize.height
-            )
-        case .below:
-            return CGRect(
-                x: anchor.midX - hudSize.width / 2,
-                y: anchor.maxY + gap,
-                width: hudSize.width,
-                height: hudSize.height
-            )
+    private var inspectedName: String {
+        switch selection {
+        case .proxyGroup(let groupName):
+            groupName
+        case .proxyNode(_, let nodeName):
+            nodeName
+        case .none, .connection, .rule, .log, .source, .controller:
+            ""
         }
     }
 
-    private static func score(
-        frame: CGRect,
-        side: OverviewPolicyHUDSide,
-        anchorRect: CGRect,
-        graphBounds: CGRect,
-        obstacles: [CGRect],
-        preferredSide: OverviewPolicyHUDSide
-    ) -> Double {
-        let boundedArea = intersectionArea(frame, graphBounds)
-        let outOfBoundsArea = max(area(frame) - boundedArea, 0)
-        let anchorOverlap = intersectionArea(frame, anchorRect)
-        let obstacleOverlap = obstacles.reduce(CGFloat.zero) {
-            $0 + intersectionArea(frame, $1)
+    private func symbolName(for kind: OverviewPolicyInspectionSnapshot.Kind) -> String {
+        switch kind {
+        case .policyGroup: "point.3.connected.trianglepath.dotted"
+        case .policyMember: "bolt.horizontal.circle"
         }
-        let dx = frame.midX - anchorRect.midX
-        let dy = frame.midY - anchorRect.midY
-        let distance = sqrt(dx * dx + dy * dy)
-        let preferredPenalty = side == preferredSide ? 0 : Double(side.rawValue + 1)
-        return Double(outOfBoundsArea) * 10_000
-            + Double(anchorOverlap) * 1_000_000
-            + Double(obstacleOverlap) * 48
-            + Double(distance) * 0.02
-            + preferredPenalty
     }
 
-    private static func clamp(_ frame: CGRect, to bounds: CGRect) -> CGRect {
-        let width = min(max(frame.width, 1), max(bounds.width, 1))
-        let height = min(max(frame.height, 1), max(bounds.height, 1))
-        let x = min(max(frame.minX, bounds.minX), bounds.maxX - width)
-        let y = min(max(frame.minY, bounds.minY), bounds.maxY - height)
-        return CGRect(x: x, y: y, width: width, height: height)
+    private func header(
+        title: String,
+        subtitle: String?,
+        systemImage: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
+            Image(systemName: systemImage)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .frame(width: MicaTheme.Metrics.iconControlSize, height: MicaTheme.Metrics.iconControlSize)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title)
+                    .micaThemeFont(.label, weight: .semibold)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                if let subtitle = subtitle?.overviewNonBlank {
+                    Text(verbatim: subtitle)
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 
-    private static func intersectionArea(_ left: CGRect, _ right: CGRect) -> CGFloat {
-        let intersection = left.intersection(right)
-        guard !intersection.isNull, !intersection.isEmpty else { return 0 }
-        return area(intersection)
+    private func fieldSection(_ section: OverviewPolicyInspectionSection) -> some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            Text(MicaStrings.localizedKey(section.titleKey, language: language))
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                ForEach(section.fields) { field in
+                    fieldRow(field)
+                }
+            }
+        }
     }
 
-    private static func area(_ rect: CGRect) -> CGFloat {
-        max(rect.width, 0) * max(rect.height, 0)
+    private func fieldRow(_ field: OverviewPolicyInspectionField) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: field.label.resolved(language: language))
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(.secondary)
+            Text(verbatim: field.value)
+                .micaThemeFont(
+                    field.monospaced ? .dataCaption : .caption,
+                    weight: .medium
+                )
+                .foregroundStyle(field.tone.tint)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var actionSection: some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            MicaHairlineSeparator()
+            Button(action: openProxies) {
+                Label(
+                    MicaStrings.localizedKey(
+                        WorkbenchDestination.proxies.titleKey,
+                        language: language
+                    ),
+                    systemImage: WorkbenchDestination.proxies.symbolName
+                )
+            }
+            if let singlePath {
+                Button { openPath(singlePath) } label: {
+                    Label(
+                        MicaStrings.localizedKey(
+                            WorkbenchDestination.connections.titleKey,
+                            language: language
+                        ),
+                        systemImage: "arrow.right"
+                    )
+                }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    /// HUD-era eligibility preserved: Open Connections appears only when the
+    /// live topology highlight resolves to exactly one path for the pinned
+    /// selection.
+    private var singlePath: ConnectionTopology.PathRecord? {
+        guard let controllerID = appModel.selectedRouterID,
+              let runtime = overviewRuntime.registry.existingTopologyRuntime(
+                  controllerID: controllerID,
+                  generation: appModel.controllerSessionPresentation.generation
+              ) else {
+            return nil
+        }
+        let paths = runtime.interaction.snapshot.highlight.paths
+        return paths.count == 1 ? paths.first : nil
+    }
+
+    private func openProxies() {
+        destination = .proxies
+    }
+
+    private func openPath(_ path: ConnectionTopology.PathRecord) {
+        if let controllerID = appModel.selectedRouterID,
+           let connectionID = path.reportedConnectionID.overviewNonBlank {
+            workspaceStore.stageConnectionNavigation(
+                WorkbenchConnectionNavigationSelection(
+                    controllerID: controllerID,
+                    generation: appModel.controllerSessionPresentation.generation,
+                    connectionID: connectionID
+                )
+            )
+        }
+        destination = .connections
+    }
+}
+
+private extension OverviewPolicyInspectionField.Tone {
+    var tint: Color {
+        switch self {
+        case .neutral: MicaTheme.textPrimary
+        case .healthy: MicaTheme.statusOK
+        case .warning: MicaTheme.statusWarning
+        case .failure: MicaTheme.statusError
+        case .accent: MicaTheme.accent
+        }
     }
 }

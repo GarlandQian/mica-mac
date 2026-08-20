@@ -8,7 +8,7 @@ extension RouterEditorView {
             WorkbenchFormRow("editor.name") {
                 TextField("", text: $draft.displayName)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+                    .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
                     .help(MicaStrings.localizedKey("editor.help_name", language: appLanguage))
                     .accessibilityLabel(
                         MicaStrings.localizedKey("editor.acc_name", language: appLanguage)
@@ -115,7 +115,7 @@ extension RouterEditorView {
                 )
                 .textFieldStyle(.roundedBorder)
                 .textContentType(.URL)
-                .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+                .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
                 .help(MicaStrings.localizedKey("editor.help_host", language: appLanguage))
                 .accessibilityLabel(
                     MicaStrings.localizedKey("editor.acc_host", language: appLanguage)
@@ -146,7 +146,7 @@ extension RouterEditorView {
             ) {
                 SecureField("", text: $draft.secret)
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+                .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
                 .help(MicaStrings.localizedKey("editor.help_secret", language: appLanguage))
                 .accessibilityLabel(
                     MicaStrings.localizedKey("editor.acc_secret", language: appLanguage)
@@ -182,7 +182,7 @@ extension RouterEditorView {
                     ),
                     systemImage: "key.fill"
                 )
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
             }
         }
@@ -192,7 +192,7 @@ extension RouterEditorView {
                 WorkbenchManagementInlineState(
                     systemImage: "exclamationmark.triangle.fill",
                     title: validationError,
-                    tint: MicaDesignTokens.signalRed
+                    tint: MicaTheme.statusError
                 )
             }
             .listRowBackground(Color.clear)
