@@ -316,3 +316,23 @@ Completed and archived the native Logs, Rules, and Sources data-browser phase wh
 ### Status
 
 [OK] **Completed**
+
+## Session 10: 全局 UI 重构（Mica Ops）交付
+
+**Date**: 2026-08-20
+**Task**: 08-17-global-ui-redesign（全局 UI 设计系统与界面重构）
+**Branch**: `main`
+
+### Summary
+
+完成 Mica Ops 全局 UI 重构全部 8 个阶段：新增 `Sources/Mica/Design/`（MicaTheme tokens + MicaThemeComponents 原语），删除三个旧设计系统文件与 PolicyHUD（AC1 零命中）；侧边栏三组化（Operate/Observe/Manage），右侧 `.inspector` 成为唯一详情机制（7 个 case + 页面注册的 live resolver + 双向同步）；全部 10 个目的地 + Routers + Settings 换肤。控制器/数据层零行为改动（MicaCore/AppModel 零 diff）。trellis-check 终审 AC1–AC7 全部 PASS（独立重跑门禁），build 绿、304 测试 / 27 套件全绿、verifier 绿、xcstrings 2093 键双语零缺失；规范四件 + docs 两件同步重写。残留 nit：`closingInspector` 投影函数仅测试引用（保留）、旧侧边栏组键被 AppRuntimeSmokeProbe 引用（保留）。未运行 Mica 或真实 controller。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f542178` | feat(ui): global UI redesign to Mica Ops design system (task 08-17) |
+
+### Status
+
+[OK] **Completed**
