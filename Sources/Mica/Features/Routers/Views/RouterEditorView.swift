@@ -69,9 +69,9 @@ struct RouterEditorView: View {
                     if showsDiscardConfirmation {
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(MicaStyle.signalAmber)
+                                .foregroundStyle(MicaTheme.statusWarning)
                             Text(discardPrompt)
-                                .micaFont(.callout)
+                                .micaThemeFont(.label)
                             Spacer(minLength: 12)
                             Button(continueEditingTitle) {
                                 showsDiscardConfirmation = false
@@ -89,9 +89,9 @@ struct RouterEditorView: View {
                         if showsDiscardConfirmation { Divider() }
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(MicaStyle.signalRed)
+                                .foregroundStyle(MicaTheme.statusError)
                             Text(saveError)
-                                .micaFont(.callout)
+                                .micaThemeFont(.label)
                                 .foregroundStyle(.primary)
                                 .textSelection(.enabled)
                             Spacer(minLength: 0)
@@ -100,7 +100,7 @@ struct RouterEditorView: View {
                         .padding(.vertical, 10)
                     }
                 }
-                .background(MicaStyle.contentFill)
+                .background(MicaTheme.surface)
                 .overlay(alignment: .top) { Divider() }
             }
         }
@@ -114,7 +114,7 @@ struct RouterEditorView: View {
                 detail: editorHeaderDetail
             )
         } commands: {
-            HStack(spacing: MicaSpacing.tight) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
                 Button(action: requestClose) {
                     Label(
                         MicaStrings.localizedKey("editor.cancel", language: appLanguage),
@@ -129,7 +129,7 @@ struct RouterEditorView: View {
                 .disabled(isSaving)
 
                 Button(action: testConnection) {
-                    HStack(spacing: MicaSpacing.row) {
+                    HStack(spacing: MicaTheme.Spacing.space2) {
                         if testState == .testing {
                             ProgressView()
                                 .controlSize(.small)
@@ -251,8 +251,8 @@ enum TestState: Equatable {
 
     var foregroundStyle: Color {
         switch self {
-        case .idle, .testing: MicaStyle.signalCyan
-        case .report(let report): report.summary == .ready ? MicaStyle.signalMint : MicaStyle.signalRed
+        case .idle, .testing: MicaTheme.textSecondary
+        case .report(let report): report.summary == .ready ? MicaTheme.statusOK : MicaTheme.statusError
         }
     }
 }
@@ -268,9 +268,9 @@ extension ConnectionCheckState {
 
     var tint: Color {
         switch self {
-        case .ready: MicaStyle.signalMint
-        case .warning: MicaStyle.signalAmber
-        case .failed: MicaStyle.signalRed
+        case .ready: MicaTheme.statusOK
+        case .warning: MicaTheme.statusWarning
+        case .failed: MicaTheme.statusError
         }
     }
 }

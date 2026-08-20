@@ -5,11 +5,11 @@ import SwiftUI
 extension WorkbenchLogSeverity {
     fileprivate var tint: Color {
         switch self {
-        case .error: MicaDesignTokens.signalRed
-        case .warning: MicaDesignTokens.signalAmber
-        case .info: MicaDesignTokens.signalCyan
-        case .debug: MicaDesignTokens.signalViolet
-        case .trace: MicaDesignTokens.signalViolet
+        case .error: MicaTheme.statusError
+        case .warning: MicaTheme.statusWarning
+        case .info: MicaTheme.textSecondary
+        case .debug: MicaTheme.textTertiary
+        case .trace: MicaTheme.textTertiary
         }
     }
 }
@@ -46,11 +46,19 @@ struct WorkbenchLogsView: View {
             pageContent
         }
         .onAppear {
+            let projectionCacheBinding = $projectionCache
+            workspaceStore.logEntryResolver = { id in
+                projectionCacheBinding.wrappedValue.row(id: id)
+            }
+            if let selectedRowID {
+                workspaceStore.selectInspector(.log(id: selectedRowID))
+            }
             isProjectionActive = true
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
         }
         .onDisappear {
+            workspaceStore.logEntryResolver = nil
             isProjectionActive = false
             followCadence.cancel()
         }
@@ -88,6 +96,16 @@ struct WorkbenchLogsView: View {
                 followNewest = false
             }
             persistSelection(selection)
+            if let selection {
+                workspaceStore.selectInspector(.log(id: selection))
+            } else if case .log = workspaceStore.inspectorSelection {
+                workspaceStore.selectInspector(.none)
+            }
+        }
+        .onChange(of: workspaceStore.inspectorSelection) { _, selection in
+            if case .none = selection, selectedRowID != nil {
+                selectedRowID = nil
+            }
         }
     }
 
@@ -126,7 +144,7 @@ struct WorkbenchLogsView: View {
             .accessibilityLabel(
                 MicaStrings.localizedKey("traffic.log_level", language: language)
             )
-            .frame(minHeight: MicaBounds.controlMinHeight)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
             WorkbenchDataActivityIndicator(
                 isActive: appModel.changingControllerLogLevel,
@@ -139,7 +157,7 @@ struct WorkbenchLogsView: View {
             )
             .toggleStyle(.checkbox)
             .disabled(!supportsLogs)
-            .frame(minHeight: MicaBounds.controlMinHeight)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         } commands: {
             WorkbenchIconCommand(
                 titleKey: appModel.dashboardSessionControls.logsPresentationPaused
@@ -209,17 +227,6 @@ struct WorkbenchLogsView: View {
             )
         case .content:
             logStream
-                .inspector(isPresented: inspectorPresented) {
-                    WorkbenchLogInspector(
-                        row: selectedRow,
-                        close: { selectedRowID = nil }
-                    )
-                    .inspectorColumnWidth(
-                        min: MicaBounds.inspectorMin,
-                        ideal: MicaBounds.inspectorIdeal,
-                        max: MicaBounds.inspectorMax
-                    )
-                }
         }
     }
 
@@ -325,14 +332,14 @@ struct WorkbenchLogsView: View {
                     MicaLabel("traffic.jump_to_newest", systemImage: "arrow.down.to.line")
                 }
                 .buttonStyle(.bordered)
-                .frame(minHeight: MicaBounds.controlMinHeight)
-                .padding(MicaSpacing.module)
+                .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+                .padding(MicaTheme.Spacing.space3)
             }
         }
     }
 
     private func logTimestamp(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             severityRail(row)
             WorkbenchDataText(
                 value: row.receivedTimeText,
@@ -360,7 +367,7 @@ struct WorkbenchLogsView: View {
     }
 
     private func logType(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             WorkbenchSymbol(
                 systemName: logTypeSymbol(row),
                 tint: row.severity.tint,
@@ -383,7 +390,7 @@ struct WorkbenchLogsView: View {
     }
 
     private func compactLogEvent(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             severityRail(row)
 
             WorkbenchDataText(
@@ -421,11 +428,11 @@ struct WorkbenchLogsView: View {
     }
 
     private func stackedLogEvent(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             severityRail(row)
 
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: MicaSpacing.row) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
                     Text(verbatim: row.receivedTimeText)
                         .foregroundStyle(.secondary)
                     Text(verbatim: row.levelText)
@@ -435,11 +442,11 @@ struct WorkbenchLogsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .micaFont(.caption, design: .monospaced)
+                .micaThemeFont(.dataCaption)
                 .lineLimit(1)
 
                 Text(verbatim: row.payloadText)
-                    .micaFont(.callout, design: .monospaced)
+                    .micaThemeFont(.dataLabel)
                     .lineLimit(1)
                     .textSelection(.enabled)
             }
@@ -516,17 +523,6 @@ struct WorkbenchLogsView: View {
 
     private var canAdjustLogLevel: Bool {
         supportsLogs || appModel.supportsUnifiedAction(.setLogLevel)
-    }
-
-    private var selectedRow: WorkbenchLogRow? {
-        projectionCache.row(id: selectedRowID)
-    }
-
-    private var inspectorPresented: Binding<Bool> {
-        Binding(
-            get: { selectedRowID != nil },
-            set: { if !$0 { selectedRowID = nil } }
-        )
     }
 
     private func scrollToNewest() {
@@ -631,7 +627,10 @@ struct WorkbenchLogsView: View {
     }
 }
 
-private struct WorkbenchLogInspector: View {
+/// Log detail content rendered by the workspace inspector container
+/// (`WorkbenchInspectorContainer`, design.md §3); the live row resolves through
+/// the destination-registered `logEntryResolver` (task 08-17 Phase 5A).
+struct WorkbenchLogInspector: View {
     @Environment(\.micaAppLanguage) private var language
 
     let row: WorkbenchLogRow?

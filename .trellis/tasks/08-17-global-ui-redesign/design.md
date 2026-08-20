@@ -88,8 +88,11 @@ Single workbench window (unchanged scene model in `MicaApp`), rebuilt as:
 
 ## 4. Surface Direction (behavior preserved, presentation rebuilt)
 
-- **Overview**: two fixed regions — instrument strip (mono-metric tiles,
-  hairline-separated, no tiles-with-glow) above the route topology. The
+- **Overview**: two fixed regions — the telemetry instrument stage above the
+  route topology. The three real-data charts (upload/download/connections)
+  and their interactions (selection, cursor, pin, pause, timeline window)
+  are **preserved product behavior**; they are restyled as flat instrument
+  panels — mono current-value readouts, hairline separators, no glow. The
   existing topology geometry/cache/hit-testing engine
   (`WorkbenchOverviewTopology.swift`, ~1.5k lines) is **retained**; only its
   rendering layer (`WorkbenchOverviewTopologyView.swift`) is rewritten:

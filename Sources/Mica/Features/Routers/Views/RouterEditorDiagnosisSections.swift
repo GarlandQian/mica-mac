@@ -41,7 +41,7 @@ extension RouterEditorView {
                     "editor.testing_reachability",
                     language: appLanguage
                 ),
-                tint: MicaDesignTokens.signalCyan,
+                tint: MicaTheme.textSecondary,
                 isLoading: true
             )
             previewRow(
@@ -97,9 +97,9 @@ extension RouterEditorView {
                 .fixedSize(horizontal: false, vertical: true)
             } icon: {
                 Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(MicaDesignTokens.signalAmber)
+                    .foregroundStyle(MicaTheme.statusWarning)
             }
-            .micaFont(.caption)
+            .micaThemeFont(.caption)
             .foregroundStyle(.secondary)
         }
     }

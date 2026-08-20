@@ -8,10 +8,10 @@ struct WorkbenchSectionHeading: View {
 
     let systemImage: String
     let titleKey: String
-    var tint = MicaDesignTokens.signalCyan
+    var tint = MicaTheme.textSecondary
 
     var body: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: systemImage,
                 tint: tint,
@@ -19,7 +19,7 @@ struct WorkbenchSectionHeading: View {
                 frameSize: 18
             )
             Text(MicaStrings.localizedKey(titleKey, language: language))
-                .micaFont(.headline, weight: .semibold)
+                .micaThemeFont(.body, weight: .semibold)
         }
         .accessibilityElement(children: .combine)
     }
@@ -38,15 +38,15 @@ struct WorkbenchDiagnosticsCanvas<Content: View>: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let horizontalPadding = MicaBounds.pagePadding(for: geometry.size.width)
+            let horizontalPadding = MicaTheme.Metrics.pagePadding(for: geometry.size.width)
             let contentWidth = max(0, geometry.size.width - horizontalPadding * 2)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: MicaSpacing.section) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                     content(contentWidth)
                 }
                 .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, MicaSpacing.section)
+                .padding(.vertical, MicaTheme.Spacing.space4)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .micaObserveScrollPerformance()
@@ -60,38 +60,38 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
     let snapshot: WorkbenchDiagnosticsSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: MicaSpacing.module) {
+                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                     verdictIdentity
-                    Spacer(minLength: MicaSpacing.module)
+                    Spacer(minLength: MicaTheme.Spacing.space3)
                     controllerIdentity
                 }
-                VStack(alignment: .leading, spacing: MicaSpacing.module) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                     verdictIdentity
                     controllerIdentity
                 }
             }
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: MicaSpacing.section) {
+                HStack(spacing: MicaTheme.Spacing.space4) {
                     freshnessFact
                     checkedFact
                     targetFact
                 }
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     freshnessFact
                     checkedFact
                     targetFact
                 }
             }
         }
-        .padding(.bottom, MicaSpacing.module)
+        .padding(.bottom, MicaTheme.Spacing.space3)
         .overlay(alignment: .bottom) { Divider() }
     }
 
     private var verdictIdentity: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.module) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
             Group {
                 if snapshot.overallState == .checking {
                     ProgressView()
@@ -115,7 +115,7 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
                         language: language
                     )
                 )
-                .micaFont(.title2, weight: .semibold)
+                .micaThemeFont(.title)
 
                 Text(
                     MicaStrings.localizedKey(
@@ -123,7 +123,7 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
                         language: language
                     )
                 )
-                .micaFont(.callout)
+                .micaThemeFont(.label)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -139,10 +139,10 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
                 Image(systemName: "server.rack")
                     .foregroundStyle(snapshot.overallState.tint)
             }
-            .micaFont(.callout, weight: .semibold)
+            .micaThemeFont(.label, weight: .semibold)
 
             Text(verbatim: snapshot.visibleTarget)
-                .micaFont(.caption, design: .monospaced)
+                .micaThemeFont(.dataCaption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
@@ -174,8 +174,8 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
             value: MicaStrings.localizedKey(snapshot.targetScope.titleKey, language: language),
             systemImage: snapshot.targetScope == .thisMac ? "desktopcomputer" : "network",
             tint: snapshot.targetScope == .unconfigured
-                ? MicaDesignTokens.signalAmber
-                : MicaDesignTokens.signalCyan
+                ? MicaTheme.statusWarning
+                : MicaTheme.textSecondary
         )
     }
 
@@ -185,7 +185,7 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
         systemImage: String,
         tint: Color
     ) -> some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: systemImage,
                 tint: tint,
@@ -194,10 +194,10 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
             )
             VStack(alignment: .leading, spacing: 1) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.caption2, weight: .semibold)
+                    .micaThemeFont(.caption, weight: .semibold)
                     .foregroundStyle(.secondary)
                 Text(verbatim: value)
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -226,17 +226,17 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
     let onAction: (WorkbenchDiagnosticsAction) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             WorkbenchSectionHeading(
                 systemImage: "exclamationmark.bubble",
                 titleKey: "diagnostics.needs_attention",
                 tint: issues.contains(where: { $0.severity == .critical })
-                    ? MicaDesignTokens.signalRed
-                    : MicaDesignTokens.signalAmber
+                    ? MicaTheme.statusError
+                    : MicaTheme.statusWarning
             )
 
             if usesSplitLayout {
-                HStack(alignment: .top, spacing: MicaSpacing.section) {
+                HStack(alignment: .top, spacing: MicaTheme.Spacing.space4) {
                     issueList(compact: false)
                         .frame(minWidth: 320, idealWidth: 350, maxWidth: 380, alignment: .topLeading)
 
@@ -278,8 +278,8 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
                         issue: issue,
                         onAction: onAction
                     )
-                    .padding(.leading, MicaSpacing.section)
-                    .padding(.bottom, MicaSpacing.module)
+                    .padding(.leading, MicaTheme.Spacing.space4)
+                    .padding(.bottom, MicaTheme.Spacing.space3)
                 }
             }
         }
@@ -311,7 +311,7 @@ private struct WorkbenchDiagnosticsIssueRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: MicaSpacing.row) {
+            HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
                 Rectangle()
                     .fill(issue.severity.tint)
                     .frame(width: 3)
@@ -327,7 +327,7 @@ private struct WorkbenchDiagnosticsIssueRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: issue.title)
-                        .micaFont(.callout, weight: .semibold)
+                        .micaThemeFont(.label, weight: .semibold)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(
@@ -336,20 +336,20 @@ private struct WorkbenchDiagnosticsIssueRow: View {
                             language: language
                         )
                     )
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: MicaSpacing.row)
+                Spacer(minLength: MicaTheme.Spacing.space2)
                 Image(systemName: "chevron.forward")
-                    .micaFont(.caption, weight: .semibold)
+                    .micaThemeFont(.caption, weight: .semibold)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
-            .padding(.vertical, MicaSpacing.row)
-            .padding(.trailing, MicaSpacing.row)
-            .background(isSelected ? MicaDesignTokens.accentSoft : Color.clear)
-            .clipShape(.rect(cornerRadius: MicaBounds.moduleRadius))
+            .padding(.vertical, MicaTheme.Spacing.space2)
+            .padding(.trailing, MicaTheme.Spacing.space2)
+            .background(isSelected ? MicaTheme.accent.opacity(0.14) : Color.clear)
+            .clipShape(.rect(cornerRadius: MicaTheme.Metrics.moduleRadius))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -374,21 +374,21 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
     let onAction: (WorkbenchDiagnosticsAction) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 Text(verbatim: issue.title)
-                    .micaFont(.title3, weight: .semibold)
+                    .micaThemeFont(.title3)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(verbatim: issue.detail)
-                    .micaFont(.callout)
+                    .micaThemeFont(.label)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if !issue.affectedDestinations.isEmpty {
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     Text(MicaStrings.localizedKey("diagnostics.affected_areas", language: language))
-                        .micaFont(.caption, weight: .semibold)
+                        .micaThemeFont(.caption, weight: .semibold)
                         .foregroundStyle(.secondary)
 
                     impactGrid
@@ -398,9 +398,9 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
             if !issue.evidence.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(MicaStrings.localizedKey("diagnostics.evidence", language: language))
-                        .micaFont(.caption, weight: .semibold)
+                        .micaThemeFont(.caption, weight: .semibold)
                         .foregroundStyle(.secondary)
-                        .padding(.bottom, MicaSpacing.tight)
+                        .padding(.bottom, MicaTheme.Spacing.space1)
 
                     ForEach(Array(issue.evidence.enumerated()), id: \.element.id) { index, evidence in
                         if index > 0 { Divider() }
@@ -427,16 +427,16 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
 
     private var impactGrid: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 128, maximum: 190), spacing: MicaSpacing.row)],
+            columns: [GridItem(.adaptive(minimum: 128, maximum: 190), spacing: MicaTheme.Spacing.space2)],
             alignment: .leading,
-            spacing: MicaSpacing.row
+            spacing: MicaTheme.Spacing.space2
         ) {
             ForEach(issue.affectedDestinations) { destination in
                 Label(
                     MicaStrings.localizedKey(destination.titleKey, language: language),
                     systemImage: destination.symbolName
                 )
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
             }
         }
@@ -446,9 +446,9 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
         _ evidence: WorkbenchDiagnosticsEvidence
     ) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.module) {
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space3) {
                 evidenceLabel(evidence)
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 evidenceValue(evidence)
                     .multilineTextAlignment(.trailing)
             }
@@ -457,14 +457,14 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
                 evidenceValue(evidence)
             }
         }
-        .padding(.vertical, MicaSpacing.tight)
+        .padding(.vertical, MicaTheme.Spacing.space1)
     }
 
     private func evidenceLabel(
         _ evidence: WorkbenchDiagnosticsEvidence
     ) -> some View {
         Text(MicaStrings.localizedKey(evidence.titleKey, language: language))
-            .micaFont(.caption)
+            .micaThemeFont(.caption)
             .foregroundStyle(.secondary)
     }
 
@@ -472,7 +472,7 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
         _ evidence: WorkbenchDiagnosticsEvidence
     ) -> some View {
         Text(verbatim: evidence.value)
-            .micaFont(.caption, design: evidence.monospaced ? .monospaced : .default)
+            .micaThemeFont(evidence.monospaced ? .dataCaption : .caption)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
     }
@@ -487,15 +487,15 @@ struct WorkbenchDiagnosticsAvailableAreas: View {
     let onNavigate: (WorkbenchDestination) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             WorkbenchSectionHeading(
                 systemImage: "checkmark.circle",
                 titleKey: "diagnostics.available_now",
-                tint: MicaDesignTokens.signalMint
+                tint: MicaTheme.statusOK
             )
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 170, maximum: 250), spacing: MicaSpacing.module)],
+                columns: [GridItem(.adaptive(minimum: 170, maximum: 250), spacing: MicaTheme.Spacing.space3)],
                 alignment: .leading,
                 spacing: 0
             ) {
@@ -503,23 +503,23 @@ struct WorkbenchDiagnosticsAvailableAreas: View {
                     Button {
                         onNavigate(area.destination)
                     } label: {
-                        HStack(spacing: MicaSpacing.row) {
+                        HStack(spacing: MicaTheme.Spacing.space2) {
                             WorkbenchSymbol(
                                 systemName: area.systemImage,
-                                tint: MicaDesignTokens.signalMint,
+                                tint: MicaTheme.statusOK,
                                 font: .callout.weight(.semibold),
                                 frameSize: 18
                             )
                             Text(MicaStrings.localizedKey(area.titleKey, language: language))
-                                .micaFont(.callout, weight: .medium)
+                                .micaThemeFont(.label, weight: .medium)
                                 .foregroundStyle(.primary)
-                            Spacer(minLength: MicaSpacing.row)
+                            Spacer(minLength: MicaTheme.Spacing.space2)
                             Image(systemName: "arrow.up.right")
-                                .micaFont(.caption, weight: .semibold)
+                                .micaThemeFont(.caption, weight: .semibold)
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
                         }
-                        .padding(.vertical, MicaSpacing.row)
+                        .padding(.vertical, MicaTheme.Spacing.space2)
                         .contentShape(.rect)
                         .overlay(alignment: .bottom) { Divider() }
                     }
@@ -538,7 +538,7 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: MicaSpacing.module) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                 ForEach(Array(groups.enumerated()), id: \.element.id) { groupIndex, group in
                     if groupIndex > 0 { Divider() }
                     technicalGroup(group)
@@ -554,12 +554,12 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
                     .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "lock.shield")
-                        .foregroundStyle(MicaDesignTokens.signalCyan)
+                        .foregroundStyle(MicaTheme.textSecondary)
                 }
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
             }
-            .padding(.top, MicaSpacing.module)
+            .padding(.top, MicaTheme.Spacing.space3)
         } label: {
             WorkbenchSectionHeading(
                 systemImage: "wrench.and.screwdriver",
@@ -574,9 +574,9 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(MicaStrings.localizedKey(group.titleKey, language: language))
-                .micaFont(.caption, weight: .semibold)
+                .micaThemeFont(.caption, weight: .semibold)
                 .foregroundStyle(.secondary)
-                .padding(.bottom, MicaSpacing.tight)
+                .padding(.bottom, MicaTheme.Spacing.space1)
 
             ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
                 if index > 0 { Divider() }
@@ -589,9 +589,9 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
         _ item: WorkbenchDiagnosticsTechnicalItem
     ) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.module) {
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space3) {
                 technicalLabel(item)
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 technicalValue(item)
                     .multilineTextAlignment(.trailing)
             }
@@ -600,14 +600,14 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
                 technicalValue(item)
             }
         }
-        .padding(.vertical, MicaSpacing.tight)
+        .padding(.vertical, MicaTheme.Spacing.space1)
     }
 
     private func technicalLabel(
         _ item: WorkbenchDiagnosticsTechnicalItem
     ) -> some View {
         Text(MicaStrings.localizedKey(item.titleKey, language: language))
-            .micaFont(.caption)
+            .micaThemeFont(.caption)
             .foregroundStyle(.secondary)
     }
 
@@ -615,7 +615,7 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
         _ item: WorkbenchDiagnosticsTechnicalItem
     ) -> some View {
         Text(verbatim: item.value)
-            .micaFont(.caption, design: item.monospaced ? .monospaced : .default)
+            .micaThemeFont(item.monospaced ? .dataCaption : .caption)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
     }
@@ -626,10 +626,10 @@ struct WorkbenchDiagnosticsTechnicalDetails: View {
 extension ControllerHealthSummary {
     var workbenchTint: Color {
         switch self {
-        case .ready: MicaDesignTokens.signalMint
-        case .checking: MicaDesignTokens.signalCyan
-        case .partial, .unknown: MicaDesignTokens.signalAmber
-        case .authFailed, .wrongTarget, .offline: MicaDesignTokens.signalRed
+        case .ready: MicaTheme.statusOK
+        case .checking: MicaTheme.textSecondary
+        case .partial, .unknown: MicaTheme.statusWarning
+        case .authFailed, .wrongTarget, .offline: MicaTheme.statusError
         }
     }
 
@@ -647,9 +647,9 @@ extension ControllerHealthSummary {
 extension ConnectionCheckState {
     var workbenchTint: Color {
         switch self {
-        case .ready: MicaDesignTokens.signalMint
-        case .warning: MicaDesignTokens.signalAmber
-        case .failed: MicaDesignTokens.signalRed
+        case .ready: MicaTheme.statusOK
+        case .warning: MicaTheme.statusWarning
+        case .failed: MicaTheme.statusError
         }
     }
 
@@ -665,9 +665,9 @@ extension ConnectionCheckState {
 extension ControllerEndpointStatus {
     var workbenchTint: Color {
         switch self {
-        case .ready: MicaDesignTokens.signalMint
-        case .checking: MicaDesignTokens.signalCyan
-        case .failed: MicaDesignTokens.signalRed
+        case .ready: MicaTheme.statusOK
+        case .checking: MicaTheme.textSecondary
+        case .failed: MicaTheme.statusError
         case .idle: .secondary
         }
     }
@@ -676,9 +676,9 @@ extension ControllerEndpointStatus {
 extension CapabilityStatus {
     var workbenchTint: Color {
         switch self {
-        case .supported: MicaDesignTokens.signalMint
-        case .partial, .untested: MicaDesignTokens.signalAmber
-        case .failed: MicaDesignTokens.signalRed
+        case .supported: MicaTheme.statusOK
+        case .partial, .untested: MicaTheme.statusWarning
+        case .failed: MicaTheme.statusError
         case .unavailable: .secondary
         }
     }
@@ -705,10 +705,10 @@ extension WorkbenchDiagnosticsOverallState {
 
     var tint: Color {
         switch self {
-        case .checking: MicaDesignTokens.signalCyan
-        case .ready: MicaDesignTokens.signalMint
-        case .needsAttention: MicaDesignTokens.signalAmber
-        case .blocked: MicaDesignTokens.signalRed
+        case .checking: MicaTheme.textSecondary
+        case .ready: MicaTheme.statusOK
+        case .needsAttention: MicaTheme.statusWarning
+        case .blocked: MicaTheme.statusError
         }
     }
 
@@ -740,10 +740,10 @@ private extension WorkbenchDiagnosticsFreshness {
 
     var tint: Color {
         switch self {
-        case .checking: MicaDesignTokens.signalCyan
-        case .live: MicaDesignTokens.signalMint
-        case .retained, .paused: MicaDesignTokens.signalAmber
-        case .unavailable: MicaDesignTokens.signalRed
+        case .checking: MicaTheme.textSecondary
+        case .live: MicaTheme.statusOK
+        case .retained, .paused: MicaTheme.statusWarning
+        case .unavailable: MicaTheme.statusError
         }
     }
 
@@ -796,8 +796,8 @@ private extension WorkbenchDiagnosticsIssueSeverity {
 
     var tint: Color {
         switch self {
-        case .critical: MicaDesignTokens.signalRed
-        case .warning: MicaDesignTokens.signalAmber
+        case .critical: MicaTheme.statusError
+        case .warning: MicaTheme.statusWarning
         }
     }
 

@@ -105,7 +105,7 @@ struct WorkbenchActionsView: View {
             )
         } controls: {
             if let snapshot {
-                HStack(spacing: MicaSpacing.row) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
                     WorkbenchStatusBadge(
                         text: MicaStrings.localizedKey(
                             snapshot.availability.labelKey,
@@ -120,7 +120,7 @@ struct WorkbenchActionsView: View {
                                 "actions.executable_count \(snapshot.executableCount)",
                                 language: language
                             ),
-                            tint: MicaDesignTokens.signalMint
+                            tint: MicaTheme.statusOK
                         )
                     }
                 }
@@ -134,7 +134,7 @@ struct WorkbenchActionsView: View {
     ) -> some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: MicaSpacing.section) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                     recoverySummary(snapshot: snapshot, router: router)
                     targetSection(snapshot: snapshot, router: router)
                     recoveryActions(snapshot: snapshot, router: router)
@@ -142,8 +142,8 @@ struct WorkbenchActionsView: View {
                         relatedWorkspaces(snapshot.relatedDestinations)
                     }
                 }
-                .padding(.horizontal, MicaBounds.pagePadding(for: geometry.size.width))
-                .padding(.vertical, MicaSpacing.section)
+                .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
+                .padding(.vertical, MicaTheme.Spacing.space4)
                 .frame(maxWidth: 780, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -155,7 +155,7 @@ struct WorkbenchActionsView: View {
         snapshot: WorkbenchActionsSnapshot,
         router: RouterProfile
     ) -> some View {
-        HStack(alignment: .top, spacing: MicaSpacing.module) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
             Group {
                 if snapshot.availability == .checking {
                     ProgressView()
@@ -173,14 +173,14 @@ struct WorkbenchActionsView: View {
             }
             .frame(width: 32, height: 32)
 
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 Text(
                     MicaStrings.localizedKey(
                         snapshot.recovery?.titleKey ?? "actions.recovery_title",
                         language: language
                     )
                 )
-                .micaFont(.title2, weight: .semibold)
+                .micaThemeFont(.title)
 
                 Text(
                     MicaStrings.localizedKey(
@@ -188,13 +188,13 @@ struct WorkbenchActionsView: View {
                         language: language
                     )
                 )
-                .micaFont(.callout)
+                .micaThemeFont(.label)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
                 if let message = snapshot.recovery?.message?.managementNonEmpty {
                     Text(verbatim: message)
-                        .micaFont(.caption)
+                        .micaThemeFont(.caption)
                         .foregroundStyle(snapshot.availability.tint)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
@@ -209,19 +209,19 @@ struct WorkbenchActionsView: View {
         snapshot: WorkbenchActionsSnapshot,
         router: RouterProfile
     ) -> some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSectionHeading(
                 systemImage: "scope",
                 titleKey: "actions.target_title"
             )
 
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.module) {
+                HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space3) {
                     targetIdentity(snapshot: snapshot, router: router)
-                    Spacer(minLength: MicaSpacing.module)
+                    Spacer(minLength: MicaTheme.Spacing.space3)
                     targetScopeLabel(snapshot.targetScope)
                 }
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     targetIdentity(snapshot: snapshot, router: router)
                     targetScopeLabel(snapshot.targetScope)
                 }
@@ -238,9 +238,9 @@ struct WorkbenchActionsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(MicaDesignTokens.signalAmber)
+                        .foregroundStyle(MicaTheme.statusWarning)
                 }
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
             } else {
                 Text(
@@ -249,12 +249,12 @@ struct WorkbenchActionsView: View {
                         language: language
                     )
                 )
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, MicaSpacing.module)
+        .padding(.vertical, MicaTheme.Spacing.space3)
         .overlay(alignment: .top) { Divider() }
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -265,9 +265,9 @@ struct WorkbenchActionsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: router.displayName)
-                .micaFont(.headline)
+                .micaThemeFont(.body, weight: .semibold)
             Text(verbatim: router.endpointURL)
-                .micaFont(.caption, design: .monospaced)
+                .micaThemeFont(.dataCaption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
@@ -280,8 +280,8 @@ struct WorkbenchActionsView: View {
             MicaStrings.localizedKey(scope.titleKey, language: language),
             systemImage: scope == .thisMac ? "desktopcomputer" : "network"
         )
-        .micaFont(.caption, weight: .semibold)
-        .foregroundStyle(scope == .unconfigured ? MicaDesignTokens.signalAmber : .secondary)
+        .micaThemeFont(.caption, weight: .semibold)
+        .foregroundStyle(scope == .unconfigured ? MicaTheme.statusWarning : .secondary)
     }
 
     private func recoveryActions(
@@ -289,10 +289,10 @@ struct WorkbenchActionsView: View {
         router: RouterProfile
     ) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 recoveryActionButtons(snapshot: snapshot, router: router)
             }
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 recoveryActionButtons(snapshot: snapshot, router: router)
             }
         }
@@ -346,11 +346,11 @@ struct WorkbenchActionsView: View {
     ) -> some View {
         GeometryReader { geometry in
             let availableWidth = geometry.size.width
-                - MicaBounds.pagePadding(for: geometry.size.width) * 2
+                - MicaTheme.Metrics.pagePadding(for: geometry.size.width) * 2
             let usesTwoColumns = availableWidth >= 900
 
             ScrollView {
-                VStack(alignment: .leading, spacing: MicaSpacing.section) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                     if let retainedFailureMessage {
                         WorkbenchStaleNotice(message: retainedFailureMessage)
                     }
@@ -361,8 +361,8 @@ struct WorkbenchActionsView: View {
                         relatedWorkspaces(snapshot.relatedDestinations)
                     }
                 }
-                .padding(.horizontal, MicaBounds.pagePadding(for: geometry.size.width))
-                .padding(.vertical, MicaSpacing.section)
+                .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
+                .padding(.vertical, MicaTheme.Spacing.space4)
                 .frame(maxWidth: 1_080, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -379,8 +379,8 @@ struct WorkbenchActionsView: View {
         let lifecycleGroup = snapshot.groups.first { $0.group == .lifecycle }
 
         if usesTwoColumns, ordinaryGroups.count > 1 {
-            HStack(alignment: .top, spacing: MicaSpacing.section) {
-                VStack(alignment: .leading, spacing: MicaSpacing.section) {
+            HStack(alignment: .top, spacing: MicaTheme.Spacing.space4) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                     ForEach(Array(ordinaryGroups.enumerated()), id: \.element.id) { index, group in
                         if index.isMultiple(of: 2) {
                             commandGroup(group)
@@ -391,7 +391,7 @@ struct WorkbenchActionsView: View {
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: MicaSpacing.section) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                     ForEach(Array(ordinaryGroups.enumerated()), id: \.element.id) { index, group in
                         if !index.isMultiple(of: 2) {
                             commandGroup(group)
@@ -401,7 +401,7 @@ struct WorkbenchActionsView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else {
-            VStack(alignment: .leading, spacing: MicaSpacing.section) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
                 ForEach(ordinaryGroups) { group in
                     commandGroup(group)
                 }
@@ -422,10 +422,10 @@ struct WorkbenchActionsView: View {
                 systemImage: group.group.systemImage,
                 titleKey: group.group.titleKey,
                 tint: group.group == .lifecycle
-                    ? MicaDesignTokens.signalAmber
-                    : MicaDesignTokens.signalCyan
+                    ? MicaTheme.statusWarning
+                    : MicaTheme.textSecondary
             )
-            .padding(.bottom, MicaSpacing.row)
+            .padding(.bottom, MicaTheme.Spacing.space2)
 
             ForEach(Array(group.commands.enumerated()), id: \.element.id) { index, command in
                 if index > 0 { Divider() }
@@ -433,7 +433,7 @@ struct WorkbenchActionsView: View {
                 if hasPendingConfirmation(for: command) {
                     Divider()
                     inlineConfirmation(command)
-                        .padding(.vertical, MicaSpacing.row)
+                        .padding(.vertical, MicaTheme.Spacing.space2)
                 }
             }
         }
@@ -442,35 +442,35 @@ struct WorkbenchActionsView: View {
 
     private func commandRow(_ command: WorkbenchActionCommand) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: MicaSpacing.module) {
+            HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                 commandExplanation(command)
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 commandButton(command)
             }
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 commandExplanation(command)
                 commandButton(command)
             }
         }
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func commandExplanation(_ command: WorkbenchActionCommand) -> some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: command.systemImage,
                 tint: command.risk == .destructive
-                    ? MicaDesignTokens.signalAmber
-                    : MicaDesignTokens.signalCyan,
+                    ? MicaTheme.statusWarning
+                    : MicaTheme.textSecondary,
                 frameSize: 20
             )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(MicaStrings.localizedKey(command.titleKey, language: language))
-                    .micaFont(.callout, weight: .medium)
+                    .micaThemeFont(.label, weight: .medium)
                 Text(MicaStrings.localizedKey(command.detailKey, language: language))
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -480,7 +480,7 @@ struct WorkbenchActionsView: View {
     }
 
     private func commandButton(_ command: WorkbenchActionCommand) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             if isRunning(command) {
                 ProgressView()
                     .controlSize(.small)
@@ -508,22 +508,22 @@ struct WorkbenchActionsView: View {
             .buttonStyle(.bordered)
             .disabled(!command.isEnabled || hasPendingConfirmation(for: command))
         }
-        .frame(minHeight: MicaBounds.controlMinHeight, alignment: .trailing)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .trailing)
     }
 
     private func relatedWorkspaces(
         _ destinations: [WorkbenchDestination]
     ) -> some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             WorkbenchSectionHeading(
                 systemImage: "arrow.triangle.branch",
                 titleKey: "actions.related_workspaces"
             )
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: MicaSpacing.row)],
+                columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: MicaTheme.Spacing.space2)],
                 alignment: .leading,
-                spacing: MicaSpacing.row
+                spacing: MicaTheme.Spacing.space2
             ) {
                 ForEach(destinations) { destination in
                     Button {
@@ -533,13 +533,13 @@ struct WorkbenchActionsView: View {
                             MicaStrings.localizedKey(destination.titleKey, language: language),
                             systemImage: destination.symbolName
                         )
-                        .frame(maxWidth: .infinity, minHeight: MicaBounds.controlMinHeight, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
                     }
                     .buttonStyle(.bordered)
                 }
             }
         }
-        .padding(.top, MicaSpacing.module)
+        .padding(.top, MicaTheme.Spacing.space3)
         .overlay(alignment: .top) { Divider() }
     }
 
@@ -547,10 +547,10 @@ struct WorkbenchActionsView: View {
         _ command: WorkbenchActionCommand
     ) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) {
+            HStack(spacing: MicaTheme.Spacing.space3) {
                 confirmationContent(command)
             }
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 confirmationContent(command)
             }
         }
@@ -571,10 +571,10 @@ struct WorkbenchActionsView: View {
             .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(MicaDesignTokens.signalAmber)
+                .foregroundStyle(MicaTheme.statusWarning)
         }
 
-        Spacer(minLength: MicaSpacing.row)
+        Spacer(minLength: MicaTheme.Spacing.space2)
 
         Button(MicaStrings.localizedKey("action.cancel", language: language)) {
             pendingConfirmation = nil
@@ -594,7 +594,7 @@ struct WorkbenchActionsView: View {
             perform(command.intent)
         }
         .buttonStyle(.borderedProminent)
-        .tint(MicaDesignTokens.signalRed)
+        .tint(MicaTheme.statusError)
     }
 
     private func perform(_ intent: WorkbenchActionsIntent) {
@@ -684,9 +684,9 @@ private extension WorkbenchActionsAvailability {
 
     var tint: Color {
         switch self {
-        case .checking: MicaDesignTokens.signalCyan
-        case .recovery, .partial: MicaDesignTokens.signalAmber
-        case .ready: MicaDesignTokens.signalMint
+        case .checking: MicaTheme.textSecondary
+        case .recovery, .partial: MicaTheme.statusWarning
+        case .ready: MicaTheme.statusOK
         case .unsupported: .secondary
         }
     }

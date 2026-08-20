@@ -18,6 +18,6 @@ extension View {
             .environment(\.locale, language.resolvedLocale)
             .dynamicTypeSize(fontScale.dynamicTypeSize)
             .preferredColorScheme(appearance.colorScheme)
-            .tint(MicaStyle.accent)
+            .tint(MicaTheme.accent)
     }
 }

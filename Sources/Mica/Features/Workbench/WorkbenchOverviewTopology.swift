@@ -647,7 +647,6 @@ struct OverviewTopologyLayout: Sendable {
     let nodes: [NodeGeometry]
     let edges: [EdgeGeometry]
     let renderBands: [RenderBand]
-    let hudObstacles: [CGRect]
     let operationCounts: OperationCounts
     private let nodeGeometryByID: [String: NodeGeometry]
     private let hitIndex: [HitCell: [HitTarget]]
@@ -707,7 +706,6 @@ struct OverviewTopologyLayout: Sendable {
         self.nodes = nodes
         self.edges = edges
         self.renderBands = renderBands
-        hudObstacles = nodes.flatMap { [$0.rect, $0.labelRect] }
         self.operationCounts = operationCounts
         nodeGeometryByID = Dictionary(
             uniqueKeysWithValues: nodes.map { ($0.node.id, $0) }

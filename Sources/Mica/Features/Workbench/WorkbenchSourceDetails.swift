@@ -17,42 +17,42 @@ struct WorkbenchSourceFocusRail: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) {
+            HStack(spacing: MicaTheme.Spacing.space3) {
                 focusIdentity
                 lifecycleReadouts
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 actions
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 focusIdentity
                 lifecycleReadouts
                 actions
             }
         }
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaDesignTokens.contentFill)
+        .background(MicaTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .contain)
     }
 
     private var focusIdentity: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: "shippingbox",
-                tint: MicaDesignTokens.signalViolet,
+                tint: MicaTheme.textSecondary,
                 size: .focus
             )
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: projection.name)
-                    .micaFont(.callout, weight: .semibold)
+                    .micaThemeFont(.label, weight: .semibold)
                     .lineLimit(1)
                     .textSelection(.enabled)
                 Text(verbatim: projection.configuration)
-                    .micaFont(.caption, design: .monospaced)
+                    .micaThemeFont(.dataCaption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
@@ -64,7 +64,7 @@ struct WorkbenchSourceFocusRail: View {
 
     private var lifecycleReadouts: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.section) {
+            HStack(spacing: MicaTheme.Spacing.space4) {
                 updateReadout
                 itemReadout
                 updatedReadout
@@ -73,12 +73,12 @@ struct WorkbenchSourceFocusRail: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-                HStack(spacing: MicaSpacing.section) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                HStack(spacing: MicaTheme.Spacing.space4) {
                     updateReadout
                     itemReadout
                 }
-                HStack(spacing: MicaSpacing.section) {
+                HStack(spacing: MicaTheme.Spacing.space4) {
                     updatedReadout
                     if supportsHealthCheck {
                         healthReadout
@@ -94,7 +94,7 @@ struct WorkbenchSourceFocusRail: View {
             titleKey: "traffic.provider_updatable",
             value: projection.updatableStatus,
             systemImage: "arrow.triangle.2.circlepath",
-            tint: supportsUpdate ? MicaDesignTokens.signalMint : .secondary,
+            tint: supportsUpdate ? MicaTheme.statusOK : .secondary,
             monospaced: false
         )
     }
@@ -104,7 +104,7 @@ struct WorkbenchSourceFocusRail: View {
             titleKey: "traffic.provider_items",
             value: projection.itemCount,
             systemImage: "list.number",
-            tint: MicaDesignTokens.signalCyan,
+            tint: MicaTheme.textSecondary,
             monospaced: true
         )
     }
@@ -125,18 +125,21 @@ struct WorkbenchSourceFocusRail: View {
             value: projection.health ?? projection.healthAvailability,
             systemImage: "waveform.path.ecg",
             tint: projection.health == nil
-                ? MicaDesignTokens.signalCyan
-                : MicaDesignTokens.signalMint,
+                ? MicaTheme.textSecondary
+                : MicaTheme.statusOK,
             monospaced: projection.health != nil
         )
     }
 
     private var actions: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             if isChecking {
                 ProgressView()
                     .controlSize(.small)
-                    .frame(minWidth: MicaBounds.iconControlSize, minHeight: MicaBounds.iconControlSize)
+                    .frame(
+                        minWidth: MicaTheme.Metrics.iconControlSize,
+                        minHeight: MicaTheme.Metrics.iconControlSize
+                    )
             } else if supportsHealthCheck {
                 WorkbenchIconCommand(
                     titleKey: "action.provider_health_check",
@@ -149,7 +152,10 @@ struct WorkbenchSourceFocusRail: View {
             if isUpdating {
                 ProgressView()
                     .controlSize(.small)
-                    .frame(minWidth: MicaBounds.iconControlSize, minHeight: MicaBounds.iconControlSize)
+                    .frame(
+                        minWidth: MicaTheme.Metrics.iconControlSize,
+                        minHeight: MicaTheme.Metrics.iconControlSize
+                    )
             } else if supportsUpdate {
                 WorkbenchIconCommand(
                     titleKey: "action.provider_update",
@@ -159,7 +165,7 @@ struct WorkbenchSourceFocusRail: View {
                 )
             }
         }
-        .frame(minHeight: MicaBounds.controlMinHeight, alignment: .trailing)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .trailing)
     }
 }
 
@@ -169,15 +175,15 @@ struct WorkbenchProviderUpdateAllProgressView: View {
     let progress: ProviderUpdateAllProgress
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: MicaSpacing.module) {
+                HStack(spacing: MicaTheme.Spacing.space3) {
                     currentStatus
-                    Spacer(minLength: MicaSpacing.module)
+                    Spacer(minLength: MicaTheme.Spacing.space3)
                     counters
                 }
 
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     currentStatus
                     counters
                 }
@@ -188,7 +194,7 @@ struct WorkbenchProviderUpdateAllProgressView: View {
                 total: Double(max(progress.total, 1))
             )
             .progressViewStyle(.linear)
-            .tint(progress.failed > 0 ? MicaDesignTokens.signalAmber : MicaDesignTokens.accent)
+            .tint(progress.failed > 0 ? MicaTheme.statusWarning : MicaTheme.accent)
             .accessibilityLabel(
                 MicaStrings.localizedKey(
                     "traffic.provider_update_all_progress",
@@ -205,15 +211,15 @@ struct WorkbenchProviderUpdateAllProgressView: View {
             if !progress.failures.isEmpty {
                 Divider()
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: MicaSpacing.tight) {
+                    LazyVStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                         ForEach(progress.failures) { failure in
                             Label {
                                 Text(verbatim: "\(failure.target.name): \(failure.message)")
-                                    .micaFont(.caption)
+                                    .micaThemeFont(.caption)
                                     .textSelection(.enabled)
                             } icon: {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(MicaDesignTokens.signalAmber)
+                                    .foregroundStyle(MicaTheme.statusWarning)
                             }
                             .accessibilityElement(children: .combine)
                         }
@@ -223,9 +229,9 @@ struct WorkbenchProviderUpdateAllProgressView: View {
                 .frame(maxHeight: 112)
             }
         }
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.row)
-        .background(MicaDesignTokens.elevatedFill)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
+        .background(MicaTheme.surfaceRaised)
         .overlay(alignment: .bottom) { Divider() }
         .overlay(alignment: .leading) {
             Rectangle()
@@ -237,15 +243,15 @@ struct WorkbenchProviderUpdateAllProgressView: View {
 
     private var progressTint: Color {
         if progress.isRunning {
-            return MicaDesignTokens.signalCyan
+            return MicaTheme.accent
         }
         return progress.failed > 0
-            ? MicaDesignTokens.signalAmber
-            : MicaDesignTokens.signalMint
+            ? MicaTheme.statusWarning
+            : MicaTheme.statusOK
     }
 
     private var currentStatus: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             if progress.isRunning {
                 ProgressView()
                     .controlSize(.small)
@@ -254,14 +260,14 @@ struct WorkbenchProviderUpdateAllProgressView: View {
                 Image(systemName: progress.failed == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(
                         progress.failed == 0
-                            ? MicaDesignTokens.signalMint
-                            : MicaDesignTokens.signalAmber
+                            ? MicaTheme.statusOK
+                            : MicaTheme.statusWarning
                     )
                     .accessibilityHidden(true)
             }
 
             Text(verbatim: currentStatusText)
-                .micaFont(.callout, weight: .semibold)
+                .micaThemeFont(.label, weight: .semibold)
                 .textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
@@ -285,13 +291,13 @@ struct WorkbenchProviderUpdateAllProgressView: View {
 
     private var counters: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) {
+            HStack(spacing: MicaTheme.Spacing.space3) {
                 completedCounter
                 succeededCounter
                 failedCounter
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 completedCounter
                 succeededCounter
                 failedCounter
@@ -316,7 +322,7 @@ struct WorkbenchProviderUpdateAllProgressView: View {
                 language: language
             ),
             systemImage: "checkmark.circle",
-            tint: MicaDesignTokens.signalMint
+            tint: MicaTheme.statusOK
         )
     }
 
@@ -327,7 +333,7 @@ struct WorkbenchProviderUpdateAllProgressView: View {
                 language: language
             ),
             systemImage: "exclamationmark.triangle",
-            tint: progress.failed > 0 ? MicaDesignTokens.signalAmber : .secondary
+            tint: progress.failed > 0 ? MicaTheme.statusWarning : .secondary
         )
     }
 
@@ -338,7 +344,7 @@ struct WorkbenchProviderUpdateAllProgressView: View {
     ) -> some View {
         Label {
             Text(verbatim: text)
-                .micaFont(.caption).monospacedDigit()
+                .micaThemeFont(.dataCaption)
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
@@ -347,6 +353,12 @@ struct WorkbenchProviderUpdateAllProgressView: View {
     }
 }
 
+/// Source detail content rendered by the workspace inspector container
+/// (`WorkbenchInspectorContainer`, design.md §3); the live row resolves through
+/// the destination-registered `sourceRowResolver` (task 08-17 Phase 5B).
+/// Mutation affordances (update / health check) stay on the focus rail; this
+/// inspector stays read-only and shows the complete controller-reported field
+/// set plus any per-provider update / health-check failure.
 struct WorkbenchSourceInspector: View {
     @Environment(\.micaAppLanguage) private var language
 
@@ -366,7 +378,7 @@ struct WorkbenchSourceInspector: View {
                         : "traffic.provider_updatable_no",
                     language: language
                 ),
-                statusTint: source.updatable ? MicaDesignTokens.signalMint : .secondary,
+                statusTint: source.updatable ? MicaTheme.statusOK : .secondary,
                 close: close
             ) {
                 WorkbenchDataInspectorSection("traffic.source_section_configuration") {

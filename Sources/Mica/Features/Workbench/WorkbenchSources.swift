@@ -54,11 +54,19 @@ struct WorkbenchSourcesView: View {
             pageContent
         }
         .onAppear {
+            let projectionCacheBinding = $projectionCache
+            workspaceStore.sourceRowResolver = { id in
+                projectionCacheBinding.wrappedValue.row(id: id)
+            }
+            if let selectedRowID {
+                workspaceStore.selectInspector(.source(id: selectedRowID))
+            }
             isProjectionActive = true
             restoreWorkspace()
             rebuildRows(reconcileSelection: true, update: .source)
         }
         .onDisappear {
+            workspaceStore.sourceRowResolver = nil
             isProjectionActive = false
         }
         .onChange(of: appModel.selectedRouterID) {
@@ -90,6 +98,16 @@ struct WorkbenchSourcesView: View {
         }
         .onChange(of: selectedRowID) { _, selection in
             persistSelection(selection)
+            if let selection {
+                workspaceStore.selectInspector(.source(id: selection))
+            } else if case .source = workspaceStore.inspectorSelection {
+                workspaceStore.selectInspector(.none)
+            }
+        }
+        .onChange(of: workspaceStore.inspectorSelection) { _, selection in
+            if case .none = selection, selectedRowID != nil {
+                selectedRowID = nil
+            }
         }
     }
 
@@ -123,7 +141,7 @@ struct WorkbenchSourcesView: View {
             .accessibilityLabel(
                 MicaStrings.localizedKey("traffic.source_kind", language: language)
             )
-            .frame(minHeight: MicaBounds.controlMinHeight)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
             WorkbenchDataActivityIndicator(
                 isActive: appModel.reloadingProviders || appModel.providersSnapshotState.isLoading,
@@ -192,23 +210,6 @@ struct WorkbenchSourcesView: View {
             )
         case .content:
             sourceTable
-                .inspector(isPresented: inspectorPresented) {
-                    WorkbenchSourceInspector(
-                        row: selectedRow,
-                        updateFailure: selectedRow.flatMap {
-                            appModel.providerUpdateFailures[$0.source.id]
-                        },
-                        healthFailure: selectedRow.flatMap {
-                            appModel.providerHealthCheckFailures[$0.source.id]
-                        },
-                        close: { selectedRowID = nil }
-                    )
-                    .inspectorColumnWidth(
-                        min: MicaBounds.inspectorMin,
-                        ideal: MicaBounds.inspectorIdeal,
-                        max: MicaBounds.inspectorMax
-                    )
-                }
         }
     }
 
@@ -309,9 +310,7 @@ struct WorkbenchSourcesView: View {
             title: row.source.name,
             detail: row.kindText,
             systemImage: row.source.kind == .proxy ? "network" : "doc.text",
-            tint: row.source.kind == .proxy
-                ? MicaDesignTokens.signalCyan
-                : MicaDesignTokens.signalViolet,
+            tint: MicaTheme.textSecondary,
             detailIsMonospaced: false
         )
     }
@@ -340,7 +339,7 @@ struct WorkbenchSourcesView: View {
     }
 
     private func sourceStatus(_ row: WorkbenchSourceRow) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             sourceUpdateState(row)
             sourceHealthState(row)
         }
@@ -355,13 +354,13 @@ struct WorkbenchSourcesView: View {
 
     private func sourceCompactSummary(_ row: WorkbenchSourceRow) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 WorkbenchDataText(
                     value: row.compactConfigurationText,
                     style: .caption,
                     design: .monospaced
                 )
-                Spacer(minLength: MicaSpacing.tight)
+                Spacer(minLength: MicaTheme.Spacing.space1)
                 sourceUpdateState(row)
                 sourceHealthState(row)
             }
@@ -385,12 +384,12 @@ struct WorkbenchSourcesView: View {
     }
 
     private func sourceStackedRow(_ row: WorkbenchSourceRow) -> some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             sourceIdentity(row)
-            Spacer(minLength: MicaSpacing.row)
+            Spacer(minLength: MicaTheme.Spacing.space2)
 
             VStack(alignment: .trailing, spacing: 1) {
-                HStack(spacing: MicaSpacing.tight) {
+                HStack(spacing: MicaTheme.Spacing.space1) {
                     sourceUpdateState(row)
                     sourceHealthState(row)
                 }
@@ -415,14 +414,14 @@ struct WorkbenchSourcesView: View {
     }
 
     private func sourceUpdateState(_ row: WorkbenchSourceRow) -> some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             Circle()
-                .fill(row.source.updatable ? MicaDesignTokens.signalMint : Color.secondary)
+                .fill(row.source.updatable ? MicaTheme.statusOK : MicaTheme.textSecondary)
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
 
             Text(verbatim: row.updatableText)
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -434,8 +433,8 @@ struct WorkbenchSourcesView: View {
         WorkbenchSymbol(
             systemName: "waveform.path.ecg",
             tint: row.source.supportsHealthCheck
-                ? MicaDesignTokens.signalCyan
-                : .secondary,
+                ? MicaTheme.textSecondary
+                : MicaTheme.textTertiary,
             size: .inline
         )
         .help(row.healthCheckAvailabilityText)
@@ -507,13 +506,6 @@ struct WorkbenchSourcesView: View {
 
     private var selectedRow: WorkbenchSourceRow? {
         projectionCache.row(id: selectedRowID)
-    }
-
-    private var inspectorPresented: Binding<Bool> {
-        Binding(
-            get: { selectedRowID != nil },
-            set: { if !$0 { selectedRowID = nil } }
-        )
     }
 
     private var localizedStaleMessage: String? {

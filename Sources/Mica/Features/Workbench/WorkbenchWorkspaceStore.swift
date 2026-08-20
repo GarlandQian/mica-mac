@@ -21,6 +21,22 @@ struct WorkbenchRuleNavigationSelection: Equatable, Sendable {
     let payload: String
 }
 
+/// Typed selection shown in the workspace inspector (design.md §3). Surfaces
+/// populate this in redesign Phases 3-6; the workspace store owns it so
+/// inspector selection never touches AppModel or live-session state. Values
+/// are window-level and session-bound: they clear with the session via
+/// `clearSessionBoundState(controllerID:)` and are never persisted.
+enum WorkbenchInspectorSelection: Equatable, Sendable {
+    case none
+    case proxyGroup(groupName: String)
+    case proxyNode(groupName: String, nodeName: String)
+    case connection(id: String)
+    case rule(type: String, payload: String)
+    case log(id: String)
+    case source(id: String)
+    case controller(id: RouterProfile.ID)
+}
+
 struct WorkbenchDestinationWorkspace: Equatable, Sendable {
     var searchText: String
     var filters: [String: String]
@@ -191,6 +207,34 @@ final class WorkbenchWorkspaceStore {
     @ObservationIgnored private var persistenceIsDirty = false
     @ObservationIgnored private var persistenceRevision: UInt64 = 0
     @ObservationIgnored private var flushAfterCurrentWrite = false
+
+    /// Right-side inspector visibility for this window. Ephemeral per-window
+    /// chrome state: observed by the workbench root, never persisted.
+    var isInspectorPresented = false
+
+    /// Current typed inspector selection; `.none` renders the inspector empty
+    /// state. Populated by workbench surfaces via `selectInspector(_:)`.
+    private(set) var inspectorSelection: WorkbenchInspectorSelection = .none
+
+    /// Live lookup registered by the Connections destination so the workspace
+    /// inspector resolves the selected connection against that destination's
+    /// current projection cache without the store owning business state
+    /// (task 08-17 Phase 4C). Cleared when the destination unmounts.
+    var connectionRowResolver: ((String) -> WorkbenchConnectionRow?)?
+
+    /// Same live-lookup pattern for the Rules destination, keyed by the
+    /// controller-reported rule type + payload identity (task 08-17 Phase 4D).
+    var ruleRowResolver: ((String, String) -> WorkbenchRuleRow?)?
+
+    /// Same live-lookup pattern for the Logs destination, keyed by the log
+    /// row's stable entry ID (task 08-17 Phase 5A). Cleared when the
+    /// destination unmounts.
+    var logEntryResolver: ((String) -> WorkbenchLogRow?)?
+
+    /// Same live-lookup pattern for the Sources destination, keyed by the
+    /// source row's stable projection identity (task 08-17 Phase 5B). Cleared
+    /// when the destination unmounts.
+    var sourceRowResolver: ((String) -> WorkbenchSourceRow?)?
 
     init(
         defaults: UserDefaults = .standard,
@@ -396,8 +440,22 @@ final class WorkbenchWorkspaceStore {
         return selection
     }
 
+    /// Records a typed inspector selection from a workbench surface and reveals
+    /// the inspector. Selection plumbing lives in this store only - AppModel and
+    /// the live session stay untouched (task 08-17 Phase 2).
+    func selectInspector(_ selection: WorkbenchInspectorSelection) {
+        guard inspectorSelection != selection else { return }
+        inspectorSelection = selection
+        if selection != .none {
+            isInspectorPresented = true
+        }
+    }
+
     func clearSessionBoundState(controllerID: RouterProfile.ID) {
         activeSessionGenerations.removeValue(forKey: controllerID)
+        if inspectorSelection != .none {
+            inspectorSelection = .none
+        }
         let keys = states.keys.filter { $0.controllerID == controllerID }
         for key in keys {
             scrollAnchorGenerations.removeValue(forKey: key)

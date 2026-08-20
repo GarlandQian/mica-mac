@@ -3,303 +3,1278 @@
   "strings": {
     "actions.checking_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica is resolving the controller and waiting for the first complete snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 正在识别控制器并等待首个完整快照。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica is resolving the controller and waiting for the first complete snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica 正在识别控制器并等待首个完整快照。"
+          }
+        }
+      }
     },
     "actions.checking_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking Controller"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在检查控制器"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Controller"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查控制器"
+          }
+        }
+      }
     },
     "actions.executable_count %lld": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%lld available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 项可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 项可用"
+          }
+        }
+      }
     },
     "actions.group_connection": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "连接"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接"
+          }
+        }
+      }
     },
     "actions.group_data": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Data"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器数据"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Data"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器数据"
+          }
+        }
+      }
     },
     "actions.group_maintenance": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Maintenance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "维护"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "维护"
+          }
+        }
+      }
     },
     "actions.recovery_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Commands stay unavailable until Mica can identify the controller and commit a complete snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 识别控制器并取得完整快照后，相关命令才会可用。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commands stay unavailable until Mica can identify the controller and commit a complete snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica 识别控制器并取得完整快照后，相关命令才会可用。"
+          }
+        }
+      }
     },
     "actions.recovery_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Not Ready"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器尚未就绪"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Not Ready"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器尚未就绪"
+          }
+        }
+      }
     },
     "actions.related_workspaces": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Related Workspaces"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "相关工作区"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Related Workspaces"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相关工作区"
+          }
+        }
+      }
     },
     "actions.status_checking": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "检查中"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查中"
+          }
+        }
+      }
     },
     "actions.status_partial": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Partial"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Partial"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分可用"
+          }
+        }
+      }
     },
     "actions.status_ready": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Ready"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "就绪"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "就绪"
+          }
+        }
+      }
     },
     "actions.status_recovery": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Needs Connection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要连接"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要连接"
+          }
+        }
+      }
     },
     "actions.status_unsupported": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No Standalone Commands"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无独立命令"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Standalone Commands"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无独立命令"
+          }
+        }
+      }
     },
     "actions.target_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Target"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器目标"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Target"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器目标"
+          }
+        }
+      }
     },
     "actions.unsupported_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This controller has no verified standalone commands here. Its supported workflows remain available in their owning workspaces."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此控制器在这里没有已验证的独立命令；已支持的流程仍位于各自工作区。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This controller has no verified standalone commands here. Its supported workflows remain available in their owning workspaces."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此控制器在这里没有已验证的独立命令；已支持的流程仍位于各自工作区。"
+          }
+        }
+      }
     },
     "actions.unsupported_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No Actions Available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "没有可用操作"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Actions Available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可用操作"
+          }
+        }
+      }
     },
     "diagnostics.affected_areas": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Affected Areas"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "影响范围"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affected Areas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "影响范围"
+          }
+        }
+      }
     },
     "diagnostics.affected_count %lld": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%lld affected areas"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "影响 %lld 个区域"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld affected areas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "影响 %lld 个区域"
+          }
+        }
+      }
     },
     "diagnostics.available_now": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Available Now"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available Now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前可用"
+          }
+        }
+      }
     },
     "diagnostics.evidence": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Evidence"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "证据"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evidence"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证据"
+          }
+        }
+      }
     },
     "diagnostics.evidence_paused_at": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Paused At"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "暂停时间"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused At"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂停时间"
+          }
+        }
+      }
     },
     "diagnostics.evidence_reason": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reason"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "原因"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reason"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原因"
+          }
+        }
+      }
     },
     "diagnostics.evidence_result": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Latest Result"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "最新结果"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest Result"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新结果"
+          }
+        }
+      }
     },
     "diagnostics.evidence_unavailable": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No safe display detail is available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "没有可安全显示的详细信息。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No safe display detail is available."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可安全显示的详细信息。"
+          }
+        }
+      }
     },
     "diagnostics.severity_critical": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Critical"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "严重"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Critical"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "严重"
+          }
+        }
+      }
     },
     "diagnostics.severity_warning": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Warning"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "警告"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warning"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "警告"
+          }
+        }
+      }
     },
     "diagnostics.freshness": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Data Freshness"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "数据新鲜度"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Data Freshness"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数据新鲜度"
+          }
+        }
+      }
     },
     "diagnostics.freshness_checking": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "检查中"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查中"
+          }
+        }
+      }
     },
     "diagnostics.freshness_live %@": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Live · %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "实时 · %@"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实时 · %@"
+          }
+        }
+      }
     },
     "diagnostics.freshness_paused %@": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Paused · %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "已暂停 · %@"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停 · %@"
+          }
+        }
+      }
     },
     "diagnostics.freshness_retained %@": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retained · %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "保留数据 · %@"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retained · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留数据 · %@"
+          }
+        }
+      }
     },
     "diagnostics.freshness_unavailable": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "不可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不可用"
+          }
+        }
+      }
     },
     "diagnostics.issue_adapter_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica could not resolve this profile to a supported controller adapter."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 无法将此配置识别为受支持的控制器适配器。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica could not resolve this profile to a supported controller adapter."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica 无法将此配置识别为受支持的控制器适配器。"
+          }
+        }
+      }
     },
     "diagnostics.issue_adapter_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Type Is Unresolved"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器类型尚未识别"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Type Is Unresolved"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器类型尚未识别"
+          }
+        }
+      }
     },
     "diagnostics.issue_endpoint_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The controller supports this data area, but its latest read did not succeed."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器支持此数据区域，但最近一次读取未成功。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The controller supports this data area, but its latest read did not succeed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器支持此数据区域，但最近一次读取未成功。"
+          }
+        }
+      }
     },
     "diagnostics.issue_endpoint_title %@": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%@ Is Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%@不可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ Is Unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@不可用"
+          }
+        }
+      }
     },
     "diagnostics.issue_partial_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The controller session is usable, but part of the latest snapshot is unavailable."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器会话仍可使用，但最新快照有部分内容不可用。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The controller session is usable, but part of the latest snapshot is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器会话仍可使用，但最新快照有部分内容不可用。"
+          }
+        }
+      }
     },
     "diagnostics.issue_partial_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session Is Partially Available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会话部分可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session Is Partially Available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话部分可用"
+          }
+        }
+      }
     },
     "diagnostics.issue_paused_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Networking continues, but Mica is holding the visible data at the paused time."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "网络仍在运行，但 Mica 将可见数据停留在暂停时刻。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Networking continues, but Mica is holding the visible data at the paused time."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络仍在运行，但 Mica 将可见数据停留在暂停时刻。"
+          }
+        }
+      }
     },
     "diagnostics.issue_paused_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Presentation Is Paused"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "界面展示已暂停"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Presentation Is Paused"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "界面展示已暂停"
+          }
+        }
+      }
     },
     "diagnostics.issue_rules_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The last successful rule data remains visible when available, but it is not current."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "如有旧规则数据会继续显示，但它不是当前数据。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last successful rule data remains visible when available, but it is not current."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如有旧规则数据会继续显示，但它不是当前数据。"
+          }
+        }
+      }
     },
     "diagnostics.issue_rules_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Rules Are Not Current"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "规则数据不是最新状态"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules Are Not Current"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "规则数据不是最新状态"
+          }
+        }
+      }
     },
     "diagnostics.issue_sources_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The last successful source data remains visible when available, but it is not current."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "如有旧资源数据会继续显示，但它不是当前数据。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last successful source data remains visible when available, but it is not current."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如有旧资源数据会继续显示，但它不是当前数据。"
+          }
+        }
+      }
     },
     "diagnostics.issue_sources_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Sources Are Not Current"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "资源数据不是最新状态"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sources Are Not Current"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资源数据不是最新状态"
+          }
+        }
+      }
     },
     "diagnostics.issue_stale_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica is reconnecting and showing the last complete snapshot as retained data."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 正在重连，并将上一个完整快照作为保留数据显示。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica is reconnecting and showing the last complete snapshot as retained data."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica 正在重连，并将上一个完整快照作为保留数据显示。"
+          }
+        }
+      }
     },
     "diagnostics.issue_stale_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Showing Retained Data"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在显示保留数据"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing Retained Data"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在显示保留数据"
+          }
+        }
+      }
     },
     "diagnostics.issue_telemetry_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Snapshot data remains usable, but one or more live telemetry channels are degraded."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "快照数据仍可使用，但一个或多个实时遥测通道状态下降。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snapshot data remains usable, but one or more live telemetry channels are degraded."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快照数据仍可使用，但一个或多个实时遥测通道状态下降。"
+          }
+        }
+      }
     },
     "diagnostics.issue_telemetry_title": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Live Telemetry Is Degraded"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "实时遥测状态下降"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Telemetry Is Degraded"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实时遥测状态下降"
+          }
+        }
+      }
     },
     "diagnostics.needs_attention": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Needs Attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要处理"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs Attention"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要处理"
+          }
+        }
+      }
     },
     "diagnostics.recheck_now": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recheck Now"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "立即重新检查"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recheck Now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即重新检查"
+          }
+        }
+      }
     },
     "diagnostics.technical_controller": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器"
+          }
+        }
+      }
     },
     "diagnostics.technical_details": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Technical Details"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "技术详情"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Technical Details"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技术详情"
+          }
+        }
+      }
     },
     "diagnostics.technical_detected_type": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Detected Type"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "识别类型"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detected Type"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "识别类型"
+          }
+        }
+      }
     },
     "diagnostics.technical_evidence": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Evidence"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "证据"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evidence"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证据"
+          }
+        }
+      }
     },
     "diagnostics.technical_last_success": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Last Complete Snapshot"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "最近完整快照"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Complete Snapshot"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近完整快照"
+          }
+        }
+      }
     },
     "diagnostics.technical_requested_type": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Configured Type"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "配置类型"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured Type"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置类型"
+          }
+        }
+      }
     },
     "diagnostics.technical_session": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会话"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话"
+          }
+        }
+      }
     },
     "diagnostics.technical_session_state": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session State"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会话状态"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session State"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话状态"
+          }
+        }
+      }
     },
     "diagnostics.technical_target_scope": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Target Location"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "目标位置"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Target Location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标位置"
+          }
+        }
+      }
     },
     "diagnostics.verdict_attention": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Needs Attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要处理"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs Attention"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要处理"
+          }
+        }
+      }
     },
     "diagnostics.verdict_attention_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some controller data remains usable, but one or more current issues need attention."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分控制器数据仍可使用，但当前存在需要处理的问题。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some controller data remains usable, but one or more current issues need attention."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分控制器数据仍可使用，但当前存在需要处理的问题。"
+          }
+        }
+      }
     },
     "diagnostics.verdict_blocked": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器不可用"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器不可用"
+          }
+        }
+      }
     },
     "diagnostics.verdict_blocked_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mica has not received a complete controller snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Mica 尚未收到完整的控制器快照。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica has not received a complete controller snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mica 尚未收到完整的控制器快照。"
+          }
+        }
+      }
     },
     "diagnostics.verdict_checking": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Checking Controller"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在检查控制器"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Controller"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查控制器"
+          }
+        }
+      }
     },
     "diagnostics.verdict_checking_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Waiting for the first complete controller snapshot."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在等待首个完整控制器快照。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for the first complete controller snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待首个完整控制器快照。"
+          }
+        }
+      }
     },
     "diagnostics.verdict_ready": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Controller Ready"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器已就绪"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Ready"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器已就绪"
+          }
+        }
+      }
     },
     "diagnostics.verdict_ready_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No current issue was found in the supported controller areas."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前受支持的控制器区域未发现问题。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No current issue was found in the supported controller areas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前受支持的控制器区域未发现问题。"
+          }
+        }
+      }
     },
     "target.loopback_recovery_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "127.0.0.1 and localhost point to this Mac. For a controller on a router or another device, use that device's LAN IP or hostname and match its API port and credential."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "127.0.0.1 和 localhost 指向当前 Mac。若控制器运行在路由器或其他设备上，请使用该设备的 LAN IP 或主机名，并匹配 API 端口和凭据。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "127.0.0.1 and localhost point to this Mac. For a controller on a router or another device, use that device's LAN IP or hostname and match its API port and credential."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "127.0.0.1 和 localhost 指向当前 Mac。若控制器运行在路由器或其他设备上，请使用该设备的 LAN IP 或主机名，并匹配 API 端口和凭据。"
+          }
+        }
+      }
     },
     "target.scope_network_host": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Network Host"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "网络主机"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network Host"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络主机"
+          }
+        }
+      }
     },
     "target.scope_network_host_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This target is reached over the local or remote network."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此目标通过本地或远程网络访问。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This target is reached over the local or remote network."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此目标通过本地或远程网络访问。"
+          }
+        }
+      }
     },
     "target.scope_this_mac": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This Mac"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前 Mac"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 Mac"
+          }
+        }
+      }
     },
     "target.scope_this_mac_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "This address resolves to the Mac running Mica."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此地址指向运行 Mica 的当前 Mac。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This address resolves to the Mac running Mica."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此地址指向运行 Mica 的当前 Mac。"
+          }
+        }
+      }
     },
     "target.scope_unconfigured": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Not Configured"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "未配置"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Configured"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未配置"
+          }
+        }
+      }
     },
     "target.scope_unconfigured_detail": {
       "extractionState": "manual",
-      "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The controller host is missing or invalid."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "控制器主机缺失或格式无效。"}}}
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The controller host is missing or invalid."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器主机缺失或格式无效。"
+          }
+        }
+      }
     },
     "Direct": {
       "extractionState": "manual",
@@ -21365,148 +22340,358 @@
     "overview.acc_topology %lld %@": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection topology for %lld active connections: %@" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%lld 条活动连接的拓扑：%@" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection topology for %lld active connections: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 条活动连接的拓扑：%@"
+          }
+        }
       }
     },
     "overview.chart_live": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Live" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "实时" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实时"
+          }
+        }
       }
     },
     "overview.chart_collapse": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Collapse Chart" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "收起图表" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Chart"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起图表"
+          }
+        }
       }
     },
     "overview.chart_expand": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Expand Chart" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "放大图表" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Chart"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放大图表"
+          }
+        }
       }
     },
     "overview.chart_next_sample": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Select next sample" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择下一个样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select next sample"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择下一个样本"
+          }
+        }
       }
     },
     "overview.chart_paused": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Paused" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已暂停" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停"
+          }
+        }
       }
     },
     "overview.chart_previous_sample": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Select previous sample" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择上一个样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select previous sample"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择上一个样本"
+          }
+        }
       }
     },
     "overview.chart_return_live": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Return to Live" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "返回实时" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return to Live"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回实时"
+          }
+        }
       }
     },
     "overview.chart_selected": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Selected Sample" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "所选样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected Sample"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选样本"
+          }
+        }
       }
     },
     "overview.chart_stale": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Stale" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已过时" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已过时"
+          }
+        }
       }
     },
     "overview.connection_count": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connections" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接数" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connections"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接数"
+          }
+        }
       }
     },
     "overview.connection_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接"
+          }
+        }
       }
     },
     "overview.selected_connection": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Selected connection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前连接" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前连接"
+          }
+        }
       }
     },
     "overview.latency_grade": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Latency grade" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "延迟等级" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latency grade"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "延迟等级"
+          }
+        }
       }
     },
     "overview.latency_mean": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Mean" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "平均" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mean"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平均"
+          }
+        }
       }
     },
     "overview.rule_activity": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Rule activity" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "规则活动" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule activity"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "规则活动"
+          }
+        }
       }
     },
     "overview.rule_result": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Result" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "结果" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Result"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "结果"
+          }
+        }
       }
     },
     "overview.runtime_connections_in": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Inbound" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "入站" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inbound"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "入站"
+          }
+        }
       }
     },
     "overview.runtime_connections_out": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Outbound" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "出站" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outbound"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出站"
+          }
+        }
       }
     },
     "overview.runtime_goroutines": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Runtime goroutines" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "运行协程" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime goroutines"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行协程"
+          }
+        }
       }
     },
     "overview.traffic_total": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Total traffic" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "总流量" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total traffic"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "总流量"
+          }
+        }
       }
     },
     "overview.command_home_subtitle": {
@@ -22022,162 +23207,392 @@
     "overview.hud.additional_metadata": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Additional metadata" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "附加元数据" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Additional metadata"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "附加元数据"
+          }
+        }
       }
     },
     "overview.hud.availability": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Availability" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可用状态" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Availability"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可用状态"
+          }
+        }
       }
     },
     "overview.hud.current_selection": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Current selection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前选择" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前选择"
+          }
+        }
       }
     },
     "overview.hud.group": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Policy group" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "策略组" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Policy group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "策略组"
+          }
+        }
       }
     },
     "overview.hud.group_type": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Group type" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "策略组类型" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group type"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "策略组类型"
+          }
+        }
       }
     },
     "overview.hud.interface": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Interface" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "接口" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interface"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接口"
+          }
+        }
       }
     },
     "overview.hud.latency": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Latency" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "延迟" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latency"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "延迟"
+          }
+        }
       }
     },
     "overview.hud.member_count": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Members" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "成员数" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Members"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成员数"
+          }
+        }
       }
     },
     "overview.hud.members": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Ordered members" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "成员顺序" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordered members"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成员顺序"
+          }
+        }
       }
     },
     "overview.hud.provider": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Provider" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "提供方" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提供方"
+          }
+        }
       }
     },
     "overview.hud.smart_rank": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Smart rank" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "智能排序" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smart rank"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能排序"
+          }
+        }
       }
     },
     "overview.hud.test_delay": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Last test delay" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最近测试延迟" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last test delay"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近测试延迟"
+          }
+        }
       }
     },
     "overview.hud.test_time": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Last test time" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最近测试时间" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last test time"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近测试时间"
+          }
+        }
       }
     },
     "overview.hud.test_url": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Test URL" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "测试 URL" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test URL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试 URL"
+          }
+        }
       }
     },
     "overview.hud.transports": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Transport capabilities" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "传输能力" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transport capabilities"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "传输能力"
+          }
+        }
       }
     },
     "overview.hud.type": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Type" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "类型" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "类型"
+          }
+        }
       }
     },
     "overview.instrument_rail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Instrument rail" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "仪表带" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instrument rail"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仪表带"
+          }
+        }
       }
     },
     "overview.preferences_close": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Close Overview Preferences" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "关闭概览偏好" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Overview Preferences"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭概览偏好"
+          }
+        }
       }
     },
     "overview.preferences_help": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Choose the telemetry, time window, and optional modules shown in Overview." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择概览中显示的遥测指标、时间窗口和可选模块。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose the telemetry, time window, and optional modules shown in Overview."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择概览中显示的遥测指标、时间窗口和可选模块。"
+          }
+        }
       }
     },
     "overview.preferences_metrics": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Metrics" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "指标" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metrics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "指标"
+          }
+        }
       }
     },
     "overview.preferences_optional": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Optional modules" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可选模块" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional modules"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可选模块"
+          }
+        }
       }
     },
     "overview.preferences_reset": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Reset" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重置" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重置"
+          }
+        }
       }
     },
     "overview.preferences_title": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Overview Preferences" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "概览偏好" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overview Preferences"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "概览偏好"
+          }
+        }
       }
     },
     "overview.latency_distribution": {
@@ -22540,477 +23955,1157 @@
     "overview.aggregate_by_owner": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "By source" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "按来源" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按来源"
+          }
+        }
       }
     },
     "overview.aggregate_by_rule": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "By rule" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "按规则" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按规则"
+          }
+        }
       }
     },
     "overview.connection_metadata": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection metadata" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接元数据" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection metadata"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接元数据"
+          }
+        }
       }
     },
     "overview.connection_statistics": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection statistics" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接统计" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection statistics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接统计"
+          }
+        }
       }
     },
     "overview.connections_unavailable": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection statistics unavailable" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法获取连接统计" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection statistics unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法获取连接统计"
+          }
+        }
       }
     },
     "overview.connections_unavailable_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The current controller has not provided a connections snapshot." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前控制器尚未提供连接快照。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current controller has not provided a connections snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前控制器尚未提供连接快照。"
+          }
+        }
       }
     },
     "overview.controller_information": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Controller information" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "控制器信息" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller information"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器信息"
+          }
+        }
       }
     },
     "overview.download_rate": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Download rate" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "下载速率" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download rate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载速率"
+          }
+        }
       }
     },
     "overview.geoip_disabled": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No local GeoIP database is installed." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "未安装本地 GeoIP 数据库。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No local GeoIP database is installed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未安装本地 GeoIP 数据库。"
+          }
+        }
       }
     },
     "overview.geoip_enrichment": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Local GeoIP information" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本地 GeoIP 信息" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local GeoIP information"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地 GeoIP 信息"
+          }
+        }
       }
     },
     "overview.geoip_no_public_ip": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No public IP address is available for local lookup." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前没有可供本地查询的公网 IP 地址。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No public IP address is available for local lookup."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前没有可供本地查询的公网 IP 地址。"
+          }
+        }
       }
     },
     "overview.geoip_pending": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Looking up the local database…" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在查询本地数据库…" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking up the local database…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查询本地数据库…"
+          }
+        }
       }
     },
     "overview.geoip_unavailable": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No matching local GeoIP record." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本地 GeoIP 数据库没有匹配记录。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching local GeoIP record."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地 GeoIP 数据库没有匹配记录。"
+          }
+        }
       }
     },
     "overview.latency_strips": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Latency ranges" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "延迟范围" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latency ranges"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "延迟范围"
+          }
+        }
       }
     },
     "overview.memory_current": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Memory" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "内存" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内存"
+          }
+        }
       }
     },
     "overview.memory_trend": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Memory trend" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "内存趋势" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory trend"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内存趋势"
+          }
+        }
       }
     },
     "overview.network_group_controller": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Controller Identity" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "控制器信息" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller Identity"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器信息"
+          }
+        }
       }
     },
     "overview.network_group_listeners": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Listener Ports" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "监听端口" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listener Ports"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "监听端口"
+          }
+        }
       }
     },
     "overview.network_group_runtime": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Runtime and Features" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "运行与功能" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime and Features"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行与功能"
+          }
+        }
       }
     },
     "overview.operational_summary": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Operational Summary" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "运行摘要" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operational Summary"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行摘要"
+          }
+        }
       }
     },
     "overview.network_controller_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Name" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "名称" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名称"
+          }
+        }
       }
     },
     "overview.network_destination_ip": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Destination IP" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "目标 IP" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination IP"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标 IP"
+          }
+        }
       }
     },
     "overview.network_dns_mode": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "DNS mode" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "DNS 模式" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS mode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 模式"
+          }
+        }
       }
     },
     "overview.network_endpoint": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Endpoint" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "端点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endpoint"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端点"
+          }
+        }
       }
     },
     "overview.network_host": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Host" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "主机" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机"
+          }
+        }
       }
     },
     "overview.network_inbound_ip": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Inbound IP" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "入站 IP" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inbound IP"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "入站 IP"
+          }
+        }
       }
     },
     "overview.network_information": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Network information" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "网络信息" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network information"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络信息"
+          }
+        }
       }
     },
     "overview.network_port": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Port" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "端口" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端口"
+          }
+        }
       }
     },
     "overview.network_remote_destination": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Remote destination" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "远程目标" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote destination"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远程目标"
+          }
+        }
       }
     },
     "overview.network_scheme": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Scheme" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "协议" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scheme"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "协议"
+          }
+        }
       }
     },
     "overview.network_sniff_host": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Sniffed host" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "嗅探主机" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sniffed host"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "嗅探主机"
+          }
+        }
       }
     },
     "overview.network_source_ip": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Source IP" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "来源 IP" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source IP"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源 IP"
+          }
+        }
       }
     },
     "overview.network_value": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Value" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "值" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Value"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "值"
+          }
+        }
       }
     },
     "overview.no_aggregate_rows": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No reported grouping fields." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "没有可用于聚合的已报告字段。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No reported grouping fields."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可用于聚合的已报告字段。"
+          }
+        }
       }
     },
     "overview.no_connection_samples": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No connection samples" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无连接样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No connection samples"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无连接样本"
+          }
+        }
       }
     },
     "overview.no_connection_samples_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The chart starts when the controller reports a real active-connection snapshot." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "控制器报告真实的活动连接快照后，图表才会开始绘制。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The chart starts when the controller reports a real active-connection snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器报告真实的活动连接快照后，图表才会开始绘制。"
+          }
+        }
       }
     },
     "overview.no_latency_history": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No latency history" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无延迟历史" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No latency history"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无延迟历史"
+          }
+        }
       }
     },
     "overview.no_latency_history_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Run a supported group latency test to populate min, average, and max values." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "运行受支持的策略组延迟测试后，将显示最小、平均和最大延迟。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run a supported group latency test to populate min, average, and max values."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行受支持的策略组延迟测试后，将显示最小、平均和最大延迟。"
+          }
+        }
       }
     },
     "overview.no_memory_samples": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No memory samples" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无内存样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No memory samples"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无内存样本"
+          }
+        }
       }
     },
     "overview.no_memory_samples_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "A trend appears only after the controller reports real memory values." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "只有控制器报告真实内存数据后才会显示趋势。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A trend appears only after the controller reports real memory values."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有控制器报告真实内存数据后才会显示趋势。"
+          }
+        }
       }
     },
     "overview.no_network_information": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No network information" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无网络信息" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No network information"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无网络信息"
+          }
+        }
       }
     },
     "overview.no_network_information_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Controller and connection metadata will appear here when reported." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "控制器或连接报告元数据后将在这里显示。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller and connection metadata will appear here when reported."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器或连接报告元数据后将在这里显示。"
+          }
+        }
       }
     },
     "overview.no_rules": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No rules reported" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "未报告规则" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No rules reported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未报告规则"
+          }
+        }
       }
     },
     "overview.no_rules_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Rule hit and miss counters appear when the controller provides them." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "控制器提供命中与未命中计数后将在这里显示。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule hit and miss counters appear when the controller provides them."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器提供命中与未命中计数后将在这里显示。"
+          }
+        }
       }
     },
     "overview.no_traffic_samples": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No live traffic samples" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无实时流量样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No live traffic samples"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无实时流量样本"
+          }
+        }
       }
     },
     "overview.no_traffic_samples_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The chart starts when the controller sends real upload and download rates." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "控制器发送真实上传和下载速率后，图表才会开始绘制。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The chart starts when the controller sends real upload and download rates."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器发送真实上传和下载速率后，图表才会开始绘制。"
+          }
+        }
       }
     },
     "overview.real_samples_count %lld": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "%lld real samples" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%lld 个真实样本" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld real samples"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个真实样本"
+          }
+        }
       }
     },
     "overview.rule_hit": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Hits" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "命中" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命中"
+          }
+        }
       }
     },
     "overview.rule_hits": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Rule hit statistics" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "规则命中统计" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule hit statistics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "规则命中统计"
+          }
+        }
       }
     },
     "overview.rule_miss": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Misses" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "未命中" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Misses"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未命中"
+          }
+        }
       }
     },
     "overview.rules_unavailable": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Rule statistics unavailable" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法获取规则统计" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule statistics unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法获取规则统计"
+          }
+        }
       }
     },
     "overview.rules_unavailable_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The current controller has not provided a rules snapshot." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前控制器尚未提供规则快照。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current controller has not provided a rules snapshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前控制器尚未提供规则快照。"
+          }
+        }
       }
     },
     "overview.show_all": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Show all" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "显示全部" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show all"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示全部"
+          }
+        }
       }
     },
     "overview.show_less": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Show less" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "收起" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show less"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起"
+          }
+        }
       }
     },
     "overview.topology_clear_selection": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Clear Selection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "清除选择" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除选择"
+          }
+        }
       }
     },
     "overview.topology_empty_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Paths appear after active connections report a proxy chain." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "活动连接报告代理链后将在这里显示路径。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paths appear after active connections report a proxy chain."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "活动连接报告代理链后将在这里显示路径。"
+          }
+        }
       }
     },
     "overview.topology_entry": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Chain entry" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "代理链入口" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chain entry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理链入口"
+          }
+        }
       }
     },
     "overview.topology_exit": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Chain exit" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "代理链出口" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chain exit"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理链出口"
+          }
+        }
       }
     },
     "overview.topology_next_path": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Next Path" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "下一条路径" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next Path"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一条路径"
+          }
+        }
       }
     },
     "overview.topology_pin_selection": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Pin Selection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "固定选择" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pin Selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "固定选择"
+          }
+        }
       }
     },
     "overview.topology_previous_path": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Previous Path" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "上一条路径" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous Path"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一条路径"
+          }
+        }
       }
     },
     "overview.topology_rule": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Matched rule" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "命中规则" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matched rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命中规则"
+          }
+        }
       }
     },
     "overview.topology_source": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Source" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "来源" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源"
+          }
+        }
       }
     },
     "overview.topology_unpin_selection": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Unpin Selection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "取消固定" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpin Selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消固定"
+          }
+        }
       }
     },
     "overview.topology_unavailable_paths": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Unavailable paths" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "不可用路径" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable paths"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不可用路径"
+          }
+        }
       }
     },
     "overview.upload_rate": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Upload rate" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "上传速率" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload rate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传速率"
+          }
+        }
       }
     },
     "overview.topology_empty": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No active connection chains to chart yet." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无可用的连接链路可绘制。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No active connection chains to chart yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无可用的连接链路可绘制。"
+          }
+        }
       }
     },
     "overview.topology_title": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connection topology" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "连接拓扑" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection topology"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接拓扑"
+          }
+        }
       }
     },
     "overview.traffic_split": {
@@ -23067,29 +25162,69 @@
     "overview.timeline_five_minutes": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "5 min" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "5 分钟" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 min"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 分钟"
+          }
+        }
       }
     },
     "overview.timeline_one_minute": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "1 min" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "1 分钟" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 min"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 分钟"
+          }
+        }
       }
     },
     "overview.timeline_three_minutes": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "3 min" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "3 分钟" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 min"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 分钟"
+          }
+        }
       }
     },
     "overview.timeline_window": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Time Window" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "时间窗口" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time Window"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "时间窗口"
+          }
+        }
       }
     },
     "overview.trial_readiness": {
@@ -26539,6 +28674,108 @@
           "stringUnit": {
             "state": "translated",
             "value": "控制器管理"
+          }
+        }
+      }
+    },
+    "sidebar.group_operate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "操作"
+          }
+        }
+      }
+    },
+    "sidebar.group_observe": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Observe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "观测"
+          }
+        }
+      }
+    },
+    "sidebar.group_manage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理"
+          }
+        }
+      }
+    },
+    "workbench.inspector_toggle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle Inspector"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换检查器"
+          }
+        }
+      }
+    },
+    "workbench.inspector_empty_title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未选择"
+          }
+        }
+      }
+    },
+    "workbench.inspector_empty_message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select a proxy, connection, rule, source, or controller to inspect its details."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择代理、连接、规则、来源或控制器以查看详细信息。"
           }
         }
       }
@@ -32646,267 +34883,664 @@
     "tailscale.loading": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Loading Tailscale status…" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在加载 Tailscale 状态…" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading Tailscale status…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在加载 Tailscale 状态…"
+          }
+        }
       }
     },
     "tailscale.no_endpoints_title": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No Tailscale Endpoints" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无 Tailscale 端点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Tailscale Endpoints"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无 Tailscale 端点"
+          }
+        }
       }
     },
     "tailscale.no_endpoints_detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The current sing-box controller did not report a Tailscale endpoint." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前 sing-box 控制器未报告 Tailscale 端点。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current sing-box controller did not report a Tailscale endpoint."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 sing-box 控制器未报告 Tailscale 端点。"
+          }
+        }
       }
     },
     "tailscale.endpoint_tag": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Endpoint Tag" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "端点标签" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endpoint Tag"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端点标签"
+          }
+        }
       }
     },
     "tailscale.backend_state": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Backend State" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "后端状态" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backend State"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后端状态"
+          }
+        }
       }
     },
     "tailscale.network_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Network Name" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "网络名称" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络名称"
+          }
+        }
       }
     },
     "tailscale.magic_dns_suffix": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "MagicDNS Suffix" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "MagicDNS 后缀" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MagicDNS Suffix"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MagicDNS 后缀"
+          }
+        }
       }
     },
     "tailscale.authentication_url": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Authentication URL" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "认证链接" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentication URL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认证链接"
+          }
+        }
       }
     },
     "tailscale.key_authentication": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Key Authentication" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "密钥认证" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key Authentication"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥认证"
+          }
+        }
       }
     },
     "tailscale.current_device": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Current Device" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前设备" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前设备"
+          }
+        }
       }
     },
     "tailscale.exit_node": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Exit Node" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "出口节点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit Node"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口节点"
+          }
+        }
       }
     },
     "tailscale.exit_node_none": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No Exit Node" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "不使用出口节点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Exit Node"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不使用出口节点"
+          }
+        }
       }
     },
     "tailscale.exit_node_candidates": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Exit Node Selection" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择出口节点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit Node Selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择出口节点"
+          }
+        }
       }
     },
     "tailscale.clear_exit_node": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Disable Exit Node" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "关闭出口节点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disable Exit Node"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭出口节点"
+          }
+        }
       }
     },
     "tailscale.logout": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Log Out" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "退出登录" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log Out"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出登录"
+          }
+        }
       }
     },
     "tailscale.user_group": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "User Group" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "用户组" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "User Group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用户组"
+          }
+        }
       }
     },
     "tailscale.user_id": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "User ID" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "用户 ID" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "User ID"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用户 ID"
+          }
+        }
       }
     },
     "tailscale.login_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Login Name" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "登录名" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Login Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录名"
+          }
+        }
       }
     },
     "tailscale.display_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Display Name" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "显示名称" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Display Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示名称"
+          }
+        }
       }
     },
     "tailscale.profile_picture_url": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Profile Picture URL" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "头像链接" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profile Picture URL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "头像链接"
+          }
+        }
       }
     },
     "tailscale.peer": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Device" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "设备" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设备"
+          }
+        }
       }
     },
     "tailscale.host_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Host Name" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "主机名" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机名"
+          }
+        }
       }
     },
     "tailscale.dns_name": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "DNS Name" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "DNS 名称" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 名称"
+          }
+        }
       }
     },
     "tailscale.operating_system": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Operating System" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "操作系统" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operating System"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "操作系统"
+          }
+        }
       }
     },
     "tailscale.ip_addresses": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "IP Addresses" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "IP 地址" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IP Addresses"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IP 地址"
+          }
+        }
       }
     },
     "tailscale.online": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Online" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "在线" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Online"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线"
+          }
+        }
       }
     },
     "tailscale.active": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Active" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "活跃" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "活跃"
+          }
+        }
       }
     },
     "tailscale.can_be_exit_node": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Can Be Exit Node" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可作为出口节点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can Be Exit Node"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可作为出口节点"
+          }
+        }
       }
     },
     "tailscale.received_bytes": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Received Bytes" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已接收字节" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Received Bytes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已接收字节"
+          }
+        }
       }
     },
     "tailscale.transmitted_bytes": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Transmitted Bytes" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已发送字节" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitted Bytes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已发送字节"
+          }
+        }
       }
     },
     "tailscale.key_expiry": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Key Expiry (Raw)" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "密钥到期时间（原始值）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key Expiry (Raw)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥到期时间（原始值）"
+          }
+        }
       }
     },
     "tailscale.stable_id": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Stable ID" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "稳定 ID" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stable ID"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稳定 ID"
+          }
+        }
       }
     },
     "tailscale.expired": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Expired" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已过期" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expired"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已过期"
+          }
+        }
       }
     },
     "tailscale.ssh_host_keys": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "SSH Host Keys" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "SSH 主机密钥" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH Host Keys"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 主机密钥"
+          }
+        }
       }
     },
     "tailscale.sharee_node": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Shared Node" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "共享节点" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared Node"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共享节点"
+          }
+        }
       }
     },
     "tailscale.last_seen": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Last Seen (Raw)" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最后在线时间（原始值）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Seen (Raw)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最后在线时间（原始值）"
+          }
+        }
       }
     },
     "tailscale.stream_error_title": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Tailscale Status Unavailable" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Tailscale 状态不可用" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale Status Unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 状态不可用"
+          }
+        }
       }
     },
     "tailscale.stream_error_detail %@": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The Tailscale stream failed without stopping the rest of the sing-box session: %@" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Tailscale 状态流失败，但其余 sing-box 会话仍在运行：%@" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Tailscale stream failed without stopping the rest of the sing-box session: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 状态流失败，但其余 sing-box 会话仍在运行：%@"
+          }
+        }
+      }
+    },
+    "workbench.inspector_policy_unresolved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Policy detail is ambiguous or no longer reported."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "策略详情不唯一或已不再上报。"
+          }
+        }
       }
     }
   },

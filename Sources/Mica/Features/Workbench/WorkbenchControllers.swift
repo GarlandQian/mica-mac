@@ -15,101 +15,282 @@ private enum WorkbenchControllerMove {
     case down
 }
 
+/// Shared controller status label used by the Controllers list rows and the
+/// workspace-inspector detail (Mica Ops redesign, design.md §3).
+private struct WorkbenchControllerStatusView: View {
+    @Environment(AppModel.self) private var appModel
+    @Environment(\.micaAppLanguage) private var language
+
+    let profile: RouterProfile
+
+    var body: some View {
+        Label(status.label, systemImage: status.symbol)
+            .micaThemeFont(.caption)
+            .labelStyle(MicaStatusLabelStyle(tint: status.tint))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var status: WorkbenchControllerStatus {
+        if appModel.selectedRouterID == profile.id {
+            switch appModel.connectionState {
+            case .disconnected:
+                return WorkbenchControllerStatus(
+                    label: appModel.connectionState.label(language: language),
+                    symbol: "circle",
+                    tint: .secondary
+                )
+            case .connecting:
+                return WorkbenchControllerStatus(
+                    label: appModel.connectionState.label(language: language),
+                    symbol: "arrow.triangle.2.circlepath",
+                    tint: MicaTheme.textSecondary
+                )
+            case .connected:
+                return WorkbenchControllerStatus(
+                    label: appModel.connectionState.label(language: language),
+                    symbol: "checkmark.circle.fill",
+                    tint: MicaTheme.statusOK
+                )
+            case .failed:
+                return WorkbenchControllerStatus(
+                    label: appModel.connectionState.label(language: language),
+                    symbol: "xmark.circle.fill",
+                    tint: MicaTheme.statusError
+                )
+            }
+        }
+
+        let health = appModel.trialSession(for: profile).sessionHealth
+        switch health {
+        case .idle:
+            return WorkbenchControllerStatus(
+                label: health.label(language: language),
+                symbol: "minus.circle",
+                tint: .secondary
+            )
+        case .fresh:
+            return WorkbenchControllerStatus(
+                label: health.label(language: language),
+                symbol: "checkmark.circle.fill",
+                tint: MicaTheme.statusOK
+            )
+        case .stale, .partial:
+            return WorkbenchControllerStatus(
+                label: health.label(language: language),
+                symbol: "exclamationmark.triangle.fill",
+                tint: MicaTheme.statusWarning
+            )
+        case .failed:
+            return WorkbenchControllerStatus(
+                label: health.label(language: language),
+                symbol: "xmark.circle.fill",
+                tint: MicaTheme.statusError
+            )
+        }
+    }
+}
+
 struct WorkbenchControllersView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
 
     @Binding var searchText: String
-    @State private var pendingDelete: WorkbenchControllerDeleteConfirmation?
-    @State private var connectionTests = WorkbenchConnectionTestProjection()
 
     let onAddController: () -> Void
     let onEditController: (RouterProfile) -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            let widthMode = WorkbenchManagementWidthMode(
-                availableWidth: proxy.size.width
-            )
-
-            WorkbenchPageScaffold {
-                commandBar
-            } content: {
-                if appModel.routers.isEmpty {
-                    WorkbenchStateView(
-                        kind: .empty,
-                        titleKey: "sidebar.no_controllers",
-                        detailKey: "sidebar.no_controllers_message",
-                        actionTitleKey: "sidebar.add_controller",
-                        actionSystemImage: "plus",
-                        action: onAddController
-                    )
-                } else if filteredProfiles.isEmpty {
-                    WorkbenchStateView(
-                        kind: .filterEmpty,
-                        titleKey: "controllers.no_match_title",
-                        detailKey: "controllers.no_match_description"
-                    )
-                } else {
-                    controllerContent(availableWidth: proxy.size.width)
-                }
+        WorkbenchPageScaffold {
+            commandBar
+        } content: {
+            if appModel.routers.isEmpty {
+                WorkbenchStateView(
+                    kind: .empty,
+                    titleKey: "sidebar.no_controllers",
+                    detailKey: "sidebar.no_controllers_message",
+                    actionTitleKey: "sidebar.add_controller",
+                    actionSystemImage: "plus",
+                    action: onAddController
+                )
+            } else if filteredProfiles.isEmpty {
+                WorkbenchStateView(
+                    kind: .filterEmpty,
+                    titleKey: "controllers.no_match_title",
+                    detailKey: "controllers.no_match_description"
+                )
+            } else {
+                controllerList
             }
-            .environment(\.workbenchManagementWidthMode, widthMode)
         }
         .onAppear {
-            connectionTests.replacePresentation()
-            connectionTests.reconcile(profiles: appModel.routers)
             reconcileManagementSelection()
         }
-        .onDisappear {
-            connectionTests.replacePresentation()
-        }
-        .onChange(of: appModel.routers) { _, profiles in
-            connectionTests.reconcile(profiles: profiles)
-            let ids = profiles.map(\.id)
+        .onChange(of: appModel.routers) { _, _ in
             reconcileManagementSelection()
-            if let pendingDelete, !ids.contains(pendingDelete.profileID) {
-                self.pendingDelete = nil
-            }
         }
-        .onChange(of: appModel.selectedRouterID) { pendingDelete = nil }
-        .onChange(of: appModel.controllerSessionPresentation.generation) { pendingDelete = nil }
         .onChange(of: searchText) {
             reconcileManagementSelection(visibleOnly: true)
         }
-    }
-
-    @ViewBuilder
-    private func controllerContent(availableWidth: CGFloat) -> some View {
-        if let profile = selectedReportProfile {
-            if availableWidth >= 840 {
-                HSplitView {
-                    controllerList
-                        .frame(
-                            minWidth: 280,
-                            idealWidth: WorkbenchManagementMetrics.controllerListWidth,
-                            maxWidth: 360
-                        )
-
-                    controllerDetail(profile)
-                        .frame(minWidth: 480)
-                }
-            } else {
-                VSplitView {
-                    controllerList
-                        .frame(minHeight: 220)
-
-                    controllerDetail(profile)
-                        .frame(minHeight: 280)
-                }
+        .onChange(of: workspaceStore.inspectorSelection) { _, selection in
+            guard selection == .none, managementSelection != nil else { return }
+            workspaceStore.update(
+                controllerID: appModel.selectedRouterID,
+                destination: .controllers
+            ) { workspace in
+                workspace.selectedItemID = nil
             }
-        } else {
-            controllerList
         }
     }
 
-    private func controllerDetail(_ profile: RouterProfile) -> some View {
+    private var commandBar: some View {
+        WorkbenchCommandBar {
+            WorkbenchManagementHeader(
+                systemImage: "server.rack",
+                titleKey: "sidebar.controllers",
+                detail: MicaStrings.localizedKey("controllers.subtitle", language: language)
+            )
+        } controls: {
+            WorkbenchStatusBadge(
+                text: MicaStrings.localized(
+                    "controllers.count \(filteredProfiles.count)",
+                    language: language
+                ),
+                tint: MicaTheme.textSecondary
+            )
+        } commands: {
+            WorkbenchIconCommand(
+                titleKey: "sidebar.add_controller",
+                systemImage: "plus",
+                action: onAddController
+            )
+        }
+    }
+
+    private var controllerList: some View {
+        List(filteredProfiles, selection: managementSelectionBinding) { profile in
+            controllerRow(profile)
+                .tag(profile.id)
+        }
+        .listStyle(.inset(alternatesRowBackgrounds: false))
+        .micaObserveScrollPerformance()
+        .scrollContentBackground(.hidden)
+        .background(MicaTheme.canvas)
+        .accessibilityLabel(
+            MicaStrings.localizedKey("sidebar.controllers", language: language)
+        )
+    }
+
+    private func controllerRow(_ profile: RouterProfile) -> some View {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
+            activeIndicator(profile)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
+                    Text(verbatim: profile.displayName)
+                        .micaThemeFont(.label, weight: .semibold)
+                        .lineLimit(1)
+
+                    Spacer(minLength: MicaTheme.Spacing.space2)
+
+                    WorkbenchControllerStatusView(profile: profile)
+                        .lineLimit(1)
+                }
+
+                Text(verbatim: profile.endpointURL)
+                    .micaThemeFont(.dataCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, MicaTheme.Spacing.space1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private var filteredProfiles: [RouterProfile] {
+        WorkbenchControllerListProjection.filtered(
+            appModel.routers,
+            query: searchText
+        ) { profile in
+            profile.controllerKind.micaLabel(language: language)
+        }
+    }
+
+    private var managementSelection: RouterProfile.ID? {
+        guard let storedID = workspaceStore.workspace(
+            controllerID: appModel.selectedRouterID,
+            destination: .controllers
+        ).selectedItemID else {
+            return nil
+        }
+        return RouterProfile.ID(uuidString: storedID)
+    }
+
+    private var managementSelectionBinding: Binding<RouterProfile.ID?> {
+        Binding(
+            get: { managementSelection },
+            set: { setManagementSelection($0) }
+        )
+    }
+
+    private func setManagementSelection(_ id: RouterProfile.ID?) {
+        workspaceStore.update(
+            controllerID: appModel.selectedRouterID,
+            destination: .controllers
+        ) { workspace in
+            workspace.selectedItemID = id?.uuidString
+        }
+        if let id {
+            workspaceStore.selectInspector(.controller(id: id))
+        } else if case .controller = workspaceStore.inspectorSelection {
+            workspaceStore.selectInspector(.none)
+        }
+    }
+
+    private func reconcileManagementSelection(visibleOnly: Bool = false) {
+        let candidates = visibleOnly ? filteredProfiles : appModel.routers
+        let next = WorkbenchControllerListProjection.reconciledSelection(
+            storedID: managementSelection,
+            activeID: appModel.selectedRouterID,
+            candidates: candidates
+        )
+        setManagementSelection(next)
+    }
+
+    private func activeIndicator(_ profile: RouterProfile) -> some View {
+        let active = appModel.selectedRouterID == profile.id
+        return Image(systemName: active ? "checkmark.circle.fill" : "circle")
+            .foregroundStyle(active ? MicaTheme.statusOK : .secondary)
+            .accessibilityLabel(
+                MicaStrings.localizedKey(
+                    active ? "controllers.active" : "controllers.inactive",
+                    language: language
+                )
+            )
+    }
+}
+
+/// Controller detail in the workspace inspector (Mica Ops redesign, design.md
+/// §3): identity, capability-gated actions, connection fields, and the
+/// connection-test report for the selected controller. The profile arrives
+/// already resolved from `AppModel.routers`; a deleted controller renders the
+/// container's shared empty state instead. Inline delete confirmation captures
+/// controller ID plus session generation exactly as before.
+struct WorkbenchControllerInspector: View {
+    @Environment(AppModel.self) private var appModel
+    @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
+    @Environment(\.micaAppLanguage) private var language
+
+    let profile: RouterProfile
+    let onEditController: (RouterProfile) -> Void
+
+    @State private var pendingDelete: WorkbenchControllerDeleteConfirmation?
+    @State private var connectionTests = WorkbenchConnectionTestProjection()
+
+    var body: some View {
         WorkbenchManagementFormCanvas {
             Section {
                 controllerIdentity(profile)
@@ -154,7 +335,7 @@ struct WorkbenchControllersView: View {
                             "command.action_test_detail",
                             language: language
                         ),
-                        tint: MicaDesignTokens.signalCyan,
+                        tint: MicaTheme.textSecondary,
                         isLoading: isTesting(profile)
                     )
                 } header: {
@@ -165,44 +346,54 @@ struct WorkbenchControllersView: View {
                 }
             }
         }
+        .environment(\.workbenchManagementWidthMode, .compact)
         .accessibilityLabel(
             MicaStrings.localizedKey("controllers.controller", language: language)
         )
+        .onAppear {
+            connectionTests.replacePresentation()
+            connectionTests.reconcile(profiles: appModel.routers)
+        }
+        .onDisappear {
+            connectionTests.replacePresentation()
+        }
+        .onChange(of: appModel.routers) { _, profiles in
+            connectionTests.reconcile(profiles: profiles)
+            let ids = profiles.map(\.id)
+            if let pendingDelete, !ids.contains(pendingDelete.profileID) {
+                self.pendingDelete = nil
+            }
+        }
+        .onChange(of: appModel.selectedRouterID) { pendingDelete = nil }
+        .onChange(of: appModel.controllerSessionPresentation.generation) { pendingDelete = nil }
+        .onChange(of: profile.id) { pendingDelete = nil }
     }
 
     private func controllerIdentity(_ profile: RouterProfile) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: MicaSpacing.module) {
-                controllerIdentityLabel(profile)
-                Spacer(minLength: MicaSpacing.row)
-                statusLabel(profile)
-            }
-
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
-                controllerIdentityLabel(profile)
-                statusLabel(profile)
-            }
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            controllerIdentityLabel(profile)
+            WorkbenchControllerStatusView(profile: profile)
         }
-        .frame(maxWidth: .infinity, minHeight: MicaBounds.controlMinHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
     }
 
     private func controllerIdentityLabel(_ profile: RouterProfile) -> some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: profile.controllerKind.editorSymbol,
                 tint: appModel.selectedRouterID == profile.id
-                    ? MicaDesignTokens.accent
-                    : MicaDesignTokens.signalCyan,
+                    ? MicaTheme.accent
+                    : MicaTheme.textSecondary,
                 size: .focus
             )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: profile.displayName)
-                    .micaFont(.title3, weight: .semibold)
+                    .micaThemeFont(.title3)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(verbatim: profile.controllerKind.micaLabel(language: language))
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -210,14 +401,8 @@ struct WorkbenchControllersView: View {
     }
 
     private func controllerDetailActions(_ profile: RouterProfile) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.row) {
-                controllerDetailActionButtons(profile)
-            }
-
-            VStack(alignment: .trailing, spacing: MicaSpacing.row) {
-                controllerDetailActionButtons(profile)
-            }
+        VStack(alignment: .trailing, spacing: MicaTheme.Spacing.space2) {
+            controllerDetailActionButtons(profile)
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -227,7 +412,7 @@ struct WorkbenchControllersView: View {
         if appModel.selectedRouterID == profile.id {
             WorkbenchStatusBadge(
                 text: MicaStrings.localizedKey("controllers.active", language: language),
-                tint: MicaDesignTokens.signalMint
+                tint: MicaTheme.statusOK
             )
         } else {
             Button {
@@ -239,16 +424,16 @@ struct WorkbenchControllersView: View {
                 )
                 .labelStyle(.titleAndIcon)
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(minHeight: MicaBounds.controlMinHeight)
+                .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
             }
             .buttonStyle(.borderedProminent)
-            .tint(MicaStyle.accent)
+            .tint(MicaTheme.accent)
         }
 
         Button {
             testConnection(profile)
         } label: {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 if isTesting(profile) {
                     ProgressView()
                         .controlSize(.small)
@@ -263,7 +448,7 @@ struct WorkbenchControllersView: View {
                 )
             }
             .fixedSize(horizontal: true, vertical: false)
-            .frame(minHeight: MicaBounds.controlMinHeight)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         }
         .buttonStyle(.bordered)
         .disabled(isTesting(profile))
@@ -272,231 +457,31 @@ struct WorkbenchControllersView: View {
         Divider()
             .frame(height: 18)
 
-        controllerIcon(titleKey: "sidebar.edit", symbol: "pencil") {
-            onEditController(profile)
-        }
-        controllerIcon(
-            titleKey: "controllers.move_up",
-            symbol: "arrow.up",
-            isEnabled: canMove(.up)
-        ) {
-            moveSelection(.up)
-        }
-        controllerIcon(
-            titleKey: "controllers.move_down",
-            symbol: "arrow.down",
-            isEnabled: canMove(.down)
-        ) {
-            moveSelection(.down)
-        }
-        controllerIcon(
-            titleKey: "sidebar.delete_button",
-            symbol: "trash",
-            tint: MicaDesignTokens.signalRed
-        ) {
-            requestDelete(profile)
-        }
-    }
-
-    private var commandBar: some View {
-        WorkbenchCommandBar {
-            WorkbenchManagementHeader(
-                systemImage: "server.rack",
-                titleKey: "sidebar.controllers",
-                detail: MicaStrings.localizedKey("controllers.subtitle", language: language)
-            )
-        } controls: {
-            WorkbenchStatusBadge(
-                text: MicaStrings.localized(
-                    "controllers.count \(filteredProfiles.count)",
-                    language: language
-                ),
-                tint: MicaDesignTokens.signalCyan
-            )
-        } commands: {
-            WorkbenchIconCommand(
-                titleKey: "sidebar.add_controller",
-                systemImage: "plus",
-                action: onAddController
-            )
-        }
-    }
-
-    private var controllerList: some View {
-        List(filteredProfiles, selection: managementSelectionBinding) { profile in
-            controllerRow(profile)
-                .tag(profile.id)
-        }
-        .listStyle(.inset(alternatesRowBackgrounds: false))
-        .micaObserveScrollPerformance()
-        .scrollContentBackground(.hidden)
-        .background(MicaStyle.groupedPageFill)
-        .accessibilityLabel(
-            MicaStrings.localizedKey("sidebar.controllers", language: language)
-        )
-    }
-
-    private func controllerRow(_ profile: RouterProfile) -> some View {
-        HStack(alignment: .top, spacing: MicaSpacing.row) {
-            activeIndicator(profile)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
-                    Text(verbatim: profile.displayName)
-                        .micaFont(.callout, weight: .semibold)
-                        .lineLimit(1)
-
-                    Spacer(minLength: MicaSpacing.row)
-
-                    statusLabel(profile)
-                        .lineLimit(1)
-                }
-
-                Text(verbatim: profile.endpointURL)
-                    .micaFont(.caption, design: .monospaced)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        HStack(spacing: 0) {
+            controllerIcon(titleKey: "sidebar.edit", symbol: "pencil") {
+                onEditController(profile)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, MicaSpacing.tight)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-
-    private var filteredProfiles: [RouterProfile] {
-        WorkbenchControllerListProjection.filtered(
-            appModel.routers,
-            query: searchText
-        ) { profile in
-            profile.controllerKind.micaLabel(language: language)
-        }
-    }
-
-    private var selectedReportProfile: RouterProfile? {
-        let selectedID = managementSelection
-            ?? appModel.selectedRouterID
-            ?? filteredProfiles.first?.id
-        guard let selectedID else { return nil }
-        return appModel.routers.first { $0.id == selectedID }
-    }
-
-    private var managementSelection: RouterProfile.ID? {
-        guard let storedID = workspaceStore.workspace(
-            controllerID: appModel.selectedRouterID,
-            destination: .controllers
-        ).selectedItemID else {
-            return nil
-        }
-        return RouterProfile.ID(uuidString: storedID)
-    }
-
-    private var managementSelectionBinding: Binding<RouterProfile.ID?> {
-        Binding(
-            get: { managementSelection },
-            set: { setManagementSelection($0) }
-        )
-    }
-
-    private func setManagementSelection(_ id: RouterProfile.ID?) {
-        if let pendingDelete, pendingDelete.profileID != id {
-            self.pendingDelete = nil
-        }
-        workspaceStore.update(
-            controllerID: appModel.selectedRouterID,
-            destination: .controllers
-        ) { workspace in
-            workspace.selectedItemID = id?.uuidString
-        }
-    }
-
-    private func reconcileManagementSelection(visibleOnly: Bool = false) {
-        let candidates = visibleOnly ? filteredProfiles : appModel.routers
-        let next = WorkbenchControllerListProjection.reconciledSelection(
-            storedID: managementSelection,
-            activeID: appModel.selectedRouterID,
-            candidates: candidates
-        )
-        setManagementSelection(next)
-    }
-
-    private func activeIndicator(_ profile: RouterProfile) -> some View {
-        let active = appModel.selectedRouterID == profile.id
-        return Image(systemName: active ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(active ? MicaDesignTokens.signalMint : .secondary)
-            .accessibilityLabel(
-                MicaStrings.localizedKey(
-                    active ? "controllers.active" : "controllers.inactive",
-                    language: language
-                )
-            )
-    }
-
-    private func statusLabel(_ profile: RouterProfile) -> some View {
-        let status = controllerStatus(profile)
-        return Label(status.label, systemImage: status.symbol)
-            .micaFont(.caption)
-            .labelStyle(MicaStatusLabelStyle(tint: status.tint))
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func controllerStatus(_ profile: RouterProfile) -> WorkbenchControllerStatus {
-        if appModel.selectedRouterID == profile.id {
-            switch appModel.connectionState {
-            case .disconnected:
-                return WorkbenchControllerStatus(
-                    label: appModel.connectionState.label(language: language),
-                    symbol: "circle",
-                    tint: .secondary
-                )
-            case .connecting:
-                return WorkbenchControllerStatus(
-                    label: appModel.connectionState.label(language: language),
-                    symbol: "arrow.triangle.2.circlepath",
-                    tint: MicaDesignTokens.signalCyan
-                )
-            case .connected:
-                return WorkbenchControllerStatus(
-                    label: appModel.connectionState.label(language: language),
-                    symbol: "checkmark.circle.fill",
-                    tint: MicaDesignTokens.signalMint
-                )
-            case .failed:
-                return WorkbenchControllerStatus(
-                    label: appModel.connectionState.label(language: language),
-                    symbol: "xmark.circle.fill",
-                    tint: MicaDesignTokens.signalRed
-                )
+            controllerIcon(
+                titleKey: "controllers.move_up",
+                symbol: "arrow.up",
+                isEnabled: canMove(.up)
+            ) {
+                moveSelection(.up)
             }
-        }
-
-        let health = appModel.trialSession(for: profile).sessionHealth
-        switch health {
-        case .idle:
-            return WorkbenchControllerStatus(
-                label: health.label(language: language),
-                symbol: "minus.circle",
-                tint: .secondary
-            )
-        case .fresh:
-            return WorkbenchControllerStatus(
-                label: health.label(language: language),
-                symbol: "checkmark.circle.fill",
-                tint: MicaDesignTokens.signalMint
-            )
-        case .stale, .partial:
-            return WorkbenchControllerStatus(
-                label: health.label(language: language),
-                symbol: "exclamationmark.triangle.fill",
-                tint: MicaDesignTokens.signalAmber
-            )
-        case .failed:
-            return WorkbenchControllerStatus(
-                label: health.label(language: language),
-                symbol: "xmark.circle.fill",
-                tint: MicaDesignTokens.signalRed
-            )
+            controllerIcon(
+                titleKey: "controllers.move_down",
+                symbol: "arrow.down",
+                isEnabled: canMove(.down)
+            ) {
+                moveSelection(.down)
+            }
+            controllerIcon(
+                titleKey: "sidebar.delete_button",
+                symbol: "trash",
+                tint: MicaTheme.statusError
+            ) {
+                requestDelete(profile)
+            }
         }
     }
 
@@ -518,7 +503,6 @@ struct WorkbenchControllersView: View {
     }
 
     private func testConnection(_ profile: RouterProfile) {
-        setManagementSelection(profile.id)
         let draft = appModel.draft(for: profile)
         let intent = connectionTests.begin(profile: profile)
 
@@ -542,7 +526,7 @@ struct WorkbenchControllersView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .frame(width: MicaBounds.iconControlSize, height: MicaBounds.iconControlSize)
+                .frame(width: MicaTheme.Metrics.iconControlSize, height: MicaTheme.Metrics.iconControlSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
@@ -560,9 +544,11 @@ struct WorkbenchControllersView: View {
     }
 
     private func canMove(_ direction: WorkbenchControllerMove) -> Bool {
-        guard searchText.managementNonEmpty == nil,
-              let managementSelection,
-              let index = appModel.routers.firstIndex(where: { $0.id == managementSelection }) else {
+        guard workspaceStore.workspace(
+            controllerID: appModel.selectedRouterID,
+            destination: .controllers
+        ).searchText.managementNonEmpty == nil,
+              let index = appModel.routers.firstIndex(where: { $0.id == profile.id }) else {
             return false
         }
         switch direction {
@@ -572,20 +558,18 @@ struct WorkbenchControllersView: View {
     }
 
     private func moveSelection(_ direction: WorkbenchControllerMove) {
-        guard let managementSelection,
-              let index = appModel.routers.firstIndex(where: { $0.id == managementSelection }) else {
+        guard let index = appModel.routers.firstIndex(where: { $0.id == profile.id }) else {
             return
         }
         let target = direction == .up ? index - 1 : index + 1
         guard appModel.routers.indices.contains(target) else { return }
-        let profile = appModel.routers[index]
         let action = MicaStrings.localizedKey(
             direction == .up ? "controllers.move_up" : "controllers.move_down",
             language: language
         )
         Task {
             do {
-                try await appModel.moveRouter(managementSelection, to: target)
+                try await appModel.moveRouter(profile.id, to: target)
             } catch {
                 appModel.operationState = .error(
                     AppModel.routerTrialFailureMessage(for: error, language: language),
@@ -601,15 +585,10 @@ struct WorkbenchControllersView: View {
         _ profile: RouterProfile,
         confirmation: WorkbenchControllerDeleteConfirmation
     ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) {
-                deleteConfirmationContent(profile, confirmation: confirmation)
-            }
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
-                deleteConfirmationContent(profile, confirmation: confirmation)
-            }
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            deleteConfirmationContent(profile, confirmation: confirmation)
         }
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -624,34 +603,36 @@ struct WorkbenchControllersView: View {
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "trash")
-                .foregroundStyle(MicaDesignTokens.signalRed)
+                .foregroundStyle(MicaTheme.statusError)
         }
 
-        Spacer(minLength: MicaSpacing.row)
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            Spacer(minLength: MicaTheme.Spacing.space2)
 
-        Button(MicaStrings.localizedKey("editor.cancel", language: language)) {
-            pendingDelete = nil
-        }
-        .frame(minHeight: MicaBounds.controlMinHeight)
-
-        Button(
-            MicaStrings.localizedKey("sidebar.delete_button", language: language),
-            role: .destructive
-        ) {
-            guard pendingDelete == confirmation,
-                  isCurrent(confirmation),
-                  let currentProfile = appModel.routers.first(where: {
-                      $0.id == confirmation.profileID
-                  }) else {
+            Button(MicaStrings.localizedKey("editor.cancel", language: language)) {
                 pendingDelete = nil
-                return
             }
-            pendingDelete = nil
-            appModel.deleteRouter(currentProfile)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+
+            Button(
+                MicaStrings.localizedKey("sidebar.delete_button", language: language),
+                role: .destructive
+            ) {
+                guard pendingDelete == confirmation,
+                      isCurrent(confirmation),
+                      let currentProfile = appModel.routers.first(where: {
+                          $0.id == confirmation.profileID
+                      }) else {
+                    pendingDelete = nil
+                    return
+                }
+                pendingDelete = nil
+                appModel.deleteRouter(currentProfile)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(MicaTheme.statusError)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(MicaDesignTokens.signalRed)
-        .frame(minHeight: MicaBounds.controlMinHeight)
     }
 
     private func requestDelete(_ profile: RouterProfile) {
@@ -704,25 +685,25 @@ private struct WorkbenchConnectionTestReportView: View {
 
     var body: some View {
         Section {
-            HStack(alignment: .top, spacing: MicaSpacing.module) {
+            HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                 Label(
                     report.summary.label(language: language),
                     systemImage: report.summary.workbenchSymbol
                 )
-                .micaFont(.callout, weight: .semibold)
+                .micaThemeFont(.label, weight: .semibold)
                 .labelStyle(MicaStatusLabelStyle(tint: report.summary.workbenchTint))
 
-                Spacer(minLength: MicaSpacing.row)
+                Spacer(minLength: MicaTheme.Spacing.space2)
 
                 Text(verbatim: profile.displayName)
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Text(verbatim: localized(report.headline))
-                .micaFont(.callout, weight: .semibold)
+                .micaThemeFont(.label, weight: .semibold)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -750,11 +731,11 @@ private struct WorkbenchConnectionTestReportView: View {
                 } icon: {
                     Image(systemName: "arrow.turn.down.right")
                 }
-                .micaFont(.callout)
+                .micaThemeFont(.label)
                 .labelStyle(MicaStatusLabelStyle(tint: report.summary.workbenchTint))
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: MicaBounds.controlMinHeight,
+                    minHeight: MicaTheme.Metrics.controlMinHeight,
                     alignment: .leading
                 )
             }
@@ -789,25 +770,25 @@ private struct WorkbenchConnectionTestStepRow: View {
     var body: some View {
         Group {
             if usesStackedLayout {
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     stepLabel
                     stepValue
                 }
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.module) {
+                HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space3) {
                     stepLabel
-                        .frame(width: MicaBounds.formLabelWidth, alignment: .leading)
+                        .frame(width: MicaTheme.Metrics.formLabelWidth, alignment: .leading)
                     stepValue
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: MicaBounds.controlMinHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
         .padding(.vertical, 2)
     }
 
     private var stepLabel: some View {
         Label(title, systemImage: state.workbenchSymbol)
-            .micaFont(.callout)
+            .micaThemeFont(.label)
             .labelStyle(MicaStatusLabelStyle(tint: state.workbenchTint))
             .fixedSize(horizontal: false, vertical: true)
     }

@@ -19,8 +19,8 @@ struct WorkbenchSingBoxTailscaleSection: View {
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                     }
-                    .micaFont(.caption)
-                    .foregroundStyle(MicaDesignTokens.signalAmber)
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.statusWarning)
 
                     if !status.endpoints.isEmpty { Divider() }
                 }
@@ -54,7 +54,7 @@ struct WorkbenchSingBoxTailscaleSection: View {
                     )
                 )
             } else {
-                HStack(spacing: MicaSpacing.row) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
                     ProgressView()
                         .controlSize(.small)
                     Text(MicaStrings.localizedKey("tailscale.loading", language: language))
@@ -85,16 +85,16 @@ struct WorkbenchSingBoxTailscaleSection: View {
         titleKey: String,
         detail: String
     ) -> some View {
-        HStack(alignment: .top, spacing: MicaSpacing.module) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
             Image(systemName: symbol)
-                .micaFont(.title3)
+                .micaThemeFont(.title3)
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.callout, weight: .semibold)
+                    .micaThemeFont(.label, weight: .semibold)
                 Text(verbatim: detail)
-                    .micaFont(.caption)
+                    .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -117,7 +117,7 @@ private struct WorkbenchTailscaleEndpointView: View {
 
     var body: some View {
         DisclosureGroup {
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 detailRow("tailscale.endpoint_tag", endpoint.endpointTag)
                 detailRow("tailscale.backend_state", endpoint.backendState)
                 detailRow("tailscale.network_name", endpoint.networkName)
@@ -156,7 +156,7 @@ private struct WorkbenchTailscaleEndpointView: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .frame(maxWidth: MicaBounds.formControlMax, alignment: .leading)
+                        .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
                         .disabled(appModel.isBusy)
                     }
                 } else if let peer = endpoint.exitNode {
@@ -167,7 +167,7 @@ private struct WorkbenchTailscaleEndpointView: View {
                 ForEach(endpoint.userGroups) { group in
                     Divider()
                     DisclosureGroup {
-                        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                             detailRow("tailscale.user_id", String(group.userID))
                             detailRow("tailscale.login_name", group.loginName)
                             detailRow("tailscale.display_name", group.displayName)
@@ -177,7 +177,7 @@ private struct WorkbenchTailscaleEndpointView: View {
                                 peerDisclosure("tailscale.peer", peer: peer)
                             }
                         }
-                        .padding(.top, MicaSpacing.row)
+                        .padding(.top, MicaTheme.Spacing.space2)
                     } label: {
                         Label(groupTitle(group), systemImage: "person.2")
                             .textSelection(.enabled)
@@ -189,17 +189,17 @@ private struct WorkbenchTailscaleEndpointView: View {
                     logoutControls
                 }
             }
-            .padding(.top, MicaSpacing.row)
+            .padding(.top, MicaTheme.Spacing.space2)
         } label: {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 Image(systemName: "network")
-                    .foregroundStyle(MicaDesignTokens.signalCyan)
+                    .foregroundStyle(MicaTheme.textSecondary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: endpointTitle)
-                        .micaFont(.callout, weight: .semibold)
+                        .micaThemeFont(.label, weight: .semibold)
                         .textSelection(.enabled)
                     Text(verbatim: endpoint.backendState.managementNonEmpty ?? endpoint.endpointTag)
-                        .micaFont(.caption)
+                        .micaThemeFont(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
@@ -229,8 +229,8 @@ private struct WorkbenchTailscaleEndpointView: View {
     private var logoutControls: some View {
         if confirmsLogout {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: MicaSpacing.row) { logoutConfirmationContent }
-                VStack(alignment: .leading, spacing: MicaSpacing.row) {
+                HStack(spacing: MicaTheme.Spacing.space2) { logoutConfirmationContent }
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     logoutConfirmationContent
                 }
             }
@@ -244,7 +244,7 @@ private struct WorkbenchTailscaleEndpointView: View {
                         MicaStrings.localizedKey("tailscale.logout", language: language),
                         systemImage: "rectangle.portrait.and.arrow.right"
                     )
-                    .frame(minHeight: MicaBounds.controlMinHeight)
+                    .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
                 }
                 .buttonStyle(.bordered)
                 .disabled(appModel.isBusy)
@@ -255,14 +255,14 @@ private struct WorkbenchTailscaleEndpointView: View {
     @ViewBuilder
     private var logoutConfirmationContent: some View {
         Text(MicaStrings.localizedKey("tailscale.logout", language: language))
-            .foregroundStyle(MicaDesignTokens.signalRed)
+            .foregroundStyle(MicaTheme.statusError)
 
-        Spacer(minLength: MicaSpacing.row)
+        Spacer(minLength: MicaTheme.Spacing.space2)
 
         Button(MicaStrings.localizedKey("action.cancel", language: language)) {
             confirmsLogout = false
         }
-        .frame(minHeight: MicaBounds.controlMinHeight)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
         Button(
             MicaStrings.localizedKey("tailscale.logout", language: language),
@@ -273,9 +273,9 @@ private struct WorkbenchTailscaleEndpointView: View {
             appModel.logoutSingBoxTailscale(endpointTag: endpoint.endpointTag)
         }
         .buttonStyle(.borderedProminent)
-        .tint(MicaDesignTokens.signalRed)
+        .tint(MicaTheme.statusError)
         .disabled(appModel.isBusy)
-        .frame(minHeight: MicaBounds.controlMinHeight)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 
     private var endpointTitle: String {
@@ -354,11 +354,11 @@ private struct WorkbenchTailscaleEndpointView: View {
     private func peerDisclosure(_ titleKey: String, peer: SingBoxTailscalePeer) -> some View {
         DisclosureGroup {
             WorkbenchTailscalePeerDetails(peer: peer)
-                .padding(.top, MicaSpacing.row)
+                .padding(.top, MicaTheme.Spacing.space2)
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.caption, weight: .medium)
+                    .micaThemeFont(.caption, weight: .medium)
                     .foregroundStyle(.secondary)
 
                 Text(verbatim: peerTitle(peer))
@@ -380,7 +380,7 @@ private struct WorkbenchTailscaleEndpointView: View {
 
     private var authenticationURLRow: some View {
         WorkbenchFormRow("tailscale.authentication_url") {
-            HStack(alignment: .center, spacing: MicaSpacing.row) {
+            HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
                 WorkbenchFormValue(
                     value: endpoint.authenticationURL.managementNonEmpty == nil
                         ? MicaStrings.localizedKey(
@@ -396,8 +396,8 @@ private struct WorkbenchTailscaleEndpointView: View {
                     Link(destination: authenticationLinkURL) {
                         Image(systemName: "arrow.up.right.square")
                             .frame(
-                                width: MicaBounds.iconControlSize,
-                                height: MicaBounds.iconControlSize
+                                width: MicaTheme.Metrics.iconControlSize,
+                                height: MicaTheme.Metrics.iconControlSize
                             )
                             .contentShape(Rectangle())
                     }
@@ -442,7 +442,7 @@ private struct WorkbenchTailscalePeerDetails: View {
     let peer: SingBoxTailscalePeer
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             row("tailscale.host_name", peer.hostName)
             row("tailscale.dns_name", peer.dnsName)
             row("tailscale.operating_system", peer.operatingSystem)

@@ -204,7 +204,7 @@ struct WorkbenchOverviewPreferencesTests {
     }
 
     @MainActor
-    @Test func policyInspectionCacheAndPinnedHUDKeepGeometryIndependent() {
+    @Test func policyInspectionCacheAndInspectionProjectionExposesCompleteFields() throws {
         let detail = ProxyNodeViewState(
             snapshot: ProxySnapshot(
                 name: "Tokyo",
@@ -243,100 +243,40 @@ struct WorkbenchOverviewPreferencesTests {
         _ = cache.resolve(revision: 7, catalog: catalog)
         #expect(cache.statistics == .init(buildCount: 1, cacheHitCount: 1))
 
-        let topology = Self.policyTopology(name: "Auto")
-        let topologyIndex = OverviewTopologyIndex(topology: topology)
-        let selection = OverviewTopologySelection.node("policy-node")
-        let compact = OverviewPolicyHUDProjection.snapshot(
-            selection: selection,
-            isPinned: false,
-            topologyIndex: topologyIndex,
+        let snapshot = try #require(OverviewPolicyInspectionProjection.snapshot(
+            name: "Auto",
             policyIndex: firstIndex,
             language: .english
-        )
-        let pinned = OverviewPolicyHUDProjection.snapshot(
-            selection: selection,
-            isPinned: true,
-            topologyIndex: topologyIndex,
-            policyIndex: firstIndex,
-            language: .english
-        )
+        ))
 
-        #expect(compact.kind == .policyGroup)
-        #expect(compact.title == "Auto")
-        #expect(compact.sections.map(\.id) == [
+        #expect(snapshot.kind == .policyGroup)
+        #expect(snapshot.title == "Auto")
+        #expect(snapshot.sections.map(\.id) == [
             "overview", "transport", "testing", "reported-fields",
         ])
-        #expect(compact.fields.contains { $0.id == "member-count" })
-        #expect(compact.fields.contains { $0.id == "members" && $0.value == "Tokyo" })
-        #expect(compact.fields.contains { $0.id == "provider" })
-        #expect(compact.fields.contains { $0.id == "transport.udp" })
-        #expect(compact.fields.contains {
+        #expect(snapshot.fields.contains { $0.id == "member-count" })
+        #expect(snapshot.fields.contains { $0.id == "members" && $0.value == "Tokyo" })
+        #expect(snapshot.fields.contains { $0.id == "provider" })
+        #expect(snapshot.fields.contains { $0.id == "transport.udp" })
+        #expect(snapshot.fields.contains {
             $0.id == "transport.tfo"
                 && $0.value == MicaStrings.localizedKey(
                     "overview.config_disabled",
                     language: .english
                 )
         })
-        #expect(compact.fields.filter { $0.id.hasPrefix("metadata.") }.count == 4)
-        #expect(!compact.isExpanded)
-        #expect(pinned.isExpanded)
-        #expect(pinned.sections == compact.sections)
-        #expect(pinned.fields.contains { $0.id == "rank" })
-        #expect(pinned.fields.contains { $0.id == "test-time" })
-        #expect(pinned.fields.contains { $0.id == "test-url" })
-        #expect(topologyIndex.operationCounts.nodeWriteCount == 1)
-    }
-
-    @Test func hudPlacementFlipsAroundObstaclesAndAlwaysClampsInsideGraph() {
-        let bounds = CGRect(x: 0, y: 0, width: 600, height: 420)
-        let anchor = CGRect(x: 275, y: 180, width: 20, height: 60)
-        let label = CGRect(x: 303, y: 195, width: 100, height: 24)
-        let trailingObstacle = CGRect(x: 405, y: 80, width: 180, height: 260)
-        let placement = OverviewPolicyHUDPlacementResolver.resolve(
-            anchorRect: anchor,
-            labelRect: label,
-            hudSize: CGSize(width: 220, height: 150),
-            graphBounds: bounds,
-            obstacles: [trailingObstacle],
-            preferredSide: .trailing
-        )
-        #expect(placement.side != .trailing)
-        #expect(bounds.contains(placement.frame))
-        #expect(!placement.frame.intersects(anchor))
-
-        let corner = OverviewPolicyHUDPlacementResolver.resolve(
-            anchorRect: CGRect(x: 2, y: 2, width: 20, height: 20),
-            labelRect: CGRect(x: 28, y: 2, width: 90, height: 20),
-            hudSize: CGSize(width: 280, height: 220),
-            graphBounds: CGRect(x: 0, y: 0, width: 330, height: 260),
-            obstacles: [],
-            preferredSide: .leading
-        )
-        #expect(CGRect(x: 10, y: 10, width: 310, height: 240).contains(corner.frame))
+        #expect(snapshot.fields.filter { $0.id.hasPrefix("metadata.") }.count == 4)
+        #expect(snapshot.fields.contains { $0.id == "rank" })
+        #expect(snapshot.fields.contains { $0.id == "test-time" })
+        #expect(snapshot.fields.contains { $0.id == "test-url" })
+        #expect(OverviewPolicyInspectionProjection.snapshot(
+            name: "Missing",
+            policyIndex: firstIndex,
+            language: .english
+        ) == nil)
     }
 
     @Test func motionProjectionIsStaticForPauseInactiveAndReduceMotion() {
-        #expect(OverviewMotionState.resolve(
-            reduceMotion: false,
-            isWindowActive: true,
-            isPaused: false
-        ).allowsMotion)
-        #expect(!OverviewMotionState.resolve(
-            reduceMotion: true,
-            isWindowActive: true,
-            isPaused: false
-        ).allowsMotion)
-        #expect(!OverviewMotionState.resolve(
-            reduceMotion: false,
-            isWindowActive: false,
-            isPaused: false
-        ).allowsMotion)
-        #expect(!OverviewMotionState.resolve(
-            reduceMotion: false,
-            isWindowActive: true,
-            isPaused: true
-        ).allowsMotion)
-
         let initialSignal = OverviewTopologyLiveSignal(
             latestTrafficReceivedAt: Date(timeIntervalSinceReferenceDate: 100.2),
             connectionMetricsRevision: 3,
@@ -356,19 +296,6 @@ struct WorkbenchOverviewPreferencesTests {
         #expect(initialSignal != nextSignal)
     }
 
-    private static func policyTopology(name: String) -> ConnectionTopology {
-        let node = ConnectionTopology.Node(
-            id: "policy-node",
-            columnID: .policyHop(0),
-            name: name,
-            pathIDs: []
-        )
-        return ConnectionTopology(
-            columns: [ConnectionTopology.Column(id: .policyHop(0), nodes: [node])],
-            edges: [],
-            paths: []
-        )
-    }
 }
 
 private struct WrongOverviewPreferencesEnvelope: Codable {

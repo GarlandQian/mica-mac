@@ -23,31 +23,47 @@ struct WorkbenchNavigationTests {
         #expect(WorkbenchDestination.workbenchTabCases.map(\.rawValue) == [
             "overview", "proxies", "connections", "logs", "rules", "sources",
         ])
-        #expect(WorkbenchDestination.controllerManagementCases.map(\.rawValue) == [
-            "controllers", "configuration", "actions", "diagnostics",
+        #expect(WorkbenchDestination.operateCases.map(\.rawValue) == [
+            "overview", "proxies", "connections", "rules",
+        ])
+        #expect(WorkbenchDestination.observeCases.map(\.rawValue) == [
+            "logs", "sources", "diagnostics",
+        ])
+        #expect(WorkbenchDestination.manageCases.map(\.rawValue) == [
+            "controllers", "configuration", "actions",
         ])
         #expect(
-            WorkbenchDestination.sidebarCases.map(\.rawValue)
-                == WorkbenchDestination.allCases.map(\.rawValue)
+            WorkbenchDestination.sidebarCases.map(\.rawValue) == [
+                "overview", "proxies", "connections", "rules",
+                "logs", "sources", "diagnostics",
+                "controllers", "configuration", "actions",
+            ]
         )
     }
 
     @Test func destinationsKeepStableGroupsAndControllerRequirements() {
         #expect(WorkbenchDestination.Group.allCases.map(\.titleKey) == [
-            "sidebar.group_workbench",
-            "sidebar.group_controller_management",
+            "sidebar.group_operate",
+            "sidebar.group_observe",
+            "sidebar.group_manage",
         ])
         #expect(
             WorkbenchDestination.allCases
-                .filter { $0.group == .workbench }
+                .filter { $0.group == .operate }
                 .map(\.rawValue)
-                == WorkbenchDestination.workbenchTabCases.map(\.rawValue)
+                == WorkbenchDestination.operateCases.map(\.rawValue)
         )
         #expect(
             WorkbenchDestination.allCases
-                .filter { $0.group == .controllerManagement }
+                .filter { $0.group == .observe }
                 .map(\.rawValue)
-                == WorkbenchDestination.controllerManagementCases.map(\.rawValue)
+                == WorkbenchDestination.observeCases.map(\.rawValue)
+        )
+        #expect(
+            WorkbenchDestination.allCases
+                .filter { $0.group == .manage }
+                .map(\.rawValue)
+                == WorkbenchDestination.manageCases.map(\.rawValue)
         )
         #expect(!WorkbenchDestination.controllers.requiresController)
         #expect(
@@ -75,8 +91,9 @@ struct WorkbenchNavigationTests {
         #expect(WorkbenchDestination.rules.shortcut == "5")
         #expect(WorkbenchDestination.sources.shortcut == "6")
         #expect(
-            WorkbenchDestination.controllerManagementCases.allSatisfy { $0.shortcut == nil }
+            WorkbenchDestination.manageCases.allSatisfy { $0.shortcut == nil }
         )
+        #expect(WorkbenchDestination.diagnostics.shortcut == nil)
     }
 
     @Test func editorPresentationsUseUniqueViewIdentityForTheSameDraft() {

@@ -20,7 +20,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
     let requestCloseGroup: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             ViewThatFits(in: .horizontal) {
                 horizontalPath
                 verticalPath
@@ -30,16 +30,16 @@ struct WorkbenchConnectionDecisionPathRail: View {
                 actionBar
             }
         }
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaDesignTokens.contentFill)
+        .background(MicaTheme.surfaceRaised)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .contain)
     }
 
     private var horizontalPath: some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             originStep
                 .frame(minWidth: 140, maxWidth: 200)
             WorkbenchDecisionPathConnector()
@@ -61,7 +61,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
     }
 
     private var verticalPath: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             originStep
             verticalConnector
             inboundStep
@@ -84,7 +84,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
             titleKey: "traffic.connection_source",
             value: reported(projection.origin),
             systemImage: "network",
-            tint: MicaDesignTokens.signalCyan,
+            tint: MicaTheme.textSecondary,
             monospaced: true
         )
     }
@@ -94,7 +94,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
             titleKey: "traffic.inbound_name",
             value: reported(projection.inbound),
             systemImage: "arrow.down.to.line",
-            tint: MicaDesignTokens.signalMint,
+            tint: MicaTheme.textSecondary,
             monospaced: true
         )
     }
@@ -102,7 +102,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
     private var verticalConnector: some View {
         WorkbenchDecisionPathConnector()
             .rotationEffect(.degrees(90))
-            .padding(.leading, MicaSpacing.row)
+            .padding(.leading, MicaTheme.Spacing.space2)
     }
 
     private var ruleStep: some View {
@@ -110,7 +110,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
             titleKey: "dashboard.col_rule",
             value: "\(reported(projection.rule)) · \(reported(projection.payload))",
             systemImage: "line.3.horizontal.decrease.circle",
-            tint: ruleIsNavigable ? MicaDesignTokens.accent : MicaDesignTokens.signalViolet,
+            tint: ruleIsNavigable ? MicaTheme.accent : MicaTheme.textSecondary,
             monospaced: true,
             action: ruleIsNavigable ? openRule : nil
         )
@@ -126,7 +126,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
                 titleKey: segment.kind.titleKey,
                 value: segment.value,
                 systemImage: "arrow.right.circle",
-                tint: MicaDesignTokens.accent,
+                tint: MicaTheme.accent,
                 actionHelpKey: "traffic.open_target_policy",
                 action: { openPolicyGroup(target) }
             )
@@ -135,9 +135,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
                 titleKey: segment.kind.titleKey,
                 value: segment.value,
                 systemImage: segment.kind.systemImage,
-                tint: segment.kind == .provider
-                    ? MicaDesignTokens.signalViolet
-                    : MicaDesignTokens.signalCyan
+                tint: MicaTheme.textSecondary
             )
         }
     }
@@ -153,21 +151,21 @@ struct WorkbenchConnectionDecisionPathRail: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: MicaSpacing.tight) {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             WorkbenchDecisionReadout(
                 titleKey: "dashboard.col_chain",
                 value: projection.segments.count.formatted(),
                 systemImage: "point.3.connected.trianglepath.dotted",
-                tint: MicaDesignTokens.signalCyan
+                tint: MicaTheme.textSecondary
             )
 
-            Spacer(minLength: MicaSpacing.module)
+            Spacer(minLength: MicaTheme.Spacing.space3)
 
             if showsClose {
                 if isClosing {
                     ProgressView()
                         .controlSize(.small)
-                        .frame(minWidth: MicaBounds.iconControlSize, minHeight: MicaBounds.iconControlSize)
+                        .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
                 } else {
                     WorkbenchIconCommand(
                         titleKey: "action.close_connection",
@@ -176,7 +174,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
                         role: .destructive,
                         action: requestClose
                     )
-                    .foregroundStyle(MicaDesignTokens.signalRed)
+                    .foregroundStyle(MicaTheme.statusError)
                 }
             }
 
@@ -184,7 +182,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
                 if isClosingGroup {
                     ProgressView()
                         .controlSize(.small)
-                        .frame(minWidth: MicaBounds.iconControlSize, minHeight: MicaBounds.iconControlSize)
+                        .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
                 } else {
                     WorkbenchIconCommand(
                         titleKey: "action.close_connection_group",
@@ -193,11 +191,11 @@ struct WorkbenchConnectionDecisionPathRail: View {
                         role: .destructive,
                         action: requestCloseGroup
                     )
-                    .foregroundStyle(MicaDesignTokens.signalRed)
+                    .foregroundStyle(MicaTheme.statusError)
                 }
             }
         }
-        .frame(minHeight: MicaBounds.controlMinHeight)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 
     private func reported(_ value: String) -> String {
@@ -226,7 +224,7 @@ struct WorkbenchConnectionInspector: View {
                     isActive ? "traffic.connection_state_active" : "traffic.connection_state_closed",
                     language: language
                 ),
-                statusTint: isActive ? MicaDesignTokens.signalMint : .secondary,
+                statusTint: isActive ? MicaTheme.statusOK : .secondary,
                 close: close
             ) {
                 WorkbenchDataInspectorSection("traffic.connection_section_identity") {
@@ -282,13 +280,13 @@ private struct WorkbenchConnectionAdditionalFieldList: View {
     let fields: [WorkbenchConnectionAdditionalField]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-            HStack(spacing: MicaSpacing.tight) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.caption, weight: .semibold)
+                    .micaThemeFont(.caption, weight: .semibold)
 
                 Text(verbatim: fields.count.formatted())
-                    .micaFont(.caption2, weight: .semibold, design: .monospaced)
+                    .micaThemeFont(.dataCaption, weight: .semibold)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -304,11 +302,11 @@ private struct WorkbenchConnectionAdditionalFieldList: View {
             }
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(MicaDesignTokens.separator)
+                    .fill(MicaTheme.separator)
                     .frame(width: 1)
             }
         }
-        .padding(.top, MicaSpacing.tight)
+        .padding(.top, MicaTheme.Spacing.space1)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -374,20 +372,20 @@ private struct WorkbenchConnectionJSONNode: View {
     }
 
     private func scalarNode(_ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: MicaSpacing.row) {
+        HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
             Text(verbatim: label)
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 92, idealWidth: 112, alignment: .leading)
 
             Text(verbatim: text)
-                .micaFont(.callout, design: .monospaced)
+                .micaThemeFont(.dataLabel)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.leading, MicaSpacing.row)
-        .padding(.vertical, MicaSpacing.tight)
+        .padding(.leading, MicaTheme.Spacing.space2)
+        .padding(.vertical, MicaTheme.Spacing.space1)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -402,26 +400,26 @@ private struct WorkbenchConnectionJSONNode: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: MicaSpacing.tight) {
+                HStack(spacing: MicaTheme.Spacing.space1) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .micaFont(.caption2, weight: .semibold)
+                        .micaThemeFont(.caption, weight: .semibold)
                         .foregroundStyle(.secondary)
                         .frame(width: 12)
                         .accessibilityHidden(true)
 
                     Text(verbatim: label)
-                        .micaFont(.callout, weight: .medium)
+                        .micaThemeFont(.label, weight: .medium)
                         .lineLimit(1)
 
-                    Spacer(minLength: MicaSpacing.row)
+                    Spacer(minLength: MicaTheme.Spacing.space2)
 
                     Text(verbatim: summary)
-                        .micaFont(.caption, design: .monospaced)
+                        .micaThemeFont(.dataCaption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                .padding(.horizontal, MicaSpacing.row)
-                .padding(.vertical, MicaSpacing.tight)
+                .padding(.horizontal, MicaTheme.Spacing.space2)
+                .padding(.vertical, MicaTheme.Spacing.space1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
@@ -439,7 +437,7 @@ private struct WorkbenchConnectionJSONNode: View {
                 VStack(alignment: .leading, spacing: 0) {
                     children()
                 }
-                .padding(.leading, MicaSpacing.module)
+                .padding(.leading, MicaTheme.Spacing.space3)
                 .transition(.opacity)
             }
         }

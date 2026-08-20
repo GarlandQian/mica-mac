@@ -19,16 +19,18 @@ struct OverviewInstrumentRailSection: View {
                 HStack(spacing: 0) {
                     OverviewSessionStateReadout()
                     ForEach(orderedMetrics) { metric in
-                        Divider().frame(height: 34)
+                        MicaHairlineSeparator(axis: .vertical)
+                            .frame(height: 34)
                         readout(for: metric)
                     }
-                    Divider().frame(height: 34)
+                    MicaHairlineSeparator(axis: .vertical)
+                        .frame(height: 34)
                     memoryReadout
                 }
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     OverviewSessionStateReadout()
-                    Divider()
+                    MicaHairlineSeparator()
                     LazyVGrid(
                         columns: [
                             GridItem(.adaptive(minimum: 148), spacing: 0),
@@ -43,9 +45,9 @@ struct OverviewInstrumentRailSection: View {
                 }
             }
         }
-        .padding(.vertical, MicaSpacing.tight)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overviewCyberSurface(.auxiliary, cornerRadius: 6)
+        .micaPanel(padding: 0)
     }
 
     @ViewBuilder
@@ -57,22 +59,19 @@ struct OverviewInstrumentRailSection: View {
             OverviewInstrumentReadout(
                 titleKey: "overview.upload_rate",
                 symbol: "arrow.up.right",
-                value: currentTrafficRateText(\.upload),
-                tint: MicaStyle.signalViolet
+                value: currentTrafficRateText(\.upload)
             )
         case .download:
             OverviewInstrumentReadout(
                 titleKey: "overview.download_rate",
                 symbol: "arrow.down.left",
-                value: currentTrafficRateText(\.download),
-                tint: MicaStyle.signalCyan
+                value: currentTrafficRateText(\.download)
             )
         case .activeConnections:
             OverviewInstrumentReadout(
                 titleKey: "dashboard.active_sessions",
                 symbol: "network",
-                value: currentConnectionCountText,
-                tint: MicaStyle.signalMint
+                value: currentConnectionCountText
             )
         }
     }
@@ -97,8 +96,7 @@ struct OverviewInstrumentRailSection: View {
         OverviewInstrumentReadout(
             titleKey: "overview.memory_current",
             symbol: "memorychip",
-            value: currentMemoryText,
-            tint: MicaStyle.signalAmber
+            value: currentMemoryText
         )
     }
 
@@ -138,7 +136,7 @@ struct OverviewTelemetrySection: View {
             isPaused: runtime.isPaused
         )
 
-        VStack(alignment: .leading, spacing: MicaSpacing.module) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             telemetryHeading(dates: projection.dates)
             chartLayout(
                 trafficSamples: projection.trafficSamples,
@@ -146,7 +144,7 @@ struct OverviewTelemetrySection: View {
                 connectionSamples: projection.connectionSamples,
                 dates: projection.dates
             )
-            .overviewCyberSurface(.telemetry)
+            .micaPanel(padding: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: preferredTimelineWindow) {
@@ -159,9 +157,9 @@ struct OverviewTelemetrySection: View {
 
     private func telemetryHeading(dates: [Date]) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) {
+            HStack(spacing: MicaTheme.Spacing.space3) {
                 telemetryTitle
-                Spacer(minLength: MicaSpacing.module)
+                Spacer(minLength: MicaTheme.Spacing.space3)
                 OverviewTelemetryControls(
                     dates: dates,
                     runtime: runtime,
@@ -169,7 +167,7 @@ struct OverviewTelemetrySection: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                 telemetryTitle
                 OverviewTelemetryControls(
                     dates: dates,
@@ -181,19 +179,19 @@ struct OverviewTelemetrySection: View {
     }
 
     private var telemetryTitle: some View {
-        HStack(spacing: MicaSpacing.row) {
-            OverviewSymbolMark(
-                systemName: "chart.line.uptrend.xyaxis",
-                tint: MicaStyle.signalCyan,
-                size: .section
-            )
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .micaThemeFont(.title3, weight: .semibold)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .accessibilityHidden(true)
             Text(
                 MicaStrings.localizedKey(
                     "overview.traffic_summary",
                     language: language
                 )
             )
-            .micaFont(.title3, weight: .semibold)
+            .micaThemeFont(.title3)
+            .foregroundStyle(MicaTheme.textPrimary)
         }
         .accessibilityElement(children: .combine)
         .fixedSize(horizontal: true, vertical: false)
@@ -219,16 +217,16 @@ struct OverviewTelemetrySection: View {
                         dates: dates,
                         plotHeight: plotHeight
                     )
-                    Divider()
-                        .padding(.vertical, MicaSpacing.module)
+                    MicaHairlineSeparator(axis: .vertical)
+                        .padding(.vertical, MicaTheme.Spacing.space3)
                     trafficChart(
                         .download,
                         samples: trafficSamples,
                         dates: dates,
                         plotHeight: plotHeight
                     )
-                    Divider()
-                        .padding(.vertical, MicaSpacing.module)
+                    MicaHairlineSeparator(axis: .vertical)
+                        .padding(.vertical, MicaTheme.Spacing.space3)
                     connectionChart(
                         samples: connectionSamples,
                         memorySamples: memorySamples,
@@ -245,8 +243,8 @@ struct OverviewTelemetrySection: View {
                             dates: dates,
                             plotHeight: plotHeight
                         )
-                        Divider()
-                            .padding(.vertical, MicaSpacing.module)
+                        MicaHairlineSeparator(axis: .vertical)
+                            .padding(.vertical, MicaTheme.Spacing.space3)
                         trafficChart(
                             .download,
                             samples: trafficSamples,
@@ -254,8 +252,8 @@ struct OverviewTelemetrySection: View {
                             plotHeight: plotHeight
                         )
                     }
-                    Divider()
-                        .padding(.horizontal, MicaSpacing.module)
+                    MicaHairlineSeparator()
+                        .padding(.horizontal, MicaTheme.Spacing.space3)
                     connectionChart(
                         samples: connectionSamples,
                         memorySamples: memorySamples,
@@ -273,8 +271,8 @@ struct OverviewTelemetrySection: View {
                         dates: dates,
                         plotHeight: plotHeight
                     )
-                    Divider()
-                        .padding(.vertical, MicaSpacing.module)
+                    MicaHairlineSeparator(axis: .vertical)
+                        .padding(.vertical, MicaTheme.Spacing.space3)
                     metricPanel(
                         orderedMetrics[1],
                         trafficSamples: trafficSamples,
@@ -299,8 +297,8 @@ struct OverviewTelemetrySection: View {
                         index,
                         metric in
                         if index > 0 {
-                            Divider()
-                                .padding(.horizontal, MicaSpacing.module)
+                            MicaHairlineSeparator()
+                                .padding(.horizontal, MicaTheme.Spacing.space3)
                         }
                         metricPanel(
                             metric,
@@ -376,7 +374,7 @@ struct OverviewTelemetrySection: View {
             dates: dates,
             window: runtime.timelineWindow,
             interaction: runtime.interaction,
-            motionState: motionState,
+            allowsMotion: allowsMotion,
             plotHeight: plotHeight
         )
         .frame(maxWidth: .infinity)
@@ -395,19 +393,19 @@ struct OverviewTelemetrySection: View {
             dates: dates,
             window: runtime.timelineWindow,
             interaction: runtime.interaction,
-            motionState: motionState,
+            allowsMotion: allowsMotion,
             plotHeight: plotHeight
         )
         .frame(maxWidth: .infinity)
     }
 
-    private var motionState: OverviewMotionState {
-        OverviewMotionState.resolve(
-            reduceMotion: reduceMotion,
-            isWindowActive: controlActiveState != .inactive,
-            isPaused: runtime.isPaused
-                || appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused
-        )
+    /// Design.md §2 motion rule: a finite data-arrival pulse only. Reduce
+    /// Motion, a paused stream, and an inactive window render fully static.
+    private var allowsMotion: Bool {
+        !reduceMotion
+            && controlActiveState != .inactive
+            && !runtime.isPaused
+            && !appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused
     }
 }
 
@@ -430,16 +428,16 @@ private struct OverviewTelemetryControls: View {
 
         switch layout {
         case .regular:
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 chartState(snapshot: snapshot)
                 chartCommands(snapshot: snapshot)
                 timelinePicker
             }
         case .compact:
-            VStack(alignment: .leading, spacing: MicaSpacing.row) {
-                HStack(spacing: MicaSpacing.row) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
                     chartState(snapshot: snapshot)
-                    Spacer(minLength: MicaSpacing.row)
+                    Spacer(minLength: MicaTheme.Spacing.space2)
                     chartCommands(snapshot: snapshot)
                 }
                 timelinePicker
@@ -512,32 +510,30 @@ private struct OverviewTelemetryControls: View {
         if runtime.isPaused
             || appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused {
             key = "overview.chart_paused"
-            tint = MicaStyle.signalAmber
+            tint = MicaTheme.statusWarning
             systemImage = "pause.circle.fill"
         } else if snapshot.isPinned {
             key = "overview.chart_selected"
-            tint = MicaStyle.signalCyan
+            tint = MicaTheme.accent
             systemImage = "scope"
         } else if liveSamplesAreCurrent {
             key = "overview.chart_live"
-            tint = MicaStyle.signalMint
+            tint = MicaTheme.accent
             systemImage = "dot.radiowaves.left.and.right"
         } else {
             key = "overview.chart_stale"
-            tint = MicaStyle.signalAmber
+            tint = MicaTheme.statusWarning
             systemImage = "exclamationmark.triangle.fill"
         }
 
-        return HStack(spacing: MicaSpacing.tight) {
-            WorkbenchSymbol(
-                systemName: systemImage,
-                tint: tint,
-                font: .caption.weight(.semibold),
-                frameSize: 16
-            )
+        return HStack(spacing: MicaTheme.Spacing.space1) {
+            Image(systemName: systemImage)
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(tint)
+                .frame(width: 16)
             Text(MicaStrings.localizedKey(key, language: language))
-                .micaFont(.caption, weight: .semibold)
-                .foregroundStyle(.primary)
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(MicaTheme.textPrimary)
         }
         .fixedSize()
         .accessibilityElement(children: .combine)
@@ -561,33 +557,31 @@ private struct OverviewSessionStateReadout: View {
     var body: some View {
         let status = statusPresentation
 
-        VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-            HStack(spacing: MicaSpacing.tight) {
-                WorkbenchSymbol(
-                    systemName: status.systemImage,
-                    tint: status.tint,
-                    font: .caption.weight(.semibold),
-                    frameSize: 16
-                )
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
+                Image(systemName: status.systemImage)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(status.tint)
+                    .frame(width: 16)
                 Text(verbatim: status.title)
-                    .micaFont(.caption, weight: .semibold)
-                    .foregroundStyle(.primary)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textPrimary)
                     .lineLimit(1)
             }
 
             if let timestamp = OverviewFormat.displayableTimestamp(status.timestamp) {
                 Label {
                     Text(timestamp, format: .dateTime.hour().minute().second())
-                        .micaFont(.callout, design: .monospaced)
+                        .micaThemeFont(.dataLabel)
                 } icon: {
                     Image(systemName: "clock")
                         .accessibilityHidden(true)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(MicaTheme.textSecondary)
                 .lineLimit(1)
             }
         }
-        .padding(.horizontal, MicaSpacing.module)
+        .padding(.horizontal, MicaTheme.Spacing.space3)
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -601,7 +595,7 @@ private struct OverviewSessionStateReadout: View {
                     language: language
                 ),
                 systemImage: "pause.circle.fill",
-                tint: MicaStyle.signalAmber,
+                tint: MicaTheme.statusWarning,
                 timestamp: session.controls.presentationPausedAt
             )
         }
@@ -612,42 +606,42 @@ private struct OverviewSessionStateReadout: View {
             return Presentation(
                 title: title,
                 systemImage: "circle",
-                tint: .secondary,
+                tint: MicaTheme.textTertiary,
                 timestamp: session.lastSuccessAt
             )
         case .connecting:
             return Presentation(
                 title: title,
                 systemImage: "arrow.triangle.2.circlepath",
-                tint: MicaStyle.signalCyan,
+                tint: MicaTheme.textSecondary,
                 timestamp: session.lastSuccessAt
             )
         case .live:
             return Presentation(
                 title: title,
                 systemImage: "checkmark.circle.fill",
-                tint: MicaStyle.signalMint,
+                tint: MicaTheme.statusOK,
                 timestamp: session.lastSuccessAt
             )
         case .staleReconnecting, .partial:
             return Presentation(
                 title: title,
                 systemImage: "exclamationmark.triangle.fill",
-                tint: MicaStyle.signalAmber,
+                tint: MicaTheme.statusWarning,
                 timestamp: session.lastSuccessAt
             )
         case .failedBeforeFirstSnapshot, .failed:
             return Presentation(
                 title: title,
                 systemImage: "xmark.octagon.fill",
-                tint: MicaStyle.signalRed,
+                tint: MicaTheme.statusError,
                 timestamp: session.lastSuccessAt
             )
         case .stopped:
             return Presentation(
                 title: title,
                 systemImage: "stop.circle",
-                tint: .secondary,
+                tint: MicaTheme.textTertiary,
                 timestamp: session.lastSuccessAt
             )
         }
@@ -662,23 +656,34 @@ private struct OverviewSessionStateReadout: View {
 }
 
 private struct OverviewInstrumentReadout: View {
+    @Environment(\.micaAppLanguage) private var language
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let titleKey: String
     let symbol: String
     let value: String
-    let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.tight) {
-            WorkbenchMetricLabel(titleKey: titleKey, systemImage: symbol, tint: tint)
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
+                Image(systemName: symbol)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textTertiary)
+                    .accessibilityHidden(true)
+                Text(MicaStrings.localizedKey(titleKey, language: language))
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                    .lineLimit(1)
+            }
             Text(verbatim: value)
-                .micaFont(.callout, weight: .semibold, design: .monospaced)
-                .monospacedDigit()
-                .foregroundStyle(.primary)
+                .micaThemeFont(.dataBody, weight: .semibold)
+                .foregroundStyle(MicaTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+                .contentTransition(reduceMotion ? .identity : .numericText())
                 .textSelection(.enabled)
         }
-        .padding(.horizontal, MicaSpacing.module)
+        .padding(.horizontal, MicaTheme.Spacing.space3)
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -702,13 +707,6 @@ private enum OverviewTrafficMetric: Equatable, Sendable {
         }
     }
 
-    var tint: Color {
-        switch self {
-        case .upload: MicaStyle.signalViolet
-        case .download: MicaStyle.signalCyan
-        }
-    }
-
     func value(in sample: TrafficTimeline.Sample) -> Int {
         switch self {
         case .upload: sample.upload
@@ -723,7 +721,6 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
 
     let titleKey: String
     let systemImage: String
-    let tint: Color
     let value: String?
     let timestamp: Date?
     let contextText: String?
@@ -733,7 +730,6 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
     init(
         titleKey: String,
         systemImage: String,
-        tint: Color,
         value: String?,
         timestamp: Date?,
         contextText: String? = nil,
@@ -742,7 +738,6 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
     ) {
         self.titleKey = titleKey
         self.systemImage = systemImage
-        self.tint = tint
         self.value = value
         self.timestamp = timestamp
         self.contextText = contextText
@@ -751,16 +746,15 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
-            HStack(spacing: MicaSpacing.tight) {
-                OverviewSymbolMark(
-                    systemName: systemImage,
-                    tint: tint,
-                    size: .metric
-                )
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                Image(systemName: systemImage)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textTertiary)
+                    .accessibilityHidden(true)
                 Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaFont(.callout, weight: .semibold)
-                    .foregroundStyle(.secondary)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textSecondary)
             }
             .accessibilityElement(children: .combine)
 
@@ -770,30 +764,28 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
                     language: language
                 )
             )
-            .micaFont(.title2, weight: .semibold, design: .monospaced)
-            .monospacedDigit()
-            .foregroundStyle(value == nil ? .secondary : .primary)
+            .micaThemeFont(.dataHero, weight: .semibold)
+            .foregroundStyle(value == nil ? MicaTheme.textTertiary : MicaTheme.textPrimary)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
-            .micaNumericTransition(reduceMotion: reduceMotion)
+            .contentTransition(reduceMotion ? .identity : .numericText())
             .textSelection(.enabled)
 
             plot
                 .frame(maxWidth: .infinity)
                 .frame(height: plotHeight)
 
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 if let timestamp {
                     Text(timestamp, format: .dateTime.hour().minute().second())
-                        .micaFont(.caption, design: .monospaced)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                        .micaThemeFont(.dataCaption)
+                        .foregroundStyle(MicaTheme.textSecondary)
                 }
-                Spacer(minLength: MicaSpacing.row)
+                Spacer(minLength: MicaTheme.Spacing.space2)
                 if let contextText {
                     Text(verbatim: contextText)
-                        .micaFont(.caption, design: .monospaced)
-                        .foregroundStyle(.secondary)
+                        .micaThemeFont(.dataCaption)
+                        .foregroundStyle(MicaTheme.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                         .textSelection(.enabled)
@@ -801,7 +793,7 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
             }
             .frame(minHeight: 18)
         }
-        .padding(MicaSpacing.module)
+        .padding(MicaTheme.Spacing.panelPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -812,21 +804,56 @@ private struct OverviewTelemetryEmptyPlot: View {
     let titleKey: String
 
     var body: some View {
-        VStack(spacing: MicaSpacing.row) {
-            OverviewSymbolMark(
-                systemName: "chart.line.uptrend.xyaxis",
-                tint: .secondary,
-                size: .section
-            )
+        VStack(spacing: MicaTheme.Spacing.space2) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .micaThemeFont(.title3)
+                .foregroundStyle(MicaTheme.textTertiary)
+                .accessibilityHidden(true)
             Text(MicaStrings.localizedKey(titleKey, language: language))
-                .micaFont(.caption, weight: .medium)
-                .foregroundStyle(.secondary)
+                .micaThemeFont(.caption, weight: .medium)
+                .foregroundStyle(MicaTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(MicaStyle.contentFill.opacity(0.24))
-        .clipShape(.rect(cornerRadius: 4))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Flat latest-sample mark for the Mica Ops charts (design.md §2): one finite
+/// pulse keyed to a real new sample, rendered statically when Reduce Motion is
+/// on, the stream is paused, or the window is inactive.
+private struct OverviewLatestDataMark: View {
+    let trigger: Int
+    let allowsMotion: Bool
+
+    var body: some View {
+        if allowsMotion {
+            mark
+                .phaseAnimator([0.0, 1.0, 0.0], trigger: trigger) { content, phase in
+                    content
+                        .scaleEffect(1 + phase * 0.35)
+                        .opacity(1 - phase * 0.15)
+                } animation: { phase in
+                    phase > 0
+                        ? .easeOut(duration: 0.22)
+                        : .easeInOut(duration: 0.34)
+                }
+        } else {
+            mark
+        }
+    }
+
+    private var mark: some View {
+        ZStack {
+            Circle()
+                .stroke(MicaTheme.accent.opacity(0.45), lineWidth: 1)
+                .frame(width: 12, height: 12)
+            Circle()
+                .fill(MicaTheme.accent)
+                .frame(width: 6, height: 6)
+        }
+        .frame(width: 16, height: 16)
+        .accessibilityHidden(true)
     }
 }
 
@@ -839,7 +866,7 @@ private struct OverviewTrafficChart: View {
     let dates: [Date]
     let window: OverviewTimelineWindow
     let interaction: OverviewTimelineInteractionState
-    let motionState: OverviewMotionState
+    let allowsMotion: Bool
     let plotHeight: CGFloat
 
     var body: some View {
@@ -848,7 +875,6 @@ private struct OverviewTrafficChart: View {
         OverviewTelemetryPanel(
             titleKey: metric.titleKey,
             systemImage: metric.systemImage,
-            tint: metric.tint,
             value: displayedSample.map { OverviewFormat.rate(metric.value(in: $0)) },
             timestamp: displayedSample?.receivedAt,
             plotHeight: plotHeight
@@ -861,7 +887,7 @@ private struct OverviewTrafficChart: View {
                     samples: samples,
                     window: window,
                     language: language,
-                    motionState: motionState
+                    allowsMotion: allowsMotion
                 )
                 .equatable()
                 .chartOverlay { proxy in
@@ -926,14 +952,14 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
     let samples: [TrafficTimeline.Sample]
     let window: OverviewTimelineWindow
     let language: AppLanguage
-    let motionState: OverviewMotionState
+    let allowsMotion: Bool
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.metric == rhs.metric
             && lhs.samples == rhs.samples
             && lhs.window == rhs.window
             && lhs.language == rhs.language
-            && lhs.motionState == rhs.motionState
+            && lhs.allowsMotion == rhs.allowsMotion
     }
 
     var body: some View {
@@ -950,14 +976,14 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.upload)
                 )
-                .foregroundStyle(metric.tint.opacity(0.15))
+                .foregroundStyle(MicaTheme.accent.opacity(0.12))
 
                 LinePlot(
                     samples,
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.upload)
                 )
-                .foregroundStyle(metric.tint)
+                .foregroundStyle(MicaTheme.accent)
                 .lineStyle(StrokeStyle(lineWidth: 1.6))
 
             } else {
@@ -966,14 +992,14 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.download)
                 )
-                .foregroundStyle(metric.tint.opacity(0.15))
+                .foregroundStyle(MicaTheme.accent.opacity(0.12))
 
                 LinePlot(
                     samples,
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.download)
                 )
-                .foregroundStyle(metric.tint)
+                .foregroundStyle(MicaTheme.accent)
                 .lineStyle(StrokeStyle(lineWidth: 1.6))
 
             }
@@ -983,12 +1009,11 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, latestSample.receivedAt),
                     y: .value(metricLabel, metric.value(in: latestSample))
                 )
-                .foregroundStyle(metric.tint)
+                .foregroundStyle(MicaTheme.accent)
                 .symbol {
-                    OverviewLatestSampleMark(
-                        tint: metric.tint,
+                    OverviewLatestDataMark(
                         trigger: latestSample.id,
-                        motionState: motionState
+                        allowsMotion: allowsMotion
                     )
                 }
             }
@@ -997,20 +1022,17 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(position: .trailing, values: scale.axisValues) { value in
-                AxisGridLine().foregroundStyle(MicaStyle.separator.opacity(0.35))
+                AxisGridLine().foregroundStyle(MicaTheme.separator)
                 AxisValueLabel {
                     if let bytes = value.as(Int.self) {
                         Text(verbatim: OverviewFormat.rate(bytes))
+                            .micaThemeFont(.dataCaption)
+                            .foregroundStyle(MicaTheme.textTertiary)
                     }
                 }
             }
         }
         .chartYScale(domain: scale.domain)
-        .chartPlotStyle { plotArea in
-            plotArea
-                .background(MicaStyle.secondaryContentFill.opacity(0.28))
-                .clipShape(.rect(cornerRadius: 4))
-        }
         .chartLegend(.hidden)
         .frame(maxWidth: .infinity)
     }
@@ -1030,7 +1052,7 @@ private struct OverviewConnectionChart: View {
     let dates: [Date]
     let window: OverviewTimelineWindow
     let interaction: OverviewTimelineInteractionState
-    let motionState: OverviewMotionState
+    let allowsMotion: Bool
     let plotHeight: CGFloat
 
     var body: some View {
@@ -1039,7 +1061,6 @@ private struct OverviewConnectionChart: View {
         OverviewTelemetryPanel(
             titleKey: "overview.connection_count",
             systemImage: "network",
-            tint: MicaStyle.signalMint,
             value: displayedSample?.activeCount.formatted(),
             timestamp: displayedSample?.receivedAt,
             contextText: memoryContextText,
@@ -1052,7 +1073,7 @@ private struct OverviewConnectionChart: View {
                     samples: samples,
                     window: window,
                     language: language,
-                    motionState: motionState
+                    allowsMotion: allowsMotion
                 )
                 .equatable()
                 .chartOverlay { proxy in
@@ -1144,13 +1165,13 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
     let samples: [ConnectionCountTimeline.Sample]
     let window: OverviewTimelineWindow
     let language: AppLanguage
-    let motionState: OverviewMotionState
+    let allowsMotion: Bool
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.samples == rhs.samples
             && lhs.window == rhs.window
             && lhs.language == rhs.language
-            && lhs.motionState == rhs.motionState
+            && lhs.allowsMotion == rhs.allowsMotion
     }
 
     var body: some View {
@@ -1166,14 +1187,14 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
                 x: .value(timeLabel, \.receivedAt),
                 y: .value(connectionLabel, \.activeCount)
             )
-            .foregroundStyle(MicaStyle.signalMint.opacity(0.16))
+            .foregroundStyle(MicaTheme.accent.opacity(0.12))
 
             LinePlot(
                 samples,
                 x: .value(timeLabel, \.receivedAt),
                 y: .value(connectionLabel, \.activeCount)
             )
-            .foregroundStyle(MicaStyle.signalMint)
+            .foregroundStyle(MicaTheme.accent)
             .lineStyle(StrokeStyle(lineWidth: 1.5))
 
             if let latestSample = samples.last {
@@ -1181,12 +1202,11 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, latestSample.receivedAt),
                     y: .value(connectionLabel, latestSample.activeCount)
                 )
-                .foregroundStyle(MicaStyle.signalMint)
+                .foregroundStyle(MicaTheme.accent)
                 .symbol {
-                    OverviewLatestSampleMark(
-                        tint: MicaStyle.signalMint,
+                    OverviewLatestDataMark(
                         trigger: latestSample.id,
-                        motionState: motionState
+                        allowsMotion: allowsMotion
                     )
                 }
             }
@@ -1195,20 +1215,17 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(position: .trailing, values: scale.axisValues) { value in
-                AxisGridLine().foregroundStyle(MicaStyle.separator.opacity(0.35))
+                AxisGridLine().foregroundStyle(MicaTheme.separator)
                 AxisValueLabel {
                     if let count = value.as(Int.self) {
                         Text(verbatim: count.formatted())
+                            .micaThemeFont(.dataCaption)
+                            .foregroundStyle(MicaTheme.textTertiary)
                     }
                 }
             }
         }
         .chartYScale(domain: scale.domain)
-        .chartPlotStyle { plotArea in
-            plotArea
-                .background(MicaStyle.secondaryContentFill.opacity(0.22))
-                .clipShape(.rect(cornerRadius: 4))
-        }
         .chartLegend(.hidden)
     }
 
@@ -1246,13 +1263,13 @@ private struct OverviewTrafficSelectionIndicator: View {
             rule.addLine(to: CGPoint(x: resolvedX, y: plotFrame.maxY))
             context.stroke(
                 rule,
-                with: .color(Color.secondary.opacity(0.7)),
+                with: .color(MicaTheme.textSecondary.opacity(0.7)),
                 style: StrokeStyle(lineWidth: 1, dash: [3, 3])
             )
 
             drawPoint(
                 at: CGPoint(x: resolvedX, y: plotFrame.minY + y),
-                color: metric.tint,
+                color: MicaTheme.accent,
                 in: &context
             )
         }
@@ -1306,7 +1323,7 @@ private struct OverviewConnectionSelectionIndicator: View {
             rule.addLine(to: CGPoint(x: resolvedX, y: plotFrame.maxY))
             context.stroke(
                 rule,
-                with: .color(Color.secondary.opacity(0.7)),
+                with: .color(MicaTheme.textSecondary.opacity(0.7)),
                 style: StrokeStyle(lineWidth: 1, dash: [3, 3])
             )
 
@@ -1321,7 +1338,7 @@ private struct OverviewConnectionSelectionIndicator: View {
                         height: diameter
                     )
                 ),
-                with: .color(MicaStyle.signalMint)
+                with: .color(MicaTheme.accent)
             )
         }
         .allowsHitTesting(false)

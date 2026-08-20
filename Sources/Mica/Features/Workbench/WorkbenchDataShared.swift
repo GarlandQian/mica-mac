@@ -8,8 +8,8 @@ extension View {
     func micaWorkbenchTable(accessibilityLabel: String) -> some View {
         tableStyle(.bordered(alternatesRowBackgrounds: true))
             .scrollContentBackground(.hidden)
-            .background(MicaDesignTokens.contentFill)
-            .tint(MicaDesignTokens.accent)
+            .background(MicaTheme.canvas)
+            .tint(MicaTheme.accent)
             .environment(\.defaultMinListRowHeight, WorkbenchDataRowGeometry.height)
             .accessibilityLabel(accessibilityLabel)
     }
@@ -35,8 +35,8 @@ struct WorkbenchDataActivityIndicator: View {
             }
         }
         .frame(
-            width: MicaBounds.iconControlSize,
-            height: MicaBounds.controlMinHeight
+            width: MicaTheme.Metrics.iconControlSize,
+            height: MicaTheme.Metrics.controlMinHeight
         )
     }
 }
@@ -73,7 +73,7 @@ struct WorkbenchDataBrowserScaffold<Commands: View, Supplementary: View, Content
         } content: {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(MicaDesignTokens.pageFill)
+                .background(MicaTheme.canvas)
         }
     }
 }
@@ -87,29 +87,25 @@ struct WorkbenchDataPrimaryCell: View {
     var detailIsMonospaced = true
 
     var body: some View {
-        HStack(alignment: .center, spacing: MicaSpacing.row) {
+        HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
             Image(systemName: systemImage)
-                .micaFont(.caption, weight: .semibold)
+                .micaThemeFont(.caption, weight: .semibold)
                 .foregroundStyle(tint)
                 .frame(width: 16)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: title)
-                    .micaFont(
-                        .callout,
-                        weight: .semibold,
-                        design: titleIsMonospaced ? .monospaced : .default
+                    .micaThemeFont(
+                        titleIsMonospaced ? .dataLabel : .label,
+                        weight: .semibold
                     )
                     .lineLimit(1)
                     .textSelection(.enabled)
 
                 if let detail = detail?.dataNonEmpty {
                     Text(verbatim: detail)
-                        .micaFont(
-                            .caption,
-                            design: detailIsMonospaced ? .monospaced : .default
-                        )
+                        .micaThemeFont(detailIsMonospaced ? .dataCaption : .caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .textSelection(.enabled)
@@ -127,6 +123,24 @@ struct WorkbenchDataPrimaryCell: View {
     }
 }
 
+/// Text-style input for `WorkbenchDataText` (task 08-17 Phase 7): the roles
+/// map by point size onto `MicaTheme.TextRole` inside the view, keeping the
+/// long-standing call sites (`style: .caption, design: .monospaced`) stable
+/// while the superseded design-system file is deleted.
+enum MicaTextStyle: Sendable, Equatable {
+    case largeTitle
+    case title
+    case title2
+    case title3
+    case headline
+    case body
+    case callout
+    case subheadline
+    case footnote
+    case caption
+    case caption2
+}
+
 struct WorkbenchDataText: View {
     let value: String
     var style: MicaTextStyle = .callout
@@ -138,12 +152,37 @@ struct WorkbenchDataText: View {
 
     var body: some View {
         Text(verbatim: value)
-            .micaFont(style, weight: weight, design: design)
+            .micaThemeFont(Self.themeRole(for: style, design: design), weight: weight)
             .foregroundStyle(tone)
             .lineLimit(maximumLineCount)
             .truncationMode(.tail)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: alignment)
+    }
+
+    /// Transitional bridge from the superseded text-style enum to MicaTheme
+    /// roles by point size; removed with the old design system in Phase 7.3
+    /// (task 08-17 Phase 4C).
+    private static func themeRole(for style: MicaTextStyle, design: Font.Design) -> MicaTheme.TextRole {
+        if design == .monospaced {
+            switch style {
+            case .largeTitle: return .dataHeroLarge
+            case .title: return .dataHero
+            case .title2, .title3: return .dataTitle
+            case .headline, .body: return .dataBody
+            case .callout: return .dataLabel
+            case .subheadline, .footnote, .caption, .caption2: return .dataCaption
+            }
+        }
+        switch style {
+        case .largeTitle: return .heroLarge
+        case .title: return .hero
+        case .title2: return .title
+        case .title3: return .title3
+        case .headline, .body: return .body
+        case .callout: return .label
+        case .subheadline, .footnote, .caption, .caption2: return .caption
+        }
     }
 }
 
@@ -174,13 +213,13 @@ struct WorkbenchDataInlineConfirmation: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaSpacing.module) { confirmationContent }
-            VStack(alignment: .leading, spacing: MicaSpacing.row) { confirmationContent }
+            HStack(spacing: MicaTheme.Spacing.space3) { confirmationContent }
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) { confirmationContent }
         }
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .padding(.vertical, MicaSpacing.row)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaDesignTokens.signalRed.opacity(0.08))
+        .background(MicaTheme.statusError.opacity(0.08))
         .overlay(alignment: .bottom) { Divider() }
         .onExitCommand(perform: cancel)
     }
@@ -189,17 +228,17 @@ struct WorkbenchDataInlineConfirmation: View {
     private var confirmationContent: some View {
         Label {
             Text(verbatim: message)
-                .micaFont(.callout)
+                .micaThemeFont(.label)
                 .textSelection(.enabled)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(MicaDesignTokens.signalRed)
+                .foregroundStyle(MicaTheme.statusError)
         }
 
-        Spacer(minLength: MicaSpacing.row)
+        Spacer(minLength: MicaTheme.Spacing.space2)
 
         Button(MicaStrings.localizedKey("action.cancel", language: language), action: cancel)
-            .frame(minHeight: MicaBounds.controlMinHeight)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
         Button(
             MicaStrings.localizedKey(confirmTitleKey, language: language),
@@ -207,9 +246,9 @@ struct WorkbenchDataInlineConfirmation: View {
             action: confirm
         )
         .buttonStyle(.borderedProminent)
-        .tint(MicaDesignTokens.signalRed)
+        .tint(MicaTheme.statusError)
         .disabled(!isConfirmEnabled)
-        .frame(minHeight: MicaBounds.controlMinHeight)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 }
 
@@ -241,16 +280,16 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: MicaSpacing.section) {
-                HStack(alignment: .top, spacing: MicaSpacing.row) {
-                    VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+            LazyVStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
+                HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
+                    VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                         Text(verbatim: title)
-                            .micaFont(.title3, weight: .semibold)
+                            .micaThemeFont(.title3)
                             .textSelection(.enabled)
 
                         if let subtitle = subtitle?.dataNonEmpty {
                             Text(verbatim: subtitle)
-                                .micaFont(.caption, design: .monospaced)
+                                .micaThemeFont(.dataCaption)
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
@@ -260,7 +299,7 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
                         }
                     }
 
-                    Spacer(minLength: MicaSpacing.row)
+                    Spacer(minLength: MicaTheme.Spacing.space2)
 
                     Button(action: close) {
                         Image(systemName: "xmark")
@@ -268,8 +307,8 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
                     }
                     .buttonStyle(.borderless)
                     .frame(
-                        minWidth: MicaBounds.iconControlSize,
-                        minHeight: MicaBounds.iconControlSize
+                        minWidth: MicaTheme.Metrics.iconControlSize,
+                        minHeight: MicaTheme.Metrics.iconControlSize
                     )
                     .accessibilityLabel(
                         MicaStrings.localizedKey("dashboard.close_inspector", language: language)
@@ -278,11 +317,11 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
 
                 content
             }
-            .padding(MicaSpacing.section)
+            .padding(MicaTheme.Spacing.space4)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .micaObserveScrollPerformance()
-        .background(MicaDesignTokens.contentFill)
+        .background(MicaTheme.surfaceRaised)
     }
 }
 
@@ -298,9 +337,9 @@ struct WorkbenchDataInspectorSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaSpacing.row) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             Text(MicaStrings.localizedKey(titleKey, language: language))
-                .micaFont(.caption, weight: .semibold)
+                .micaThemeFont(.caption, weight: .semibold)
                 .foregroundStyle(.secondary)
             Divider()
             content
@@ -317,9 +356,9 @@ struct WorkbenchDataInspectorField: View {
     var monospaced = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: MicaSpacing.module) {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
             Text(MicaStrings.localizedKey(titleKey, language: language))
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 112, alignment: .leading)
 
@@ -327,7 +366,7 @@ struct WorkbenchDataInspectorField: View {
                 verbatim: value?.dataNonEmpty
                     ?? MicaStrings.localizedKey("overview.config_not_reported", language: language)
             )
-            .micaFont(.callout, design: monospaced ? .monospaced : .default)
+            .micaThemeFont(monospaced ? .dataLabel : .label)
             .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)

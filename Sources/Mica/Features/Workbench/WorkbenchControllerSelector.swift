@@ -72,7 +72,7 @@ private struct WorkbenchControllerSelector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(reduceMotion ? nil : WorkbenchMotion.expand) {
+                withAnimation(reduceMotion ? nil : MicaTheme.Motion.reveal) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -86,11 +86,11 @@ private struct WorkbenchControllerSelector: View {
 
             if isExpanded {
                 switcherContents
-                    .padding(.top, MicaSpacing.tight)
+                    .padding(.top, MicaTheme.Spacing.space1)
                     .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
             }
         }
-        .tint(MicaStyle.accent)
+        .tint(MicaTheme.accent)
         .accessibilityLabel(
             Text(
                 MicaStrings.localizedKey(
@@ -123,12 +123,12 @@ private struct WorkbenchControllerSelector: View {
                         language: language
                     )
                 )
-                .micaFont(.caption)
+                .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, MicaSpacing.space2)
+                .padding(.horizontal, MicaTheme.Spacing.space2)
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: MicaBounds.controlMinHeight,
+                    minHeight: MicaTheme.Metrics.controlMinHeight,
                     alignment: .leading
                 )
             } else {
@@ -141,7 +141,7 @@ private struct WorkbenchControllerSelector: View {
             }
 
             Divider()
-                .padding(.vertical, MicaSpacing.tight)
+                .padding(.vertical, MicaTheme.Spacing.space1)
 
             switcherAction(
                 titleKey: "sidebar.add_controller",
@@ -165,7 +165,7 @@ private struct WorkbenchControllerSelector: View {
         _ selectedItem: WorkbenchControllerSelectorItem?,
         isExpanded: Bool
     ) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             Image(systemName: selectedControllerSymbol(selectedItem))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(selectedControllerTint(selectedItem))
@@ -173,19 +173,19 @@ private struct WorkbenchControllerSelector: View {
                 .accessibilityHidden(true)
 
             Text(verbatim: selectedControllerName(selectedItem))
-                .micaFont(.callout, weight: .semibold)
+                .micaThemeFont(.label, weight: .semibold)
                 .foregroundStyle(selectedItem == nil ? .secondary : .primary)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
 
             Image(systemName: "chevron.right")
-                .micaFont(.caption2, weight: .semibold)
+                .micaThemeFont(.caption, weight: .semibold)
                 .foregroundStyle(.secondary)
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, MicaSpacing.space2)
+        .padding(.horizontal, MicaTheme.Spacing.space2)
         .frame(
             maxWidth: .infinity,
             minHeight: 36,
@@ -193,7 +193,7 @@ private struct WorkbenchControllerSelector: View {
         )
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(MicaStyle.navigationSelectionFill.opacity(0.55))
+                .fill(MicaTheme.accent.opacity(0.14).opacity(0.55))
         )
         .contentShape(Rectangle())
     }
@@ -206,26 +206,26 @@ private struct WorkbenchControllerSelector: View {
             isExpanded = false
             onSelect(item)
         } label: {
-            HStack(alignment: .center, spacing: MicaSpacing.row) {
+            HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
                 Image(
                     systemName: isSelected
                         ? "checkmark.circle.fill"
                         : item.symbolName
                 )
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(isSelected ? MicaStyle.accent : .secondary)
+                .foregroundStyle(isSelected ? MicaTheme.accent : .secondary)
                 .frame(width: 18)
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: item.displayName)
-                        .micaFont(.callout)
+                        .micaThemeFont(.label)
                         .fontWeight(isSelected ? .semibold : .regular)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
                     Text(verbatim: item.endpointURL)
-                        .micaFont(.caption, design: .monospaced)
+                        .micaThemeFont(.dataCaption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .textSelection(.enabled)
@@ -233,21 +233,21 @@ private struct WorkbenchControllerSelector: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, MicaSpacing.row)
-            .padding(.vertical, MicaSpacing.tight)
+            .padding(.horizontal, MicaTheme.Spacing.space2)
+            .padding(.vertical, MicaTheme.Spacing.space1)
             .frame(
                 maxWidth: .infinity,
-                minHeight: MicaBounds.controlMinHeight,
+                minHeight: MicaTheme.Metrics.controlMinHeight,
                 alignment: .leading
             )
             .contentShape(Rectangle())
             .background {
                 if isSelected {
                     RoundedRectangle(
-                        cornerRadius: MicaBounds.badgeRadius,
+                        cornerRadius: MicaTheme.Metrics.badgeRadius,
                         style: .continuous
                     )
-                    .fill(MicaStyle.navigationSelectionFill)
+                    .fill(MicaTheme.accent.opacity(0.14))
                 }
             }
         }
@@ -275,10 +275,10 @@ private struct WorkbenchControllerSelector: View {
             }
             .frame(
                 maxWidth: .infinity,
-                minHeight: MicaBounds.controlMinHeight,
+                minHeight: MicaTheme.Metrics.controlMinHeight,
                 alignment: .leading
             )
-            .padding(.horizontal, MicaSpacing.space2)
+            .padding(.horizontal, MicaTheme.Spacing.space2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -302,7 +302,7 @@ private struct WorkbenchControllerSelector: View {
     private func selectedControllerTint(
         _ selectedItem: WorkbenchControllerSelectorItem?
     ) -> Color {
-        selectedItem == nil ? .secondary : MicaStyle.accent
+        selectedItem == nil ? .secondary : MicaTheme.accent
     }
 
     private func selectedControllerHelp(

@@ -808,7 +808,6 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(layout.nodeGeometry(id: sourceA.node.id)?.rect == sourceA.rect)
         #expect(layout.nodeGeometry(id: sourceB.node.id)?.rect == sourceB.rect)
         #expect(layout.nodeGeometry(id: "missing-node") == nil)
-        #expect(layout.hudObstacles.count == layout.nodes.count * 2)
         let edgeA = try #require(
             layout.edges.first { $0.edge.sourceName == "Source A" }
         )
@@ -954,9 +953,6 @@ struct WorkbenchOverviewPerformanceTests {
         let runtimeSource = try workbenchSource(
             named: "WorkbenchOverviewWindowRuntime.swift"
         )
-        let visualSource = try workbenchSource(
-            named: "WorkbenchOverviewVisualSystem.swift"
-        )
         let telemetrySource = try workbenchSource(
             named: "WorkbenchOverviewTelemetry.swift"
         )
@@ -971,7 +967,6 @@ struct WorkbenchOverviewPerformanceTests {
             editorSource,
             preferencesSource,
             runtimeSource,
-            visualSource,
             telemetrySource,
             topologySource,
             topologyViewSource,
@@ -1025,53 +1020,50 @@ struct WorkbenchOverviewPerformanceTests {
         )
         #expect(telemetrySection.contains("visibleMetrics"))
         #expect(telemetrySection.contains("OverviewMetricID.allCases.filter"))
-        #expect(telemetrySection.contains(".overviewCyberSurface(.telemetry)"))
+        #expect(telemetrySection.contains(".micaPanel("))
         #expect(telemetrySection.contains("ViewThatFits(in: .horizontal)"))
         #expect(telemetrySection.contains("return min(max(panelWidth * 0.60, 240), 300)"))
-        #expect(telemetrySource.contains("OverviewLatestSampleMark("))
+        #expect(telemetrySource.contains("OverviewLatestDataMark("))
         #expect(telemetrySource.contains("PointMark("))
         #expect(telemetrySource.contains("AreaPlot("))
         #expect(telemetrySource.contains("LinePlot("))
-        #expect(visualSource.contains(".phaseAnimator("))
-        #expect(visualSource.contains("static func resolve("))
-        #expect(source.contains("OverviewMotionState.resolve("))
+        #expect(telemetrySource.contains("controlActiveState != .inactive"))
 
         let topologyViewport = try sourceSection(
             topologyViewSource,
             from: "private struct OverviewTopologyViewport",
-            to: "private struct OverviewTopologyHUDOverlay"
-        )
+            to: "private struct OverviewTopologyIdleSummary")
         #expect(topologyViewport.contains("LazyVStack"))
         #expect(!topologyViewport.contains("ScrollView(.horizontal)"))
-        #expect(topologyViewport.contains(".overviewCyberSurface(.topology)"))
-        #expect(topologyViewport.contains("OverviewTopologyHUDOverlay("))
+        #expect(topologyViewport.contains("MicaTheme.surface"))
+        #expect(topologyViewport.contains(".help(hoverTooltip"))
         #expect(topologyViewport.contains(".onMoveCommand(perform: movePathSelection)"))
         #expect(topologyViewport.contains(".onExitCommand"))
         #expect(topologyViewport.contains(".contextMenu"))
 
-        let hudOverlay = try sourceSection(
-            topologyViewSource,
-            from: "private struct OverviewTopologyHUDOverlay",
-            to: "private struct OverviewTopologyHUDAnchor"
-        )
-        #expect(hudOverlay.contains("revision: appModel.policyGroupCatalogRevision"))
-        #expect(hudOverlay.contains("catalog: appModel.policyGroupCatalog"))
-        #expect(hudOverlay.contains("layout.nodeGeometry(id:"))
-        #expect(hudOverlay.contains("obstacles: layout.hudObstacles"))
-        #expect(hudOverlay.contains("OverviewPolicyHUDPlacementResolver.resolve("))
-        #expect(hudOverlay.contains(".position(x: placement.frame.midX"))
-        #expect(hudOverlay.contains("OverviewHolographicHUD("))
-        #expect(hudOverlay.contains("interaction.clearSelection"))
+        #expect(!topologyViewSource.contains("OverviewTopologyHUDOverlay"))
+        #expect(!topologyViewSource.contains("OverviewHolographicHUD"))
+        #expect(!topologyViewSource.contains("OverviewPolicyHUDPlacementResolver"))
+        #expect(topologyViewSource.contains("workspaceStore.selectInspector("))
+        #expect(topologyViewSource.contains("revision: appModel.policyGroupCatalogRevision"))
+        #expect(topologyViewSource.contains("catalog: appModel.policyGroupCatalog"))
+        #expect(topologyViewSource.contains("interaction.clearSelection"))
 
-        let energyBand = try sourceSection(
-            topologyViewSource,
-            from: "private struct OverviewTopologyEnergyBand",
-            to: "private struct OverviewRouteEnergyTrigger"
-        )
-        #expect(energyBand.contains(".phaseAnimator("))
-        #expect(energyBand.contains("request.revision"))
-        #expect(energyBand.contains("interaction.snapshot.activeSelection"))
-        #expect(!energyBand.contains("TimelineView"))
+            let bandLayers = try sourceSection(
+                topologyViewSource,
+                from: "private struct OverviewTopologyBandLayers",
+                to: "private struct OverviewTopologyBaseBand"
+            )
+            #expect(bandLayers.contains("allowsMotion: allowsMotion"))
+            #expect(topologyViewSource.contains("revision: catalog.structureRevision"))
+            let highlightBand = try sourceSection(
+                topologyViewSource,
+                from: "private struct OverviewTopologyHighlightBand",
+                to: "private struct OverviewTopologyHitBand"
+            )
+            #expect(highlightBand.contains("allowsMotion ? MicaTheme.Motion.stateChange : nil"))
+            #expect(highlightBand.contains("value: snapshot.activeSelection"))
+            #expect(!topologyViewSource.contains("TimelineView"))
 
         #expect(topologySource.contains("private let nodeGeometryByID"))
         #expect(topologySource.contains("func nodeGeometry(id: String)"))

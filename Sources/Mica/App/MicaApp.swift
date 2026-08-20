@@ -177,9 +177,9 @@ private struct OptionalNumberShortcut: ViewModifier {
 
 private extension View {
     func micaWindowChrome() -> some View {
-        background(MicaDesignTokens.pageFill)
-            .containerBackground(MicaDesignTokens.pageFill, for: .window)
-            .toolbarBackground(MicaDesignTokens.pageFill, for: .windowToolbar)
+        background(MicaTheme.canvas)
+            .containerBackground(MicaTheme.canvas, for: .window)
+            .toolbarBackground(MicaTheme.canvas, for: .windowToolbar)
             .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
     }
 

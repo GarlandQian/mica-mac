@@ -27,23 +27,21 @@ struct WorkbenchSidebarView: View {
             }
             .listRowInsets(
                 EdgeInsets(
-                    top: MicaSpacing.tight,
-                    leading: MicaSpacing.row,
-                    bottom: MicaSpacing.tight,
-                    trailing: MicaSpacing.row
+                    top: MicaTheme.Spacing.space1,
+                    leading: MicaTheme.Spacing.space2,
+                    bottom: MicaTheme.Spacing.space1,
+                    trailing: MicaTheme.Spacing.space2
                 )
             )
             .listRowBackground(Color.clear)
 
-            destinationSection(.workbench, destinations: WorkbenchDestination.workbenchTabCases)
-            destinationSection(
-                .controllerManagement,
-                destinations: WorkbenchDestination.controllerManagementCases
-            )
+            destinationSection(.operate, destinations: WorkbenchDestination.operateCases)
+            destinationSection(.observe, destinations: WorkbenchDestination.observeCases)
+            destinationSection(.manage, destinations: WorkbenchDestination.manageCases)
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .tint(MicaStyle.accent)
+        .tint(MicaTheme.accent)
         .navigationTitle("Mica")
     }
 
@@ -74,15 +72,19 @@ struct WorkbenchSidebarView: View {
                 .listRowSeparator(.hidden)
             }
         } header: {
-            Text(
-                MicaStrings.localizedKey(
-                    group.titleKey,
-                    language: language
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                MicaHairlineSeparator()
+
+                Text(
+                    MicaStrings.localizedKey(
+                        group.titleKey,
+                        language: language
+                    )
                 )
-            )
-            .micaFont(.caption2, weight: .medium)
-            .foregroundStyle(.secondary)
-            .padding(.leading, MicaSpacing.row)
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .padding(.leading, MicaTheme.Spacing.space2)
+            }
         }
     }
 
@@ -130,14 +132,14 @@ private struct WorkbenchSidebarRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: MicaSpacing.row) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(isSelected ? MicaStyle.accent : .clear)
+                    .fill(isSelected ? MicaTheme.accent : .clear)
                     .frame(width: 3, height: 18)
                     .accessibilityHidden(true)
 
                 Image(systemName: destination.symbolName)
-                    .foregroundStyle(isSelected ? MicaStyle.accent : .secondary)
+                    .foregroundStyle(isSelected ? MicaTheme.accent : MicaTheme.textSecondary)
                     .symbolRenderingMode(.monochrome)
                     .symbolVariant(isSelected ? .fill : .none)
                     .frame(width: 18)
@@ -149,24 +151,24 @@ private struct WorkbenchSidebarRow: View {
                         language: language
                     )
                 )
-                .micaFont(.callout)
+                .micaThemeFont(.label)
                 .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundStyle(.primary)
+                .foregroundStyle(MicaTheme.textPrimary)
                 .lineLimit(1)
 
                 Spacer(minLength: 0)
             }
-            .padding(.leading, MicaSpacing.tight)
-            .padding(.trailing, MicaSpacing.space2)
-            .padding(.vertical, 5)
+            .padding(.leading, MicaTheme.Spacing.space1)
+            .padding(.trailing, MicaTheme.Spacing.space2)
+            .padding(.vertical, MicaTheme.Spacing.space1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 if isSelected {
                     RoundedRectangle(
-                        cornerRadius: 6,
+                        cornerRadius: MicaTheme.Shape.panelRadius,
                         style: .continuous
                     )
-                    .fill(MicaStyle.navigationSelectionFill)
+                    .fill(MicaTheme.accent.opacity(0.14))
                 }
             }
             .contentShape(.interaction, Rectangle())

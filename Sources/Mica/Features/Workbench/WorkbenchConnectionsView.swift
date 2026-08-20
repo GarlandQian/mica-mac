@@ -84,6 +84,13 @@ struct WorkbenchConnectionsView: View {
             pageContent
         }
         .onAppear {
+            let projectionCacheBinding = $projectionCache
+            workspaceStore.connectionRowResolver = { id in
+                projectionCacheBinding.wrappedValue.row(id: id)
+            }
+            if let selectedRowID {
+                workspaceStore.selectInspector(.connection(id: selectedRowID))
+            }
             isProjectionActive = true
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
@@ -91,6 +98,7 @@ struct WorkbenchConnectionsView: View {
             consumeConnectionNavigation()
         }
         .onDisappear {
+            workspaceStore.connectionRowResolver = nil
             isProjectionActive = false
             metricSortCadence.cancel()
         }
@@ -150,6 +158,16 @@ struct WorkbenchConnectionsView: View {
         }
         .onChange(of: selectedRowID) { _, selection in
             persistSelection(selection)
+            if let selection {
+                workspaceStore.selectInspector(.connection(id: selection))
+            } else if case .connection = workspaceStore.inspectorSelection {
+                workspaceStore.selectInspector(.none)
+            }
+        }
+        .onChange(of: workspaceStore.inspectorSelection) { _, selection in
+            if case .none = selection, selectedRowID != nil {
+                selectedRowID = nil
+            }
         }
     }
 
@@ -183,7 +201,7 @@ struct WorkbenchConnectionsView: View {
             .accessibilityLabel(
                 MicaStrings.localizedKey("traffic.connection_tab", language: language)
             )
-            .frame(minHeight: MicaBounds.controlMinHeight)
+            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         } commands: {
             if scope == .active {
                 WorkbenchIconCommand(
@@ -194,7 +212,7 @@ struct WorkbenchConnectionsView: View {
                 ) {
                     requestClose(.all)
                 }
-                .foregroundStyle(MicaDesignTokens.signalRed)
+                .foregroundStyle(MicaTheme.statusError)
             } else {
                 WorkbenchIconCommand(
                     titleKey: "traffic.clear_closed",
@@ -257,18 +275,6 @@ struct WorkbenchConnectionsView: View {
             )
         case .content:
             connectionTable
-                .inspector(isPresented: inspectorPresented) {
-                    WorkbenchConnectionInspector(
-                        row: selectedRow,
-                        isActive: scope == .active,
-                        close: { selectedRowID = nil }
-                    )
-                    .inspectorColumnWidth(
-                        min: MicaBounds.inspectorMin,
-                        ideal: MicaBounds.inspectorIdeal,
-                        max: MicaBounds.inspectorMax
-                    )
-                }
         }
     }
 
@@ -379,7 +385,7 @@ struct WorkbenchConnectionsView: View {
                             MicaStrings.localizedKey("traffic.connection_section_identity", language: language),
                             value: \.host
                         ) { row in
-                            VStack(alignment: .leading, spacing: MicaSpacing.tight) {
+                            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                                 connectionIdentity(row)
                             }
                         }
@@ -423,7 +429,7 @@ struct WorkbenchConnectionsView: View {
                             MicaStrings.localizedKey("dashboard.tab_connections", language: language),
                             value: \.host
                         ) { row in
-                            HStack(spacing: MicaSpacing.module) {
+                            HStack(spacing: MicaTheme.Spacing.space3) {
                                 WorkbenchDataPrimaryCell(
                                     title: row.host,
                                     detail: row.stackedDetailText,
@@ -431,11 +437,11 @@ struct WorkbenchConnectionsView: View {
                                         ? "point.3.connected.trianglepath.dotted"
                                         : "clock",
                                     tint: scope == .active
-                                        ? MicaDesignTokens.signalCyan
+                                        ? MicaTheme.accent
                                         : .secondary
                                 )
 
-                                Spacer(minLength: MicaSpacing.row)
+                                Spacer(minLength: MicaTheme.Spacing.space2)
 
                                 VStack(alignment: .trailing, spacing: 1) {
                                     WorkbenchDataMetric(value: row.uploadSummaryText)
@@ -497,7 +503,7 @@ struct WorkbenchConnectionsView: View {
             systemImage: scope == .active
                 ? "point.3.connected.trianglepath.dotted"
                 : "clock",
-            tint: scope == .active ? MicaDesignTokens.signalCyan : .secondary
+            tint: scope == .active ? MicaTheme.accent : .secondary
         )
     }
 
@@ -644,13 +650,6 @@ struct WorkbenchConnectionsView: View {
 
     private var selectedRow: WorkbenchConnectionRow? {
         projectionCache.row(id: selectedRowID)
-    }
-
-    private var inspectorPresented: Binding<Bool> {
-        Binding(
-            get: { selectedRowID != nil },
-            set: { if !$0 { selectedRowID = nil } }
-        )
     }
 
     private var currentCloseIntent: WorkbenchConnectionCloseIntent? {

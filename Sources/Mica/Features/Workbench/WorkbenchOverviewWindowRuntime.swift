@@ -87,6 +87,13 @@ final class OverviewRuntimeRegistry {
         return runtime
     }
 
+    func existingTopologyRuntime(
+        controllerID: RouterProfile.ID,
+        generation: UUID
+    ) -> OverviewTopologyRuntime? {
+        topologyRuntimes[SessionKey(controllerID: controllerID, generation: generation)]
+    }
+
     func topologyRuntime(
         controllerID: RouterProfile.ID,
         generation: UUID

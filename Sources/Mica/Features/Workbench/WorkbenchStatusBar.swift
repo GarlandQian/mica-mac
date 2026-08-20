@@ -25,8 +25,8 @@ struct WorkbenchSessionControlButton: View {
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(tint)
                 .frame(
-                    width: MicaBounds.iconControlSize,
-                    height: MicaBounds.iconControlSize
+                    width: MicaTheme.Metrics.iconControlSize,
+                    height: MicaTheme.Metrics.iconControlSize
                 )
                 .contentShape(Rectangle())
         }
@@ -84,7 +84,7 @@ struct WorkbenchSessionControlButton: View {
 
     private var tint: Color {
         kind == .pause && session.controls.dashboardUpdatesPaused
-            ? MicaStyle.signalAmber
+            ? MicaTheme.statusWarning
             : .primary
     }
 
@@ -195,15 +195,15 @@ private struct WorkbenchStatusBar: View {
                 .fixedSize(horizontal: true, vertical: false)
             compactStatusRow(status: status)
         }
-        .micaFont(.caption)
+        .micaThemeFont(.caption)
         .frame(
             maxWidth: .infinity,
-            minHeight: MicaBounds.statusBarHeight,
+            minHeight: MicaTheme.Metrics.statusBarHeight,
             alignment: .leading
         )
-        .padding(.horizontal, MicaBounds.chromeHorizontalPadding)
-        .background(MicaDesignTokens.pageFill)
-        .overlay(alignment: .top) { WorkbenchChromeSeparator() }
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .background(MicaTheme.canvas)
+        .overlay(alignment: .top) { MicaHairlineSeparator() }
         .accessibilityElement(children: .combine)
     }
 
@@ -211,7 +211,7 @@ private struct WorkbenchStatusBar: View {
         status: WorkbenchSessionStatus,
         showsTimestamp: Bool
     ) -> some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             activityIdentity(status: status, compact: false)
 
             if showsTimestamp, let timestamp = status.timestamp {
@@ -222,7 +222,7 @@ private struct WorkbenchStatusBar: View {
     }
 
     private func compactStatusRow(status: WorkbenchSessionStatus) -> some View {
-        HStack(spacing: MicaSpacing.module) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             activityIdentity(status: status, compact: true)
                 .layoutPriority(2)
 
@@ -262,7 +262,7 @@ private struct WorkbenchStatusBar: View {
         _ presentation: WorkbenchOperationOutcomePresentation,
         compact: Bool
     ) -> some View {
-        HStack(spacing: MicaSpacing.row) {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             Image(systemName: presentation.symbolName)
                 .foregroundStyle(operationTint(presentation.tone))
                 .accessibilityHidden(true)
@@ -313,11 +313,11 @@ private struct WorkbenchStatusBar: View {
     ) -> Color {
         switch tone {
         case .success:
-            MicaStyle.signalMint
+            MicaTheme.statusOK
         case .partial:
-            MicaStyle.signalAmber
+            MicaTheme.statusWarning
         case .failure:
-            MicaStyle.signalRed
+            MicaTheme.statusError
         }
     }
 
@@ -353,19 +353,19 @@ private struct WorkbenchStatusBar: View {
     }
 
     private var statusDivider: some View {
-        Divider()
+        MicaHairlineSeparator(axis: .vertical)
             .frame(height: 14)
     }
 
     private func timestampLabel(_ timestamp: Date) -> some View {
         Label {
             Text(timestamp, format: .dateTime.hour().minute().second())
-                .micaFont(.callout, design: .monospaced)
+                .micaThemeFont(.dataLabel)
         } icon: {
             Image(systemName: "clock")
                 .accessibilityHidden(true)
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(MicaTheme.textSecondary)
         .fixedSize(horizontal: true, vertical: false)
     }
 
@@ -382,7 +382,7 @@ private struct WorkbenchStatusBar: View {
             return WorkbenchSessionStatus(
                 summary: operation.message,
                 symbol: "arrow.clockwise",
-                tint: MicaStyle.signalCyan,
+                tint: MicaTheme.accent,
                 timestamp: lastSuccessAt
             )
         }
@@ -395,7 +395,7 @@ private struct WorkbenchStatusBar: View {
                     language: language
                 ),
                 symbol: "pause.circle.fill",
-                tint: MicaStyle.signalAmber,
+                tint: MicaTheme.statusWarning,
                 timestamp: controls.presentationPausedAt
             )
         }
@@ -406,20 +406,20 @@ private struct WorkbenchStatusBar: View {
                 state: state,
                 lastSuccessAt: lastSuccessAt,
                 symbol: "circle",
-                tint: .secondary
+                tint: MicaTheme.textTertiary
             )
         case .connecting:
             return makeSessionStatus(
                 state: state,
                 lastSuccessAt: lastSuccessAt,
                 symbol: "arrow.triangle.2.circlepath",
-                tint: MicaStyle.signalCyan
+                tint: MicaTheme.accent
             )
         case .staleReconnecting(let message):
             return WorkbenchSessionStatus(
                 summary: message,
                 symbol: "arrow.triangle.2.circlepath",
-                tint: MicaStyle.signalAmber,
+                tint: MicaTheme.statusWarning,
                 timestamp: lastSuccessAt
             )
         case .live:
@@ -427,27 +427,27 @@ private struct WorkbenchStatusBar: View {
                 state: state,
                 lastSuccessAt: lastSuccessAt,
                 symbol: "checkmark.circle.fill",
-                tint: MicaStyle.signalMint
+                tint: MicaTheme.statusOK
             )
         case .partial(let message):
             return WorkbenchSessionStatus(
                 summary: message,
                 symbol: "exclamationmark.triangle.fill",
-                tint: MicaStyle.signalAmber,
+                tint: MicaTheme.statusWarning,
                 timestamp: lastSuccessAt
             )
         case .failedBeforeFirstSnapshot(let message):
             return WorkbenchSessionStatus(
                 summary: message,
                 symbol: "xmark.octagon.fill",
-                tint: MicaStyle.signalRed,
+                tint: MicaTheme.statusError,
                 timestamp: nil
             )
         case .failed(let message):
             return WorkbenchSessionStatus(
                 summary: message,
                 symbol: "xmark.octagon.fill",
-                tint: MicaStyle.signalRed,
+                tint: MicaTheme.statusError,
                 timestamp: lastSuccessAt
             )
         case .stopped:
@@ -455,7 +455,7 @@ private struct WorkbenchStatusBar: View {
                 state: state,
                 lastSuccessAt: lastSuccessAt,
                 symbol: "stop.circle",
-                tint: .secondary
+                tint: MicaTheme.textTertiary
             )
         }
     }
