@@ -37,12 +37,36 @@ enum MicaTheme {
     static let statusWarning = Color(nsColor: .systemOrange)
     static let statusError = Color(nsColor: .systemRed)
 
+    /// Muted column identity tints for the overview topology flow graph
+    /// (task 08-23). Hues dodge the teal accent and the vivid status colors
+    /// and stay desaturated, so controller-reported status always reads above
+    /// the flow encoding.
+    enum ColumnTint {
+        /// Sources: muted slate blue.
+        static let source = Color(micaLight: rgb(0x5B7089), dark: rgb(0x7E93B0))
+        /// Matched rules: muted warm sand.
+        static let rule = Color(micaLight: rgb(0x9A7B4F), dark: rgb(0xC4A876))
+        /// Proxy chain hops: muted violet.
+        static let policyHop = Color(micaLight: rgb(0x7A68AC), dark: rgb(0xA495D6))
+        /// Chain exits: muted dusty rose.
+        static let finalOutbound = Color(micaLight: rgb(0xA85F74), dark: rgb(0xCE8499))
+    }
+
+    /// Non-selected edges while a trajectory is active: an explicit alpha-baked
+    /// neutral (tertiaryLabelColor's own ~26% alpha made these invisible in
+    /// light mode).
+    static let edgeDimmed = Color(micaLight: rgba(0x14181D, 0.16), dark: rgba(0xE8ECF1, 0.14))
+
     private static func rgb(_ hex: UInt32) -> NSColor {
+        rgba(hex, 1)
+    }
+
+    private static func rgba(_ hex: UInt32, _ alpha: CGFloat) -> NSColor {
         NSColor(
             srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
             green: CGFloat((hex >> 8) & 0xFF) / 255,
             blue: CGFloat(hex & 0xFF) / 255,
-            alpha: 1
+            alpha: alpha
         )
     }
 }

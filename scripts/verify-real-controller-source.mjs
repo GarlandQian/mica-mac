@@ -1313,6 +1313,16 @@ assertIncludes(overviewTopologyBaseBandSection, "colorMode: .linear", "Topology 
 assertIncludes(overviewTopologyBaseBandSection, "allowsMotion ? MicaTheme.Motion.stateChange : nil", "Topology highlight motion must be finite and gated on the resolved motion state");
 assertIncludes(overviewTopologyBaseBandSection, "value: snapshot.activeSelection", "Topology highlight must react to explicit interaction");
 assertExcludes(overviewTopologyView, "OverviewTopologyHighlightBand", "Topology selection highlight must render inside the single base canvas (task 08-20 R6)");
+// Task 08-23: flow ribbons carry muted column identity tints; controller-
+// reported status colors and the accent still win over the flow encoding.
+assertIncludes(overviewTopologyView, "OverviewTopologyProjection.columnTint(for:", "Topology edges, pills, and column ticks must resolve column identity tints (task 08-23 R1)");
+assertIncludes(overviewTopologyView, "uniqueKeysWithValues: layout.nodes.map", "Topology tint lookup must cover the FULL layout, never a band-local node slice - cross-band edges share bands without sharing nodes (task 08-23 F1)");
+assertIncludes(overviewTopologyView, "with: .linearGradient(", "Topology flow edges must render as source-to-target tint gradients (task 08-23 R2)");
+assertIncludes(overviewTopologyView, "MicaTheme.edgeDimmed", "Topology dimmed edges must use the explicit alpha-baked mist token, never bare tertiary label alpha (task 08-23 R5)");
+assertIncludes(overviewTopologyView, "columnHeaderHeight - 6", "Topology column identity ticks must sit directly under the titles (task 08-23 R4)");
+assertIncludes(designSystem, "enum ColumnTint", "MicaTheme must define the muted column identity tints (task 08-23 R1)");
+assertIncludes(overviewTopology, "barycenterKey(", "Topology columns after the first must sort by flow barycenter (task 08-23 R8)");
+assertIncludes(overviewTopology, "2 * max(centerX, 0)", "Topology title slices must cap at twice the distance to the band edges (task 08-23 R4)");
 assertExcludes(overviewTopologyView, "TimelineView", "Topology must not keep an idle clock alive");
 assertIncludes(overviewTopologyView, "private func minimumFlowHeight(for availableWidth: Int)", "Topology must scale its sparse-flow viewport with the available width");
 assertIncludes(overviewTopologyView, "return Int(min(max(scaledHeight, 680), 920).rounded())", "Topology must remain a primary 680-920 point surface when sparse");
@@ -1727,6 +1737,8 @@ assertIncludes(connectionsPresentation, "enum WorkbenchConnectionProjection", "C
 assertIncludes(connectionCache, "struct WorkbenchConnectionPulseProjection", "Connection cache must own high-frequency pulse projection");
 assertIncludes(connectionsRoot, "struct WorkbenchConnectionsView", "Connections root must own the native Table workspace");
 assertIncludes(connectionPulseView, "struct WorkbenchConnectionPulseStrip", "Connection pulse view must own pulse rendering");
+assertIncludes(connectionPulseView, ".fixedSize(horizontal: true, vertical: false)", "Connection pulse metrics must render at intrinsic width so accumulated totals never truncate (task 08-23 R6)");
+assertIncludes(connectionPulseView, ".frame(minWidth: 260, maxWidth: 420)", "Connection pulse owner distribution must cap its bar width (task 08-23 R6)");
 assertIncludes(connectionDetails, "struct WorkbenchConnectionInspector", "Connection details must own selection-driven inspection");
 assertIncludes(logPresentation, "struct WorkbenchLogProjectionCache", "Log presentation must own its stable row cache");
 assertIncludes(logsRoot, "struct WorkbenchLogsView", "Logs root must own Table rendering and follow interaction");
