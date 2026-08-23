@@ -33,7 +33,9 @@ struct WorkbenchConnectionPulseStrip: View {
                 remainingCount: projection.remainingOwnerCount,
                 totalCount: projection.visibleCount
             )
-            .frame(minWidth: 260, maxWidth: .infinity)
+            // Task 08-23 R6: cap the distribution bar so it cannot stretch
+            // across the whole row and starve the metrics.
+            .frame(minWidth: 260, maxWidth: 420)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -143,7 +145,9 @@ struct WorkbenchConnectionPulseStrip: View {
             systemImage: systemImage,
             tint: tint
         )
-        .frame(minWidth: 104, idealWidth: 120, maxWidth: 148, alignment: .leading)
+        // Task 08-23 R6: intrinsic width - capped frames truncated the
+        // accumulated-bytes detail line.
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var countDetail: String? {
@@ -240,7 +244,6 @@ private struct WorkbenchConnectionPulseMetric: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }

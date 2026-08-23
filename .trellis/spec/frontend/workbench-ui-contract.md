@@ -406,19 +406,29 @@ a split.
   hover, pin, pause, and cached presentation cannot leak into another session.
 - The topology admits every active connection and every reported chain hop.
   Missing source or chain metadata creates an explicit unavailable path record,
-  not a fabricated edge. Each layer owns a distinct node identity, nodes sort by
-  reported name within that layer, and aggregated edges retain their real count
+  not a fabricated edge. Each layer owns a distinct node identity, the first
+  column sorts by reported name, and every later column sorts by the
+  flow-weighted barycenter of its upstream neighbors with name-order tiebreaks
+  (task 08-23) so parallel flows become near-parallel edges instead of maximal
+  crossings. Aggregated edges retain their real count
   while layout band width uses `log10(count + 1) * 10`. The width-fitted Sankey uses
   20-point node bars, 8-point gaps, flat cubic edge strokes, and full-trajectory
-  hover/pin highlighting. Edge strokes are tiered (task 08-20): quiet neutral
-  hairlines recede into the background, an edge touching a policy hop with a
-  controller-reported status carries that status color, widths follow the
-  flow-proportional geometry width clamped to 0.75-2.5 points, and the single
-  active, hovered, or pinned trajectory redraws one point wider in the signal
-  accent while the rest of the graph dims through reduced-opacity strokes and
-  fills. Node bars fill with the controller-reported status color when one
-  exists, the neutral raised surface with a tertiary-contrast 1-point border
-  otherwise, and the accent when the path is active. Each band renders through
+  hover/pin highlighting. Edge strokes are tiered (tasks 08-20, 08-23): the
+  single active, hovered, or pinned trajectory redraws one point wider in the
+  signal accent; while a selection exists every other edge fades to an explicit
+  alpha-baked neutral mist (`MicaTheme.edgeDimmed`); an edge touching a policy
+  hop with a controller-reported status carries that status color; every
+  remaining edge renders as a source-to-target column-tint gradient ribbon at
+  55% opacity, so route families stay traceable by hue. Widths follow the
+  flow-proportional geometry width clamped to 0.75-2.5 points. Column identity
+  tints (`MicaTheme.ColumnTint`: muted slate blue sources, warm sand rules,
+  violet chain hops, dusty rose exits, both appearances) encode column
+  identity only - status colors and the accent always win. Node bars fill with
+  the controller-reported status color when one exists, a column-tinted pill
+  (14% tint fill + 55% tint stroke, dimmed to 7%/25%) otherwise, and the
+  accent when the path is active. A 22x2.5-point column-tinted tick sits under
+  each column title, and title slices are capped by band edges and neighbor
+  distances so titles never overlap or clip. Each band renders through
   exactly one opaque, linear-composited Canvas (base and highlight passes
   merged) plus a dedicated system-text label layer; band equality gates on the
   structure/policy revisions so telemetry ticks never redraw the graph. Hover and explicit pause freeze only the presented

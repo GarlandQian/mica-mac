@@ -842,8 +842,49 @@ enum OverviewTopologyLayoutBuilder {
             )
         }
 
-        let columnPlans = topology.columns.map { column in
-            let orderedNodes = column.nodes.sorted(by: sankeyNodeOrder)
+        // Flow-following node order (task 08-23 R8): the first column keeps
+        // name order; every later column sorts by the flow-weighted mean slot
+        // of its upstream neighbors (barycenter), so parallel flows become
+        // near-parallel edges instead of maximal crossings. Name order breaks
+        // ties, keeping the layout fully deterministic.
+        var orderedColumns: [[ConnectionTopology.Node]] = []
+        orderedColumns.reserveCapacity(topology.columns.count)
+        var slotByNodeID: [String: Int] = [:]
+        for (columnIndex, column) in topology.columns.enumerated() {
+            let ordered: [ConnectionTopology.Node]
+            if columnIndex == 0 {
+                ordered = column.nodes.sorted(by: sankeyNodeOrder)
+            } else {
+                let barycenterKeys = Dictionary(
+                    uniqueKeysWithValues: column.nodes.map { node in
+                        (
+                            node.id,
+                            barycenterKey(
+                                for: node,
+                                incomingEdgesByNodeID: incomingEdgesByNodeID,
+                                edgeFlowByID: edgeFlowByID,
+                                slotByNodeID: slotByNodeID
+                            )
+                        )
+                    }
+                )
+                ordered = column.nodes.sorted { left, right in
+                    let leftKey = barycenterKeys[left.id] ?? .greatestFiniteMagnitude
+                    let rightKey = barycenterKeys[right.id] ?? .greatestFiniteMagnitude
+                    if leftKey != rightKey {
+                        return leftKey < rightKey
+                    }
+                    return sankeyNodeOrder(left, right)
+                }
+            }
+            for (slot, node) in ordered.enumerated() {
+                slotByNodeID[node.id] = slot
+            }
+            orderedColumns.append(ordered)
+        }
+
+        let columnPlans = topology.columns.enumerated().map { columnIndex, column in
+            let orderedNodes = orderedColumns[columnIndex]
             let totalFlow = orderedNodes.reduce(CGFloat.zero) { partial, node in
                 partial + max(
                     nodeFlowByID[node.id, default: 0],
@@ -1152,6 +1193,26 @@ enum OverviewTopologyLayoutBuilder {
             return left.id < right.id
         }
         return comparison == .orderedAscending
+    }
+
+    /// Flow-weighted mean slot of a node's upstream neighbors (task 08-23).
+    /// Nodes with no incoming edge sink to the bottom via +inf. Internal (not
+    /// private) so tests can pin the sink behavior directly.
+    static func barycenterKey(
+        for node: ConnectionTopology.Node,
+        incomingEdgesByNodeID: [String: [ConnectionTopology.Edge]],
+        edgeFlowByID: [String: CGFloat],
+        slotByNodeID: [String: Int]
+    ) -> CGFloat {
+        var weightedSum: CGFloat = 0
+        var totalWeight: CGFloat = 0
+        for edge in incomingEdgesByNodeID[node.id, default: []] {
+            guard let slot = slotByNodeID[edge.sourceID] else { continue }
+            let weight = max(edgeFlowByID[edge.id, default: 1], 1)
+            weightedSum += CGFloat(slot) * weight
+            totalWeight += weight
+        }
+        return totalWeight > 0 ? weightedSum / totalWeight : .greatestFiniteMagnitude
     }
 
     private static func sankeyEdgeOrder(
@@ -1539,6 +1600,24 @@ enum OverviewTopologyProjection {
         }
     }
 
+    /// Muted identity tint for a topology column (task 08-23). The tint
+    /// encodes column identity only; controller-reported status colors and
+    /// the accent always win over it.
+    static func columnTint(
+        for id: ConnectionTopology.Column.ID
+    ) -> Color {
+        switch id {
+        case .source:
+            MicaTheme.ColumnTint.source
+        case .rule:
+            MicaTheme.ColumnTint.rule
+        case .policyHop:
+            MicaTheme.ColumnTint.policyHop
+        case .finalOutbound:
+            MicaTheme.ColumnTint.finalOutbound
+        }
+    }
+
     private static func nonBlank(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : value
@@ -1552,9 +1631,16 @@ enum OverviewTopologyProjection {
 /// band at any panel width, so the trailing column title can never be clipped
 /// by the panel shape.
 enum OverviewTopologyHeaderGeometry {
-    /// Horizontal slice a column title may occupy without overlapping a
-    /// neighbor title: twice the distance to the nearest column center, capped
-    /// at the band width.
+    /// Breathing room subtracted from every title slice so adjacent titles
+    /// keep a visible gap even when both fill their slices.
+    private static let titleGutter: CGFloat = 8
+
+    /// Horizontal slice a column title may occupy. Closed form (task 08-23):
+    /// capped by the band width, by twice the distance to each band edge (so
+    /// `clampedCenter` never has to push the center inward - the push used to
+    /// be what collided with neighbors), and by the distance to each adjacent
+    /// column center (so neighboring half-slices never overlap), minus a
+    /// gutter.
     static func sliceWidth(
         for column: OverviewTopologyLayout.ColumnGeometry,
         in band: OverviewTopologyLayout.RenderBand
@@ -1563,14 +1649,18 @@ enum OverviewTopologyHeaderGeometry {
         guard let index = centers.firstIndex(of: column.centerX) else {
             return max(band.bounds.width, 1)
         }
-        var slice = band.bounds.width
+        let bandWidth = max(band.bounds.width, 1)
+        let centerX = column.centerX - band.bounds.minX
+        var slice = bandWidth
+        slice = min(slice, 2 * max(centerX, 0))
+        slice = min(slice, 2 * max(bandWidth - centerX, 0))
         if index > 0 {
-            slice = min(slice, 2 * abs(centers[index] - centers[index - 1]))
+            slice = min(slice, abs(centers[index] - centers[index - 1]))
         }
         if index < centers.count - 1 {
-            slice = min(slice, 2 * abs(centers[index + 1] - centers[index]))
+            slice = min(slice, abs(centers[index + 1] - centers[index]))
         }
-        return max(min(slice, band.bounds.width), 1)
+        return max(slice - titleGutter, 1)
     }
 
     /// Title center clamped so the whole slice - and therefore the title,

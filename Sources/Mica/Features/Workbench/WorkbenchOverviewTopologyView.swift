@@ -731,12 +731,27 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
     }
 
     var body: some View {
+        // F1 (trellis-check): tints must come from the FULL layout, not the
+        // band slice - edges are admitted to every 352pt band they cross
+        // while nodes only appear in one, so a band-local lookup misses
+        // cross-band endpoints and seams the gradients at band borders.
+        // Derived from layout (== request), so the == revision gate still
+        // covers it.
+        let tintByNodeID = Dictionary(
+            uniqueKeysWithValues: layout.nodes.map { node in
+                (
+                    node.node.id,
+                    OverviewTopologyProjection.columnTint(for: node.node.columnID)
+                )
+            }
+        )
         ZStack {
             OverviewTopologyBaseBand(
                 request: request,
                 band: band,
                 allowsMotion: allowsMotion,
                 nodeStatusByID: nodeStatusByID,
+                tintByNodeID: tintByNodeID,
                 interaction: interaction
             )
             .equatable()
@@ -772,6 +787,10 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
     let band: OverviewTopologyLayout.RenderBand
     let allowsMotion: Bool
     let nodeStatusByID: [String: MicaTheme.Status]
+    /// Full-layout column tints (built by the band layers from `layout`).
+    /// Color is not Equatable, but the map is a pure function of `request`,
+    /// so == gating on `request` remains exact.
+    let tintByNodeID: [String: Color]
     let interaction: OverviewTopologyInteractionState
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -785,6 +804,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
     var body: some View {
         let snapshot = interaction.snapshot
         let statusByID = nodeStatusByID
+        let tintByNodeID = tintByNodeID
         Canvas(
             opaque: true,
             colorMode: .linear,
@@ -812,6 +832,36 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
             )
             context.translateBy(x: 0, y: -band.bounds.minY)
 
+            // Column identity ticks under the titles (task 08-23 R4).
+            for column in band.columns {
+                let slice = OverviewTopologyHeaderGeometry.sliceWidth(
+                    for: column,
+                    in: band
+                )
+                let tickCenterX = band.bounds.minX
+                    + OverviewTopologyHeaderGeometry.clampedCenter(
+                        sliceWidth: slice,
+                        columnCenterX: column.centerX - band.bounds.minX,
+                        bandWidth: band.bounds.width
+                    )
+                context.fill(
+                    Path(
+                        roundedRect: CGRect(
+                            x: tickCenterX - 11,
+                            y: band.bounds.minY
+                                + OverviewTopologyLayout.columnHeaderHeight - 6,
+                            width: 22,
+                            height: 2.5
+                        ),
+                        cornerRadius: 1.25
+                    ),
+                    with: .color(
+                        OverviewTopologyProjection.columnTint(for: column.id)
+                            .opacity(0.85)
+                    )
+                )
+            }
+
             let highlightedEdgeIDs = snapshot.highlight.edgeIDs
             let highlightedNodeIDs = snapshot.highlight.nodeIDs
             let isDimmed = snapshot.activeSelection != nil
@@ -826,6 +876,10 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                 OverviewTopologyDrawing.drawEdge(
                     edge,
                     status: status,
+                    sourceTint: tintByNodeID[edge.edge.sourceID]
+                        ?? MicaTheme.textTertiary,
+                    targetTint: tintByNodeID[edge.edge.targetID]
+                        ?? MicaTheme.textTertiary,
                     isDimmed: isDimmed,
                     in: &context
                 )
@@ -834,6 +888,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                 OverviewTopologyDrawing.drawNode(
                     node,
                     status: statusByID[node.node.id] ?? .neutral,
+                    tint: tintByNodeID[node.node.id] ?? MicaTheme.textTertiary,
                     isDimmed: isDimmed,
                     in: &context
                 )
@@ -1192,13 +1247,17 @@ private struct OverviewTopologyAccessibilityGroup: View {
 }
 
 private enum OverviewTopologyDrawing {
-    /// Tiered edge stroke (task 08-20 R1): quiet neutral hairlines recede into
-    /// the background, an edge touching a policy hop with a controller-reported
-    /// status carries that status color, and the single active trajectory
-    /// redraws in accent. Width follows the flow-proportional geometry width.
+    /// Edge stroke priority (tasks 08-20 R1, 08-23 R2): the active trajectory
+    /// redraws in accent; while a selection exists every other edge fades to a
+    /// neutral mist; an edge touching a policy hop with a controller-reported
+    /// status carries that status color; otherwise the edge is a flow ribbon
+    /// tinted source-column -> target-column, so route families stay
+    /// traceable. Width follows the flow-proportional geometry width.
     static func drawEdge(
         _ edge: OverviewTopologyLayout.EdgeGeometry,
         status: MicaTheme.Status = .neutral,
+        sourceTint: Color = MicaTheme.textTertiary,
+        targetTint: Color = MicaTheme.textTertiary,
         isDimmed: Bool = false,
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
@@ -1215,41 +1274,70 @@ private enum OverviewTopologyDrawing {
             )
             return
         }
-        let color = status == .neutral
-            ? MicaTheme.textTertiary.opacity(isDimmed ? 0.22 : 0.5)
-            : status.color.opacity(isDimmed ? 0.3 : 0.85)
-        context.stroke(path, with: .color(color), lineWidth: lineWidth)
+        if isDimmed {
+            context.stroke(
+                path,
+                with: .color(MicaTheme.edgeDimmed),
+                lineWidth: lineWidth
+            )
+            return
+        }
+        if status != .neutral {
+            context.stroke(
+                path,
+                with: .color(status.color.opacity(0.85)),
+                lineWidth: lineWidth
+            )
+            return
+        }
+        context.stroke(
+            path,
+            with: .linearGradient(
+                Gradient(colors: [
+                    sourceTint.opacity(0.55),
+                    targetTint.opacity(0.55),
+                ]),
+                startPoint: edge.source,
+                endPoint: edge.target
+            ),
+            lineWidth: lineWidth
+        )
     }
 
-    /// Node bar (task 08-20 R2): controller-reported status fill when the
-    /// policy catalog reports one; neutral bars read against the near-black
-    /// canvas through a raised fill plus a tertiary-contrast stroke. The
-    /// active trajectory redraws in accent. Labels render in
-    /// `OverviewTopologyLabelBand`, not here.
+    /// Node bar (tasks 08-20 R2, 08-23 R3): controller-reported status fill
+    /// when the policy catalog reports one; neutral pills read through a
+    /// column-tinted fill + stroke on both appearances; the active trajectory
+    /// redraws in accent. Labels render in `OverviewTopologyLabelBand`.
     static func drawNode(
         _ node: OverviewTopologyLayout.NodeGeometry,
         status: MicaTheme.Status,
+        tint: Color = MicaTheme.textTertiary,
         isDimmed: Bool = false,
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
     ) {
         if isHighlighted {
             context.fill(node.drawingPath, with: .color(MicaTheme.accent))
-        } else if status == .neutral {
-            context.fill(
-                node.drawingPath,
-                with: .color(MicaTheme.surfaceRaised.opacity(isDimmed ? 0.45 : 1))
-            )
-            context.stroke(
-                node.drawingPath,
-                with: .color(MicaTheme.textTertiary.opacity(isDimmed ? 0.3 : 1)),
-                lineWidth: 1
-            )
-        } else {
+            return
+        }
+        if status != .neutral {
             context.fill(
                 node.drawingPath,
                 with: .color(status.color.opacity(isDimmed ? 0.4 : 1))
             )
+            return
         }
+        // Neutral pill (task 08-23 R3): a tinted fill + tinted stroke keeps
+        // neutral nodes legible on both appearances - the previous
+        // surface-on-surface pair read at ~2% contrast in light mode.
+        context.fill(
+            node.drawingPath,
+            with: .color(tint.opacity(isDimmed ? 0.07 : 0.14))
+        )
+        context.stroke(
+            node.drawingPath,
+            with: .color(tint.opacity(isDimmed ? 0.25 : 0.55)),
+            lineWidth: 1
+        )
     }
 }

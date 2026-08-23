@@ -430,43 +430,36 @@ struct ConnectionTopologyTests {
             edges: []
         )
 
-        // Middle column keeps its center; slice never overlaps a neighbor.
-        let mid = band.columns[2]
-        let midSlice = OverviewTopologyHeaderGeometry.sliceWidth(for: mid, in: band)
-        #expect(midSlice == 340)
-        #expect(
-            OverviewTopologyHeaderGeometry.clampedCenter(
-                sliceWidth: midSlice,
-                columnCenterX: mid.centerX,
+        // Task 08-23 closed form: slice = min(W, 2*cx, 2*(W-cx), neighbor
+        // distances) - 8 gutter -> 112/162/162/162/112 for centers
+        // 60/230/400/570/740 in an 800-wide band. With those slices the clamp
+        // is the identity, so every title box is both in-band and pairwise
+        // non-overlapping.
+        let expectedSlices: [CGFloat] = [112, 162, 162, 162, 112]
+        var previousBoxMax: CGFloat = -.greatestFiniteMagnitude
+        for (column, expectedSlice) in zip(band.columns, expectedSlices) {
+            let slice = OverviewTopologyHeaderGeometry.sliceWidth(
+                for: column,
+                in: band
+            )
+            #expect(slice == expectedSlice)
+            let center = OverviewTopologyHeaderGeometry.clampedCenter(
+                sliceWidth: slice,
+                columnCenterX: column.centerX,
                 bandWidth: 800
-            ) == 400
-        )
+            )
+            #expect(center == column.centerX)
+            let boxMin = center - slice / 2
+            let boxMax = center + slice / 2
+            #expect(boxMin >= 0)
+            #expect(boxMax <= 800)
+            #expect(boxMin > previousBoxMax)
+            previousBoxMax = boxMax
+        }
 
-        // Trailing column: the whole slice stays inside the band.
-        let last = band.columns[4]
-        let lastSlice = OverviewTopologyHeaderGeometry.sliceWidth(for: last, in: band)
-        let lastCenter = OverviewTopologyHeaderGeometry.clampedCenter(
-            sliceWidth: lastSlice,
-            columnCenterX: last.centerX,
-            bandWidth: 800
-        )
-        #expect(lastCenter - lastSlice / 2 >= 0)
-        #expect(lastCenter + lastSlice / 2 <= 800)
-        #expect(lastCenter < last.centerX)
-
-        // Leading column clamps symmetrically.
-        let first = band.columns[0]
-        let firstSlice = OverviewTopologyHeaderGeometry.sliceWidth(for: first, in: band)
-        let firstCenter = OverviewTopologyHeaderGeometry.clampedCenter(
-            sliceWidth: firstSlice,
-            columnCenterX: first.centerX,
-            bandWidth: 800
-        )
-        #expect(firstCenter - firstSlice / 2 >= 0)
-        #expect(firstCenter > first.centerX)
-
-        // Degenerate inputs: single column and an over-wide slice both resolve
-        // to a centered, fully-visible title.
+        // Degenerate inputs: an off-center single column gets a slice bounded
+        // by the nearer band edge, and an over-wide slice still clamps to a
+        // centered, fully-visible title.
         let single = OverviewTopologyLayout.RenderBand(
             id: 1,
             bounds: CGRect(x: 0, y: 0, width: 320, height: 200),
@@ -478,7 +471,14 @@ struct ConnectionTopologyTests {
             for: single.columns[0],
             in: single
         )
-        #expect(singleSlice == 320)
+        #expect(singleSlice == 72)
+        let singleCenter = OverviewTopologyHeaderGeometry.clampedCenter(
+            sliceWidth: singleSlice,
+            columnCenterX: 40,
+            bandWidth: 320
+        )
+        #expect(singleCenter - singleSlice / 2 >= 0)
+        #expect(singleCenter + singleSlice / 2 <= 320)
         #expect(
             OverviewTopologyHeaderGeometry.clampedCenter(
                 sliceWidth: 500,
@@ -486,6 +486,90 @@ struct ConnectionTopologyTests {
                 bandWidth: 320
             ) == 160
         )
+    }
+
+    /// R8/AC7: columns after the first sort by the flow-weighted barycenter
+    /// of their upstream neighbors (name order only breaks ties), so routes
+    /// that name order would cross become parallel lanes.
+    @Test func topologyLayoutOrdersNodesByUpstreamFlow() async throws {
+        let topology = ConnectionTopologyBuilder.build(from: [
+            connection(
+                id: "a1",
+                sourceIP: "10.0.0.1",
+                rule: "RuleSet",
+                rulePayload: "B-Rule",
+                chains: ["Final", "Z-Hop"]
+            ),
+            connection(
+                id: "z1",
+                sourceIP: "10.0.0.9",
+                rule: "RuleSet",
+                rulePayload: "A-Rule",
+                chains: ["Final", "A-Hop"]
+            ),
+        ])
+
+        let layout = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 800
+        )
+        func midY(ofNameFragment fragment: String) -> CGFloat? {
+            layout.nodes.first { $0.node.name.contains(fragment) }?.rect.midY
+        }
+        // Name order would stack A-Rule over B-Rule and A-Hop over Z-Hop,
+        // crossing both routes; flow order pairs 10.0.0.1 with B-Rule/Z-Hop
+        // and 10.0.0.9 with A-Rule/A-Hop into two parallel lanes.
+        #expect(try #require(midY(ofNameFragment: "B-Rule")) < #require(midY(ofNameFragment: "A-Rule")))
+        #expect(try #require(midY(ofNameFragment: "Z-Hop")) < #require(midY(ofNameFragment: "A-Hop")))
+
+        // Deterministic: identical input yields an identical layout.
+        let again = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 800
+        )
+        #expect(again.nodes.map(\.node.id) == layout.nodes.map(\.node.id))
+        #expect(again.nodes.map(\.rect) == layout.nodes.map(\.rect))
+    }
+
+    /// R8/AC7 fallback: nodes with no incoming edge (sources at layout time,
+    /// defensively any orphan) sort below every flow-connected node.
+    @Test func topologyBarycenterSinksOrphanNodes() {
+        let topology = ConnectionTopologyBuilder.build(from: [
+            connection(
+                id: "a1",
+                sourceIP: "10.0.0.1",
+                rule: "RuleSet",
+                rulePayload: "B-Rule",
+                chains: ["Final", "Z-Hop"]
+            ),
+        ])
+        var incoming: [String: [ConnectionTopology.Edge]] = [:]
+        for edge in topology.edges {
+            incoming[edge.targetID, default: []].append(edge)
+        }
+        let flowByID = Dictionary(
+            uniqueKeysWithValues: topology.edges.map { ($0.id, CGFloat(1)) }
+        )
+        let sourceNode = topology.nodes.first { incoming[$0.id] == nil }
+        let ruleNode = topology.nodes.first { $0.name == "RuleSet: B-Rule" }
+        let source = try! #require(sourceNode)
+        let rule = try! #require(ruleNode)
+
+        let ruleKey = OverviewTopologyLayoutBuilder.barycenterKey(
+            for: rule,
+            incomingEdgesByNodeID: incoming,
+            edgeFlowByID: flowByID,
+            slotByNodeID: [source.id: 0]
+        )
+        #expect(ruleKey == 0)
+
+        let orphanKey = OverviewTopologyLayoutBuilder.barycenterKey(
+            for: source,
+            incomingEdgesByNodeID: incoming,
+            edgeFlowByID: flowByID,
+            slotByNodeID: [:]
+        )
+        #expect(orphanKey == .greatestFiniteMagnitude)
     }
 
     /// R5/AC3: node statuses are memoized on (policy revision, topology
