@@ -16,6 +16,7 @@
 - [x] 2.3 BaseBand 末尾画列头刻线（22×2.5 圆角，列色 0.85，中心对齐 clampedCenter，y = columnHeaderHeight − 4）。
 - [x] 2.4 `WorkbenchConnectionPulseView.swift`：metric 去等宽 frame 改 fixedSize；分布条 maxWidth 420。
 - [x] 2.5 build 绿。
+- [x] 2.6 R9 彩带化：drawEdge 闭合 ribbon Path + 渐变填充（design.md §4.5）；中性节点实心列色块；契约/verifier 同步；门禁重跑。
 
 ## Phase 3 — 验证与同步
 

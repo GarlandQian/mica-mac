@@ -418,15 +418,17 @@ a split.
   signal accent; while a selection exists every other edge fades to an explicit
   alpha-baked neutral mist (`MicaTheme.edgeDimmed`); an edge touching a policy
   hop with a controller-reported status carries that status color; every
-  remaining edge renders as a source-to-target column-tint gradient ribbon at
-  55% opacity, so route families stay traceable by hue. Widths follow the
-  flow-proportional geometry width clamped to 0.75-2.5 points. Column identity
-  tints (`MicaTheme.ColumnTint`: muted slate blue sources, warm sand rules,
-  violet chain hops, dusty rose exits, both appearances) encode column
-  identity only - status colors and the accent always win. Node bars fill with
-  the controller-reported status color when one exists, a column-tinted pill
-  (14% tint fill + 55% tint stroke, dimmed to 7%/25%) otherwise, and the
-  accent when the path is active. A 22x2.5-point column-tinted tick sits under
+  remaining edge renders as a true sankey ribbon (task 08-23 R9): a closed
+  band tracing its flow-proportional geometry width (flow * valueScale, the
+  same width the layout packs into node rects) filled with a
+  source-to-target column-tint gradient at 45% opacity, so route families
+  stay traceable by hue and converging flows brighten naturally through
+  translucency. Column identity tints (`MicaTheme.ColumnTint`: muted slate
+  blue sources, warm sand rules, violet chain hops, dusty rose exits, both
+  appearances) encode column identity only - status colors and the accent
+  always win. Node bars fill with the controller-reported status color when
+  one exists, a solid column-tint anchor bar (dimmed to 35%) otherwise, and
+  the accent when the path is active. A 22x2.5-point column-tinted tick sits under
   each column title, and title slices are capped by band edges and neighbor
   distances so titles never overlap or clip. Each band renders through
   exactly one opaque, linear-composited Canvas (base and highlight passes

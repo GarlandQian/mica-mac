@@ -72,6 +72,16 @@ gutter = 8
 **脉冲摘要条（WorkbenchConnectionPulseView）：**
 - `WorkbenchConnectionPulseMetric`：去掉 `.frame(maxWidth: .infinity)`，改 `.fixedSize()`（值与 detail 行均不截断）；父 HStack 保持 leading 排布 + `Spacer()`，分布条 `WorkbenchConnectionOwnerDistribution` 加 `.frame(maxWidth: 420)`。
 
+## 4.5 R9 真 Sankey 彩带（2026-08-23 定稿）
+
+社区调研（ECharts/D3/Google Charts/reflex.dev sankey 指南）共识：流量图 = 宽度∝流量的**填充带**，链路透明度 0.4–0.6，源节点色贯穿链路，节点实心色块锚定。我们的几何引擎本就是真 Sankey（edge.width = flow×valueScale、assignEdgeCenters 把边按其宽度打包进节点矩形、命中容差 width/2+2）——细描边渲染才是异常。
+
+drawEdge（替换 §4 描边实现）：
+- 闭合 ribbon Path：上边 = (source.y−half)→(target.y−half) 贝塞尔（控制点 −half），目标侧直线闭合，下边 = 返程贝塞尔（控制点 +half，control2/control1 顺序互换）；half = max(edge.width, 1.5)/2（视觉地板，数据宽度 ≥1 几乎不动比例）。
+- 填充优先级：选中 accent 0.85 → dimmed edgeDimmed → 状态色 0.7 → 渐变（src/dst tint 各 0.45，轴向 source→target）。
+drawNode：中性节点实心列色块（无描边），dim 0.35；状态/accent 不变。
+列头刻线保留（列身份锚）。
+
 ## 5. 兼容与验证
 
 - Equatable 门禁、memo、HitBand、tooltip、inspector 同步、无障碍表征全部不动（行为 AC4 由既有测试 + verifier 锁定）。

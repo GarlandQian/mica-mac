@@ -1318,6 +1318,8 @@ assertExcludes(overviewTopologyView, "OverviewTopologyHighlightBand", "Topology 
 assertIncludes(overviewTopologyView, "OverviewTopologyProjection.columnTint(for:", "Topology edges, pills, and column ticks must resolve column identity tints (task 08-23 R1)");
 assertIncludes(overviewTopologyView, "uniqueKeysWithValues: layout.nodes.map", "Topology tint lookup must cover the FULL layout, never a band-local node slice - cross-band edges share bands without sharing nodes (task 08-23 F1)");
 assertIncludes(overviewTopologyView, "with: .linearGradient(", "Topology flow edges must render as source-to-target tint gradients (task 08-23 R2)");
+assertIncludes(overviewTopologyView, "ribbon.closeSubpath()", "Topology flow edges must render as closed sankey ribbons at their true flow width (task 08-23 R9)");
+assertExcludes(overviewTopologyView, "min(max(edge.width, 0.75), 2.5)", "Topology ribbons must not clamp edges to hairline stroke widths (task 08-23 R9)");
 assertIncludes(overviewTopologyView, "MicaTheme.edgeDimmed", "Topology dimmed edges must use the explicit alpha-baked mist token, never bare tertiary label alpha (task 08-23 R5)");
 assertIncludes(overviewTopologyView, "columnHeaderHeight - 6", "Topology column identity ticks must sit directly under the titles (task 08-23 R4)");
 assertIncludes(designSystem, "enum ColumnTint", "MicaTheme must define the muted column identity tints (task 08-23 R1)");

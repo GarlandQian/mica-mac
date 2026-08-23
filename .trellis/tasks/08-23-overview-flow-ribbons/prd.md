@@ -31,6 +31,8 @@
 - R7 性能不回退：保留遥测 tick 零重绘门禁（policyStatusRevision）与单 opaque/linear Canvas；渐变只在结构/选择变化时重绘。
 - R8 流向排序：列内节点按上游邻居流量加权重心（barycenter）前向排序，名字 tiebreak，完全确定性；第 0 列保持名字序。命中测试/标签/无障碍按 ID 与几何矩形派生，自动跟随。
 
+- R9 真 Sankey 彩带（二轮反馈后用户确认，2026-08-23）：默认态边按其几何宽度（flow × valueScale，min 1pt，视觉地板 1.5pt）绘制为**闭合填充带**（顶/底双贝塞尔闭合路径，d3-sankey 同款构造），源列色→目标列色渐变，0.45 不透明度（社区最佳实践区间 0.4–0.6）；选中路径 accent 实色 85%；状态边状态色 70%；选中态其余边 edgeDimmed。中性节点改**实心列色块**（Sankey 锚点标准，无描边），dim 时 35%；状态/accent 节点行为不变。几何引擎零改动（边宽、y 打包、命中容差本就按带设计）。
+
 ## 非目标
 
 - 不改遥测三图（截图 2 可接受）。
@@ -46,6 +48,7 @@
 - AC4 行为全保留：悬停 tooltip、点击→inspector（7 case）、键盘、命中测试、暂停/冻结、无障碍、空/不可用态；`swift build` + 全量测试 + verifier 绿。
 - AC5 性能：`MicaPerformanceBenchmarkTests` 绿且拓扑指标不回退；遥测 tick 仍零重绘（`policyStatusRevision` 门禁与 memo 测试保持）。
 - AC6 摘要条：`累计 …` 全值显示不截断（fixedSize 断言），分布条有最大宽度（源码断言）。
+- AC8 彩带形态：默认态边为填充带（源码断言闭合 Path + gradient fill），宽度取自 EdgeGeometry.width，不存在 0.75–2.5 描边 clamp；汇流处半透明叠加（用户目验）。
 - AC7 流向排序：单测构造已知交叉场景，断言排序后列内顺序使边平行化；同一拓扑输入两次布局输出逐位一致（确定性）；无入边节点沉底且名字序。
 
 ## 风险
