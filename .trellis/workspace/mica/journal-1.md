@@ -336,3 +336,29 @@ Completed and archived the native Logs, Rules, and Sources data-browser phase wh
 ### Status
 
 [OK] **Completed**
+
+## Session 11: 拓扑视图可读性与性能返工
+
+**Date**: 2026-08-23
+**Task**: 08-20-topology-readability-performance（用户反馈概览拓扑「又丑又卡」）
+**Branch**: `main`
+
+### Summary
+
+拓扑渲染层重组（全部在 WorkbenchOverviewTopology* 三文件 + 测试/verifier/契约内）：
+- 可读性：边线三层语义（非活跃 textTertiary 细线退背景、状态边携带控制器上报状态色、唯一 accent 主导轨迹）；中性节点 surfaceRaised 填充 + textTertiary 描边在近黑画布上可辨；标签/列标题移出 Canvas 进入系统文本 LabelBand（textPrimary/textSecondary 正确层级）；列标题 slice+clampedCenter 修复右列「代理链出口」截断。
+- 性能：每 band 从三层（Base Canvas + 全尺寸遮罩 + Highlight Canvas）减为单 opaque+linear Canvas（base/highlight 双 pass 合并）+ 文本层 + 命中层；BandLayers == 改比 policyStatusRevision: UInt64（遥测 tick 零重绘）；节点状态在 runtime 以 (policyRevision, topologyRevision) 双键 memo。
+- 行为保留：悬停 tooltip、inspector 同步、键盘/上下文菜单、命中测试、暂停/悬停冻结、accessibilityRepresentation 全部逐字未动（trellis-check 逐项确认）。
+- 验证：build 绿、306 测试/27 套件全绿（含 2 个新边界单测）、verifier 绿、契约文档同步；trellis-check 终审 AC1–AC6 全部 PASS、零 blocker、3 nit（1 已顺手清理：LiveSignal 陈旧注释）。
+- 残留：AC1 主观观感需用户在真实数据下目验。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f766c8d` | fix(overview): topology readability + performance rework (task 08-20) |
+| `a2c0dd2` | chore(task): archive 08-20-topology-readability-performance |
+
+### Status
+
+[OK] **Completed**
