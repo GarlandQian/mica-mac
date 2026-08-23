@@ -1247,12 +1247,14 @@ private struct OverviewTopologyAccessibilityGroup: View {
 }
 
 private enum OverviewTopologyDrawing {
-    /// Edge stroke priority (tasks 08-20 R1, 08-23 R2): the active trajectory
-    /// redraws in accent; while a selection exists every other edge fades to a
-    /// neutral mist; an edge touching a policy hop with a controller-reported
-    /// status carries that status color; otherwise the edge is a flow ribbon
-    /// tinted source-column -> target-column, so route families stay
-    /// traceable. Width follows the flow-proportional geometry width.
+    /// Edge rendering (task 08-23 R9): true sankey ribbons. The geometry
+    /// engine already packs flow-proportional widths into the node rects
+    /// (edge.width = flow * valueScale, y centers stacked per node), so the
+    /// band traces the true width between the packed endpoints - d3-sankey's
+    /// closed ribbon construction. Fill priority: selection accent 85% >
+    /// dimmed mist > controller-reported status 70% > default
+    /// source-to-target column-tint gradient at 45% (the community-consensus
+    /// 0.4-0.6 band keeps overlapping flows readable).
     static func drawEdge(
         _ edge: OverviewTopologyLayout.EdgeGeometry,
         status: MicaTheme.Status = .neutral,
@@ -1262,45 +1264,44 @@ private enum OverviewTopologyDrawing {
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
     ) {
-        var path = Path()
-        path.move(to: edge.source)
-        path.addCurve(to: edge.target, control1: edge.control1, control2: edge.control2)
-        let lineWidth = min(max(edge.width, 0.75), 2.5)
+        let half = max(edge.width, 1.5) / 2
+        var ribbon = Path()
+        ribbon.move(to: CGPoint(x: edge.source.x, y: edge.source.y - half))
+        ribbon.addCurve(
+            to: CGPoint(x: edge.target.x, y: edge.target.y - half),
+            control1: CGPoint(x: edge.control1.x, y: edge.control1.y - half),
+            control2: CGPoint(x: edge.control2.x, y: edge.control2.y - half)
+        )
+        ribbon.addLine(to: CGPoint(x: edge.target.x, y: edge.target.y + half))
+        ribbon.addCurve(
+            to: CGPoint(x: edge.source.x, y: edge.source.y + half),
+            control1: CGPoint(x: edge.control2.x, y: edge.control2.y + half),
+            control2: CGPoint(x: edge.control1.x, y: edge.control1.y + half)
+        )
+        ribbon.closeSubpath()
+
         if isHighlighted {
-            context.stroke(
-                path,
-                with: .color(MicaTheme.accent),
-                lineWidth: lineWidth + 1
-            )
+            context.fill(ribbon, with: .color(MicaTheme.accent.opacity(0.85)))
             return
         }
         if isDimmed {
-            context.stroke(
-                path,
-                with: .color(MicaTheme.edgeDimmed),
-                lineWidth: lineWidth
-            )
+            context.fill(ribbon, with: .color(MicaTheme.edgeDimmed))
             return
         }
         if status != .neutral {
-            context.stroke(
-                path,
-                with: .color(status.color.opacity(0.85)),
-                lineWidth: lineWidth
-            )
+            context.fill(ribbon, with: .color(status.color.opacity(0.7)))
             return
         }
-        context.stroke(
-            path,
+        context.fill(
+            ribbon,
             with: .linearGradient(
                 Gradient(colors: [
-                    sourceTint.opacity(0.55),
-                    targetTint.opacity(0.55),
+                    sourceTint.opacity(0.45),
+                    targetTint.opacity(0.45),
                 ]),
                 startPoint: edge.source,
                 endPoint: edge.target
-            ),
-            lineWidth: lineWidth
+            )
         )
     }
 
@@ -1327,17 +1328,12 @@ private enum OverviewTopologyDrawing {
             )
             return
         }
-        // Neutral pill (task 08-23 R3): a tinted fill + tinted stroke keeps
-        // neutral nodes legible on both appearances - the previous
-        // surface-on-surface pair read at ~2% contrast in light mode.
+        // Neutral anchor bar (task 08-23 R9): solid column-tint block, the
+        // sankey community standard - ribbons visually anchor on solid
+        // endpoints. Dimmed nodes recede so the active path owns the scene.
         context.fill(
             node.drawingPath,
-            with: .color(tint.opacity(isDimmed ? 0.07 : 0.14))
-        )
-        context.stroke(
-            node.drawingPath,
-            with: .color(tint.opacity(isDimmed ? 0.25 : 0.55)),
-            lineWidth: 1
+            with: .color(tint.opacity(isDimmed ? 0.35 : 1))
         )
     }
 }
