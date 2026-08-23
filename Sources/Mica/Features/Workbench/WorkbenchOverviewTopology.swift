@@ -733,6 +733,10 @@ enum OverviewTopologyLayoutBuilder {
     private static let edgeHitTolerance: CGFloat = 10
     private static let minimumNodeAcquisitionSize: CGFloat = 28
     private static let sankeyNodeWidth: CGFloat = 20
+    /// Task 08-23 R10: long chains widen the graph past the panel instead of
+    /// crushing labels into truncation; the viewport scrolls horizontally.
+    /// 168 leaves 132pt of label width (step - node width - 2x label gap).
+    private static let minimumColumnStep: CGFloat = 168
     private static let sankeyNodeGap: CGFloat = 8
     private static let nodeLabelGap: CGFloat = 8
     private static let sankeyCurveness: CGFloat = 0.5
@@ -803,7 +807,7 @@ enum OverviewTopologyLayoutBuilder {
         let topInset = OverviewTopologyLayout.columnHeaderHeight + 12
         let sideInset: CGFloat = 20
         let bottomInset: CGFloat = 32
-        let graphWidth = max(availableWidth.rounded(.down), 1)
+        let fittedWidth = max(availableWidth.rounded(.down), 1)
 
         var workCount = 0
         var edgeFlowByID: [String: CGFloat] = [:]
@@ -914,6 +918,11 @@ enum OverviewTopologyLayoutBuilder {
         }.min() ?? minimumFlowPixelsPerUnit
         let graphHeight = topInset + flowAreaHeight + bottomInset
         let columnCount = max(columnPlans.count, 1)
+        let graphWidth = max(
+            fittedWidth,
+            sideInset * 2 + sankeyNodeWidth
+                + minimumColumnStep * CGFloat(max(columnCount - 1, 0))
+        )
         let usableColumnSpan = max(
             graphWidth - sideInset * 2 - sankeyNodeWidth,
             0
