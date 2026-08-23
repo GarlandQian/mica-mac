@@ -410,11 +410,18 @@ a split.
   reported name within that layer, and aggregated edges retain their real count
   while layout band width uses `log10(count + 1) * 10`. The width-fitted Sankey uses
   20-point node bars, 8-point gaps, flat cubic edge strokes, and full-trajectory
-  hover/pin highlighting. Edges render as quiet 1.5-point neutral strokes and
-  the active, hovered, or pinned trajectory redraws at 2 points in the signal
-  accent; node bars fill with the controller-reported status color when one
-  exists, the neutral raised surface with a hairline border otherwise, and the
-  accent when the path is active. Hover and explicit pause freeze only the presented
+  hover/pin highlighting. Edge strokes are tiered (task 08-20): quiet neutral
+  hairlines recede into the background, an edge touching a policy hop with a
+  controller-reported status carries that status color, widths follow the
+  flow-proportional geometry width clamped to 0.75-2.5 points, and the single
+  active, hovered, or pinned trajectory redraws one point wider in the signal
+  accent while the rest of the graph dims through reduced-opacity strokes and
+  fills. Node bars fill with the controller-reported status color when one
+  exists, the neutral raised surface with a tertiary-contrast 1-point border
+  otherwise, and the accent when the path is active. Each band renders through
+  exactly one opaque, linear-composited Canvas (base and highlight passes
+  merged) plus a dedicated system-text label layer; band equality gates on the
+  structure/policy revisions so telemetry ticks never redraw the graph. Hover and explicit pause freeze only the presented
   snapshot; ingestion continues and resume catches up to the latest real frame.
   Inline expansion, complete accessible path rows, and navigation to Connections
   stay in the same window. The graph has no nested scroll axis and grows
@@ -443,9 +450,12 @@ a split.
   and one native context menu mirrors path stepping, pin/unpin, clear, and
   eligible navigation. VoiceOver exposes policy nodes and paths with pinned
   state, factual inspection values, and direct navigation. Ordered path IDs and their
-  index map keep path stepping constant-time. Canvas labels resolve the complete
-  reported node name at the active Mica font scale and clip it to the local
-  label rectangle; never rewrite reported names with fixed character-count
+  index map keep path stepping constant-time. Node labels and column titles
+  render in the label layer through the system text pipeline at the active
+  Mica font scale, positioned exactly on the geometry engine's label
+  rectangles, truncating to the fitted slice; column title centers clamp so
+  even the trailing column title stays fully inside the band. Never rewrite
+  reported names with fixed character-count
   truncation or extend a label target to the next column. Sparse topology keeps
   a width-responsive 680-to-920-point minimum flow area; dense columns may grow
   beyond it.

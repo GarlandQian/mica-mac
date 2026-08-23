@@ -46,9 +46,43 @@ final class OverviewTopologyRuntime {
 
     @ObservationIgnored let presentationCache = OverviewTopologyPresentationCache()
     @ObservationIgnored let policyInspectionCache = OverviewPolicyInspectionCache()
+    @ObservationIgnored private var nodeStatusCache:
+        (policyRevision: UInt64, topologyRevision: UInt64, map: [String: MicaTheme.Status])?
 
     func togglePause() {
         isPaused.toggle()
+    }
+
+    /// Controller-reported status per policy-hop node, memoized on the policy
+    /// catalog + topology revisions (task 08-20 R5): telemetry ticks flip
+    /// neither key, so they never re-resolve the catalog nor invalidate the
+    /// band equality gate.
+    func nodeStatuses(
+        topology: ConnectionTopology,
+        topologyRevision: UInt64,
+        policyRevision: UInt64,
+        catalog: PolicyGroupCatalogSnapshot
+    ) -> [String: MicaTheme.Status] {
+        if let cache = nodeStatusCache,
+           cache.policyRevision == policyRevision,
+           cache.topologyRevision == topologyRevision {
+            return cache.map
+        }
+        let policyIndex = policyInspectionCache.resolve(
+            revision: policyRevision,
+            catalog: catalog
+        )
+        var statuses: [String: MicaTheme.Status] = [:]
+        statuses.reserveCapacity(topology.nodes.count)
+        for node in topology.nodes {
+            guard case .policyHop = node.columnID else { continue }
+            statuses[node.id] = OverviewTopologyNodeStatus.resolve(
+                name: node.name,
+                policyIndex: policyIndex
+            )
+        }
+        nodeStatusCache = (policyRevision, topologyRevision, statuses)
+        return statuses
     }
 }
 
