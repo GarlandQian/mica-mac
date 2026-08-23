@@ -627,17 +627,20 @@ struct WorkbenchOverviewPerformanceTests {
             structureReuseCount: 0
         ))
 
+        // Task 08-23 R10: this fixture has 5 columns, so the minimum column
+        // step floors the graph at 732; resize above the floor to keep
+        // exercising width-following re-layout.
         let resizedRequest = OverviewTopologyRequest(
             generation: generation,
             revision: 41,
-            availableWidth: 608
+            availableWidth: 768
         )
         let resized = try await cache.resolve(
             request: resizedRequest,
             connections: metricsOnlyFrame
         )
         #expect(resized.topology == initial.topology)
-        #expect(resized.layout.size.width == 608)
+        #expect(resized.layout.size.width == 768)
         #expect(cache.statistics == OverviewTopologyPresentationCache.Statistics(
             topologyBuildCount: 1,
             topologyIndexBuildCount: 1,

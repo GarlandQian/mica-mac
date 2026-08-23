@@ -411,8 +411,12 @@ a split.
   flow-weighted barycenter of its upstream neighbors with name-order tiebreaks
   (task 08-23) so parallel flows become near-parallel edges instead of maximal
   crossings. Aggregated edges retain their real count
-  while layout band width uses `log10(count + 1) * 10`. The width-fitted Sankey uses
-  20-point node bars, 8-point gaps, flat cubic edge strokes, and full-trajectory
+  while layout band width uses `log10(count + 1) * 10`. The Sankey fits the
+  panel width until the column count would compress columns below a 168-point
+  minimum step; longer chains widen the graph past the panel and the viewport
+  scrolls horizontally instead of truncating labels (task 08-23 R10). The
+  graph uses 20-point node bars, 8-point gaps, true flow-width ribbons, and
+  full-trajectory
   hover/pin highlighting. Edge strokes are tiered (tasks 08-20, 08-23): the
   single active, hovered, or pinned trajectory redraws one point wider in the
   signal accent; while a selection exists every other edge fades to an explicit
@@ -436,8 +440,9 @@ a split.
   structure/policy revisions so telemetry ticks never redraw the graph. Hover and explicit pause freeze only the presented
   snapshot; ingestion continues and resume catches up to the latest real frame.
   Inline expansion, complete accessible path rows, and navigation to Connections
-  stay in the same window. The graph has no nested scroll axis and grows
-  vertically with its densest column. Visible node bars win hit testing first,
+  stay in the same window. The graph grows vertically with its densest
+  column (no nested vertical scroll axis); horizontal scrolling appears only
+  when long chains exceed the panel width (task 08-23 R10). Visible node bars win hit testing first,
   ribbons win over overlapping invisible node padding, and bounded label-adjacent
   node targets use a local 28-point acquisition size while ribbons use a
   10-point baseline tolerance. The layout builds `nodeGeometryByID` once so hit

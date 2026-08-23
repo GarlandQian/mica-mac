@@ -18,6 +18,8 @@
 - [x] 2.5 build 绿。
 - [x] 2.6 R9 彩带化：drawEdge 闭合 ribbon Path + 渐变填充（design.md §4.5）；中性节点实心列色块；契约/verifier 同步；门禁重跑。
 
+- [x] 2.7 R10 长链防截断：minimumColumnStep=168 + 图加宽 + 横向滚动；新增 7 列/短链宽度单测；契约/verifier 同步。
+
 ## Phase 3 — 验证与同步
 
 - [x] 3.1 全量测试 + MicaPerformanceBenchmarkTests + verifier 绿（verifier 断言同步：渐变、列色、刻线、fixedSize、maxWidth）。

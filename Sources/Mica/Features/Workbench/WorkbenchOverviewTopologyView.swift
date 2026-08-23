@@ -376,22 +376,31 @@ private struct OverviewTopologyViewport: View {
     }
 
     private var topologyGraph: some View {
-        LazyVStack(spacing: 0) {
-            ForEach(layout.renderBands) { band in
-                OverviewTopologyBandLayers(
-                    request: request,
-                    band: band,
-                    layout: layout,
-                    language: language,
-                    allowsMotion: allowsMotion,
-                    policyStatusRevision: appModel.policyGroupCatalogRevision,
-                    nodeStatusByID: nodeStatusByID,
-                    interaction: interaction
-                )
-                .equatable()
+        // Task 08-23 R10: when long chains widen the graph past the panel the
+        // viewport scrolls horizontally; graphs narrower than the panel stay
+        // centered via the second frame's center alignment.
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyVStack(spacing: 0) {
+                ForEach(layout.renderBands) { band in
+                    OverviewTopologyBandLayers(
+                        request: request,
+                        band: band,
+                        layout: layout,
+                        language: language,
+                        allowsMotion: allowsMotion,
+                        policyStatusRevision: appModel.policyGroupCatalogRevision,
+                        nodeStatusByID: nodeStatusByID,
+                        interaction: interaction
+                    )
+                    .equatable()
+                }
             }
+            .frame(width: layout.size.width, height: layout.size.height)
+            .frame(
+                width: max(layout.size.width, CGFloat(request.availableWidth)),
+                alignment: .center
+            )
         }
-        .frame(width: layout.size.width, height: layout.size.height)
         .frame(height: layout.size.height)
         .frame(maxWidth: .infinity, alignment: .center)
         .background(

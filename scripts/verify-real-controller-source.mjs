@@ -1272,7 +1272,8 @@ assertIncludes(overviewTopologyIdleSummary, "overview.connection_count", "Idle t
 assertIncludes(overviewTopologyIdleSummary, "overview.topology_unavailable_paths", "Idle topology summary must expose unavailable real paths");
 assertExcludes(overviewTopologyIdleSummary, "WorkbenchSymbol(", "Idle topology summary must not repeat the section icon");
 assertExcludes(overviewTopologyView, "WorkbenchCommandSummary(", "Topology must not repeat its section identity in a second command summary");
-assertIncludes(overviewTopology, "let graphWidth = max(availableWidth.rounded(.down), 1)", "Topology layout must be bounded by the measured module width");
+assertIncludes(overviewTopology, "let fittedWidth = max(availableWidth.rounded(.down), 1)", "Topology layout must start from the measured module width");
+assertIncludes(overviewTopology, "fittedWidth,", "Topology width must be the maximum of the measured module width and the minimum-column-step floor (task 08-23 R10)");
 assertIncludes(overviewTopology, "static let columnHeaderHeight: CGFloat = 40", "Topology columns must reserve a legible header geometry");
 assertIncludes(overviewTopology, "let topInset = OverviewTopologyLayout.columnHeaderHeight + 12", "Topology must reserve only its column-header inset");
 assertIncludes(overviewTopology, "private let nodeGeometryByID", "Topology HUD anchoring must use an O(1) node geometry index");
@@ -1319,6 +1320,8 @@ assertIncludes(overviewTopologyView, "OverviewTopologyProjection.columnTint(for:
 assertIncludes(overviewTopologyView, "uniqueKeysWithValues: layout.nodes.map", "Topology tint lookup must cover the FULL layout, never a band-local node slice - cross-band edges share bands without sharing nodes (task 08-23 F1)");
 assertIncludes(overviewTopologyView, "with: .linearGradient(", "Topology flow edges must render as source-to-target tint gradients (task 08-23 R2)");
 assertIncludes(overviewTopologyView, "ribbon.closeSubpath()", "Topology flow edges must render as closed sankey ribbons at their true flow width (task 08-23 R9)");
+assertIncludes(overviewTopology, "minimumColumnStep: CGFloat = 168", "Topology must enforce a minimum column step so long chains never crush labels (task 08-23 R10)");
+assertIncludes(overviewTopologyView, "ScrollView(.horizontal, showsIndicators: false)", "Topology viewport must scroll horizontally when long chains widen the graph (task 08-23 R10)");
 assertExcludes(overviewTopologyView, "min(max(edge.width, 0.75), 2.5)", "Topology ribbons must not clamp edges to hairline stroke widths (task 08-23 R9)");
 assertIncludes(overviewTopologyView, "MicaTheme.edgeDimmed", "Topology dimmed edges must use the explicit alpha-baked mist token, never bare tertiary label alpha (task 08-23 R5)");
 assertIncludes(overviewTopologyView, "columnHeaderHeight - 6", "Topology column identity ticks must sit directly under the titles (task 08-23 R4)");

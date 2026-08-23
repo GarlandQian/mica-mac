@@ -531,6 +531,46 @@ struct ConnectionTopologyTests {
         #expect(again.nodes.map(\.rect) == layout.nodes.map(\.rect))
     }
 
+    /// R10/AC9: long chains must widen the graph past the panel (minimum
+    /// column step) instead of crushing labels into truncation.
+    @Test func topologyLayoutWidensForLongChains() async throws {
+        let topology = ConnectionTopologyBuilder.build(from: [
+            connection(
+                id: "a1",
+                sourceIP: "10.0.0.1",
+                rule: "RuleSet",
+                rulePayload: "B-Rule",
+                chains: ["Final", "Hop4", "Hop3", "Hop2", "Hop1"]
+            )
+        ])
+        let layout = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 800
+        )
+        // 7 columns (source, rule, four hops, final) x minimum step 168:
+        // 20*2 insets + 20 node width + 168*6 = 1068 > 800 panel.
+        #expect(layout.columns.count == 7)
+        #expect(layout.size.width == 1068)
+        // Labels keep the full 168 - 20 node - 2x8 gap = 132pt slot.
+        for node in layout.nodes {
+            #expect(node.labelRect.width == 132)
+        }
+        // A short chain still fits the panel exactly (no gratuitous scroll).
+        let short = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: ConnectionTopologyBuilder.build(from: [
+                connection(
+                    id: "b1",
+                    sourceIP: "10.0.0.2",
+                    rule: "RuleSet",
+                    rulePayload: "B-Rule",
+                    chains: ["Final", "Hop1"]
+                )
+            ]),
+            availableWidth: 800
+        )
+        #expect(short.size.width == 800)
+    }
+
     /// R8/AC7 fallback: nodes with no incoming edge (sources at layout time,
     /// defensively any orphan) sort below every flow-connected node.
     @Test func topologyBarycenterSinksOrphanNodes() {
