@@ -1544,3 +1544,76 @@ enum OverviewTopologyProjection {
         return trimmed.isEmpty ? nil : value
     }
 }
+
+
+// MARK: - Column header geometry (task 08-20 R4)
+
+/// Pure column-header placement helpers: titles stay fully inside their render
+/// band at any panel width, so the trailing column title can never be clipped
+/// by the panel shape.
+enum OverviewTopologyHeaderGeometry {
+    /// Horizontal slice a column title may occupy without overlapping a
+    /// neighbor title: twice the distance to the nearest column center, capped
+    /// at the band width.
+    static func sliceWidth(
+        for column: OverviewTopologyLayout.ColumnGeometry,
+        in band: OverviewTopologyLayout.RenderBand
+    ) -> CGFloat {
+        let centers = band.columns.map(\.centerX)
+        guard let index = centers.firstIndex(of: column.centerX) else {
+            return max(band.bounds.width, 1)
+        }
+        var slice = band.bounds.width
+        if index > 0 {
+            slice = min(slice, 2 * abs(centers[index] - centers[index - 1]))
+        }
+        if index < centers.count - 1 {
+            slice = min(slice, 2 * abs(centers[index + 1] - centers[index]))
+        }
+        return max(min(slice, band.bounds.width), 1)
+    }
+
+    /// Title center clamped so the whole slice - and therefore the title,
+    /// which truncates to the slice - stays inside the band.
+    static func clampedCenter(
+        sliceWidth: CGFloat,
+        columnCenterX: CGFloat,
+        bandWidth: CGFloat
+    ) -> CGFloat {
+        let boundedWidth = max(bandWidth, 1)
+        let half = min(max(sliceWidth, 1), boundedWidth) / 2
+        return min(max(columnCenterX, half), max(boundedWidth - half, half))
+    }
+}
+
+// MARK: - Node status (moved from the topology view in task 08-20)
+
+/// Controller-reported status resolution for policy-hop nodes. Internal (not
+/// private) so `OverviewTopologyRuntime` can memoize per-revision results.
+enum OverviewTopologyNodeStatus {
+    static func resolve(
+        name: String,
+        policyIndex: OverviewPolicyInspectionIndex
+    ) -> MicaTheme.Status {
+        let delay: Int?
+        switch policyIndex.resolve(name: name) {
+        case .group(let group):
+            delay = group.selectedMember.delay
+        case .member(let member):
+            delay = member.delay
+        case .ambiguous, .missing:
+            delay = nil
+        }
+        guard let delay, delay > 0 else { return .neutral }
+        switch LatencyHealthGrade.allCases.first(where: { $0.includes(delay: delay) }) {
+        case .fast?, .normal?:
+            return .ok
+        case .slow?:
+            return .warning
+        case .timeout?:
+            return .error
+        case nil:
+            return .neutral
+        }
+    }
+}

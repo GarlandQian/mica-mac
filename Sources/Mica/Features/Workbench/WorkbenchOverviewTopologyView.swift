@@ -35,8 +35,8 @@ struct OverviewTopologySection: View {
 
 /// Second-bucketed live-signal value retained for the pause/motion projection
 /// contract (`motionProjectionIsStaticForPauseInactiveAndReduceMotion`). The flat
-/// Mica Ops renderer no longer threads it into band rendering; a later phase
-/// removes the remaining consumers with the neon visual system.
+/// Mica Ops renderer never threads it into band rendering; band redraws gate on
+/// the topology/policy revisions instead (task 08-20).
 struct OverviewTopologyLiveSignal: Equatable, Sendable {
     let trafficSecond: Int64?
     let connectionMetricsRevision: UInt64
@@ -320,7 +320,6 @@ private struct OverviewTopologyViewport: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var controlActiveState
-    @Environment(\.micaAppFontScale) private var fontScale
 
     let topology: ConnectionTopology
     let request: OverviewTopologyRequest
@@ -384,8 +383,8 @@ private struct OverviewTopologyViewport: View {
                     band: band,
                     layout: layout,
                     language: language,
-                    fontScale: fontScale,
                     allowsMotion: allowsMotion,
+                    policyStatusRevision: appModel.policyGroupCatalogRevision,
                     nodeStatusByID: nodeStatusByID,
                     interaction: interaction
                 )
@@ -548,22 +547,17 @@ private struct OverviewTopologyViewport: View {
             && !appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused
     }
 
-    /// Controller-reported status per node. Only policy-hop nodes resolve a
-    /// reportable signal (policy-catalog latency); every other node stays neutral.
+    /// Controller-reported status per node, memoized on the runtime keyed by
+    /// (policy catalog revision, topology revision): telemetry-only updates
+    /// flip neither key, so they never re-resolve the catalog nor invalidate
+    /// the band equality gate (task 08-20 R5).
     private var nodeStatusByID: [String: MicaTheme.Status] {
-        let policyIndex = runtime.policyInspectionCache.resolve(
-            revision: appModel.policyGroupCatalogRevision,
+        runtime.nodeStatuses(
+            topology: topology,
+            topologyRevision: request.revision,
+            policyRevision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
-        var statuses: [String: MicaTheme.Status] = [:]
-        for node in topology.nodes {
-            guard case .policyHop = node.columnID else { continue }
-            statuses[node.id] = OverviewTopologyNodeStatus.resolve(
-                name: node.name,
-                policyIndex: policyIndex
-            )
-        }
-        return statuses
     }
 }
 
@@ -717,18 +711,22 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
     let band: OverviewTopologyLayout.RenderBand
     let layout: OverviewTopologyLayout
     let language: AppLanguage
-    let fontScale: AppFontScale
     let allowsMotion: Bool
+    let policyStatusRevision: UInt64
     let nodeStatusByID: [String: MicaTheme.Status]
     let interaction: OverviewTopologyInteractionState
 
+    /// Redraw gate (task 08-20 R5): the status dictionary is deliberately not
+    /// compared - its UInt64 revision stands in. Telemetry ticks flip neither
+    /// the topology revision nor the policy revision, so they never invalidate
+    /// a band; selection changes still propagate through the interaction
+    /// reference's observation.
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.request == rhs.request
             && lhs.band.id == rhs.band.id
             && lhs.language == rhs.language
-            && lhs.fontScale == rhs.fontScale
             && lhs.allowsMotion == rhs.allowsMotion
-            && lhs.nodeStatusByID == rhs.nodeStatusByID
+            && lhs.policyStatusRevision == rhs.policyStatusRevision
             && lhs.interaction === rhs.interaction
     }
 
@@ -737,17 +735,15 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
             OverviewTopologyBaseBand(
                 request: request,
                 band: band,
-                language: language,
-                fontScale: fontScale,
-                nodeStatusByID: nodeStatusByID
+                allowsMotion: allowsMotion,
+                nodeStatusByID: nodeStatusByID,
+                interaction: interaction
             )
             .equatable()
 
-            OverviewTopologyHighlightBand(
+            OverviewTopologyLabelBand(
                 band: band,
-                fontScale: fontScale,
-                allowsMotion: allowsMotion,
-                interaction: interaction
+                language: language
             )
 
             OverviewTopologyHitBand(
@@ -766,27 +762,34 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
     }
 }
 
+/// Single drawing layer (task 08-20 R6): one opaque, linear-composited Canvas
+/// paints the panel base, the tiered edges, and the node bars - including the
+/// accent highlight pass for the active selection. The previous overlay-dim +
+/// second-Canvas highlight layer is gone, and no text is resolved here any
+/// more (labels live in `OverviewTopologyLabelBand`).
 private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
     let request: OverviewTopologyRequest
     let band: OverviewTopologyLayout.RenderBand
-    let language: AppLanguage
-    let fontScale: AppFontScale
+    let allowsMotion: Bool
     let nodeStatusByID: [String: MicaTheme.Status]
+    let interaction: OverviewTopologyInteractionState
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.request == rhs.request
             && lhs.band.id == rhs.band.id
-            && lhs.language == rhs.language
-            && lhs.fontScale == rhs.fontScale
+            && lhs.allowsMotion == rhs.allowsMotion
             && lhs.nodeStatusByID == rhs.nodeStatusByID
+            && lhs.interaction === rhs.interaction
     }
 
     var body: some View {
+        let snapshot = interaction.snapshot
+        let statusByID = nodeStatusByID
         Canvas(
-            opaque: false,
-            colorMode: .nonLinear,
+            opaque: true,
+            colorMode: .linear,
             rendersAsynchronously: true
-        ) { context, _ in
+        ) { context, size in
             MicaPerformanceObservation.recordDebug(
                 .topologyCanvasPresentation,
                 metadata: MicaPerformanceMetadata(
@@ -801,98 +804,143 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                     revision: request.revision
                 )
             )
+            // Panel base fill keeps the opaque canvas indistinguishable from
+            // the surrounding surface panel.
+            context.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .color(MicaTheme.surface)
+            )
             context.translateBy(x: 0, y: -band.bounds.minY)
 
-            for edge in band.edges {
-                OverviewTopologyDrawing.drawEdge(edge, in: &context)
-            }
+            let highlightedEdgeIDs = snapshot.highlight.edgeIDs
+            let highlightedNodeIDs = snapshot.highlight.nodeIDs
+            let isDimmed = snapshot.activeSelection != nil
 
-            for column in band.columns {
-                let title = context.resolve(
-                    Text(
-                        verbatim: OverviewTopologyProjection.columnTitle(
-                            column.id,
-                            language: language
-                        )
-                    )
-                    .font(MicaTheme.font(for: .label, scale: fontScale, weight: .semibold))
-                    .foregroundStyle(MicaTheme.textSecondary)
-                )
-                context.draw(
-                    title,
-                    at: CGPoint(
-                        x: column.centerX,
-                        y: OverviewTopologyLayout.columnHeaderHeight / 2
-                    ),
-                    anchor: .center
-                )
-            }
-
-            for node in band.nodes {
-                OverviewTopologyDrawing.drawNode(
-                    node,
-                    status: nodeStatusByID[node.node.id] ?? .neutral,
-                    fontScale: fontScale,
+            // Pass 1: everything not on the active trajectory, tiered by the
+            // controller-reported status of the policy hop the edge touches.
+            for edge in band.edges where !highlightedEdgeIDs.contains(edge.edge.id) {
+                let targetStatus = statusByID[edge.edge.targetID] ?? .neutral
+                let status = targetStatus != .neutral
+                    ? targetStatus
+                    : statusByID[edge.edge.sourceID] ?? .neutral
+                OverviewTopologyDrawing.drawEdge(
+                    edge,
+                    status: status,
+                    isDimmed: isDimmed,
                     in: &context
                 )
             }
-        }
-        .accessibilityHidden(true)
-    }
-}
+            for node in band.nodes where !highlightedNodeIDs.contains(node.node.id) {
+                OverviewTopologyDrawing.drawNode(
+                    node,
+                    status: statusByID[node.node.id] ?? .neutral,
+                    isDimmed: isDimmed,
+                    in: &context
+                )
+            }
 
-private struct OverviewTopologyHighlightBand: View {
-    let band: OverviewTopologyLayout.RenderBand
-    let fontScale: AppFontScale
-    let allowsMotion: Bool
-    let interaction: OverviewTopologyInteractionState
-
-    var body: some View {
-        let snapshot = interaction.snapshot
-
-        ZStack {
-            MicaTheme.canvas
-                .opacity(snapshot.activeSelection == nil ? 0 : 0.34)
-
-            Canvas { context, _ in
-                guard snapshot.activeSelection != nil else { return }
+            // Pass 2: the single dominant trajectory redraws in accent.
+            if isDimmed {
                 MicaPerformanceObservation.recordDebug(
                     .topologyHighlightPresentation,
                     metadata: MicaPerformanceMetadata(
                         count: UInt64(
-                            snapshot.highlight.nodeIDs.count
-                                + snapshot.highlight.edgeIDs.count
-                        )
+                            highlightedNodeIDs.count + highlightedEdgeIDs.count
+                        ),
+                        revision: request.revision
                     )
                 )
-                context.translateBy(x: 0, y: -band.bounds.minY)
-
-                for edge in band.edges
-                    where snapshot.highlight.edgeIDs.contains(edge.edge.id) {
+                for edge in band.edges where highlightedEdgeIDs.contains(edge.edge.id) {
                     OverviewTopologyDrawing.drawEdge(
                         edge,
                         isHighlighted: true,
                         in: &context
                     )
                 }
-                for node in band.nodes
-                    where snapshot.highlight.nodeIDs.contains(node.node.id) {
+                for node in band.nodes where highlightedNodeIDs.contains(node.node.id) {
                     OverviewTopologyDrawing.drawNode(
                         node,
                         status: .neutral,
                         isHighlighted: true,
-                        fontScale: fontScale,
                         in: &context
                     )
                 }
             }
         }
-        .allowsHitTesting(false)
         .accessibilityHidden(true)
         .micaStateChangeAnimation(
             allowsMotion ? MicaTheme.Motion.stateChange : nil,
             value: snapshot.activeSelection
         )
+    }
+}
+
+/// Text layer (task 08-20 R3/R7): column titles and node labels render through
+/// the system text pipeline - no per-redraw Canvas text resolution or width
+/// measurement. Positions mirror the geometry engine's label rects exactly;
+/// the layer never intercepts hits and stays hidden from accessibility (the
+/// graph's accessibility representation owns that contract).
+private struct OverviewTopologyLabelBand: View {
+    @Environment(\.micaAppFontScale) private var fontScale
+
+    let band: OverviewTopologyLayout.RenderBand
+    let language: AppLanguage
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(band.columns, id: \.id) { column in
+                columnTitle(column)
+            }
+            ForEach(band.nodes, id: \.node.id) { node in
+                nodeLabel(node)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func columnTitle(
+        _ column: OverviewTopologyLayout.ColumnGeometry
+    ) -> some View {
+        let slice = OverviewTopologyHeaderGeometry.sliceWidth(
+            for: column,
+            in: band
+        )
+        return Text(
+            verbatim: OverviewTopologyProjection.columnTitle(
+                column.id,
+                language: language
+            )
+        )
+        .micaThemeFont(.label, weight: .semibold)
+        .foregroundStyle(MicaTheme.textSecondary)
+        .lineLimit(1)
+        .frame(width: slice)
+        .position(
+            x: OverviewTopologyHeaderGeometry.clampedCenter(
+                sliceWidth: slice,
+                columnCenterX: column.centerX - band.bounds.minX,
+                bandWidth: band.bounds.width
+            ),
+            y: OverviewTopologyLayout.columnHeaderHeight / 2
+        )
+    }
+
+    private func nodeLabel(
+        _ node: OverviewTopologyLayout.NodeGeometry
+    ) -> some View {
+        Text(verbatim: node.node.name)
+            .micaThemeFont(.label)
+            .foregroundStyle(MicaTheme.textPrimary)
+            .lineLimit(1)
+            .frame(
+                width: max(node.labelRect.width, 1),
+                alignment: node.labelSide == .leading ? .leading : .trailing
+            )
+            .position(
+                x: node.labelRect.midX - band.bounds.minX,
+                y: node.labelRect.midY - band.bounds.minY
+            )
     }
 }
 
@@ -1143,109 +1191,65 @@ private struct OverviewTopologyAccessibilityGroup: View {
     }
 }
 
-private enum OverviewTopologyNodeStatus {
-    /// Maps the controller-reported policy latency to a Mica Ops status. Missing
-    /// or non-positive delays carry no status and stay on the neutral surface.
-    static func resolve(
-        name: String,
-        policyIndex: OverviewPolicyInspectionIndex
-    ) -> MicaTheme.Status {
-        let delay: Int?
-        switch policyIndex.resolve(name: name) {
-        case .group(let group):
-            delay = group.selectedMember.delay
-        case .member(let member):
-            delay = member.delay
-        case .ambiguous, .missing:
-            delay = nil
-        }
-        guard let delay, delay > 0 else { return .neutral }
-        switch LatencyHealthGrade.allCases.first(where: { $0.includes(delay: delay) }) {
-        case .fast?, .normal?:
-            return .ok
-        case .slow?:
-            return .warning
-        case .timeout?:
-            return .error
-        case nil:
-            return .neutral
-        }
-    }
-}
-
 private enum OverviewTopologyDrawing {
-    /// Flat Mica Ops edge: one quiet 1.5pt neutral cubic stroke; the
-    /// active/hovered/pinned trajectory redraws at 2pt in the signal accent.
-    /// No gradient ribbons, glow, bloom, or energy strokes.
+    /// Tiered edge stroke (task 08-20 R1): quiet neutral hairlines recede into
+    /// the background, an edge touching a policy hop with a controller-reported
+    /// status carries that status color, and the single active trajectory
+    /// redraws in accent. Width follows the flow-proportional geometry width.
     static func drawEdge(
         _ edge: OverviewTopologyLayout.EdgeGeometry,
+        status: MicaTheme.Status = .neutral,
+        isDimmed: Bool = false,
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
     ) {
         var path = Path()
         path.move(to: edge.source)
         path.addCurve(to: edge.target, control1: edge.control1, control2: edge.control2)
-        context.stroke(
-            path,
-            with: .color(isHighlighted ? MicaTheme.accent : MicaTheme.textSecondary),
-            lineWidth: isHighlighted ? 2 : 1.5
-        )
+        let lineWidth = min(max(edge.width, 0.75), 2.5)
+        if isHighlighted {
+            context.stroke(
+                path,
+                with: .color(MicaTheme.accent),
+                lineWidth: lineWidth + 1
+            )
+            return
+        }
+        let color = status == .neutral
+            ? MicaTheme.textTertiary.opacity(isDimmed ? 0.22 : 0.5)
+            : status.color.opacity(isDimmed ? 0.3 : 0.85)
+        context.stroke(path, with: .color(color), lineWidth: lineWidth)
     }
 
-    /// Node bar: controller-reported status color when the policy catalog reports
-    /// one, neutral raised surface otherwise; the active path redraws in accent.
+    /// Node bar (task 08-20 R2): controller-reported status fill when the
+    /// policy catalog reports one; neutral bars read against the near-black
+    /// canvas through a raised fill plus a tertiary-contrast stroke. The
+    /// active trajectory redraws in accent. Labels render in
+    /// `OverviewTopologyLabelBand`, not here.
     static func drawNode(
         _ node: OverviewTopologyLayout.NodeGeometry,
         status: MicaTheme.Status,
+        isDimmed: Bool = false,
         isHighlighted: Bool = false,
-        fontScale: AppFontScale,
         in context: inout GraphicsContext
     ) {
         if isHighlighted {
             context.fill(node.drawingPath, with: .color(MicaTheme.accent))
         } else if status == .neutral {
-            context.fill(node.drawingPath, with: .color(MicaTheme.surfaceRaised))
+            context.fill(
+                node.drawingPath,
+                with: .color(MicaTheme.surfaceRaised.opacity(isDimmed ? 0.45 : 1))
+            )
             context.stroke(
                 node.drawingPath,
-                with: .color(MicaTheme.separator),
-                lineWidth: MicaTheme.Shape.hairline
+                with: .color(MicaTheme.textTertiary.opacity(isDimmed ? 0.3 : 1)),
+                lineWidth: 1
             )
         } else {
-            context.fill(node.drawingPath, with: .color(status.color))
+            context.fill(
+                node.drawingPath,
+                with: .color(status.color.opacity(isDimmed ? 0.4 : 1))
+            )
         }
-        let label = context.resolve(
-            Text(verbatim: node.node.name)
-                .font(MicaTheme.font(for: .label, scale: fontScale))
-                .foregroundStyle(.primary)
-        )
-        let labelPoint: CGPoint
-        let labelAnchor: UnitPoint
-        switch node.labelSide {
-        case .leading:
-            labelPoint = CGPoint(x: node.labelRect.minX, y: node.labelRect.midY)
-            labelAnchor = .leading
-        case .trailing:
-            let measuredLabelWidth = label.measure(
-                in: CGSize(
-                    width: CGFloat.greatestFiniteMagnitude,
-                    height: node.labelRect.height
-                )
-            ).width
-            if measuredLabelWidth <= node.labelRect.width {
-                labelPoint = CGPoint(x: node.labelRect.maxX, y: node.labelRect.midY)
-                labelAnchor = .trailing
-            } else {
-                labelPoint = CGPoint(x: node.labelRect.minX, y: node.labelRect.midY)
-                labelAnchor = .leading
-            }
-        }
-        var labelContext = context
-        labelContext.clip(to: Path(node.labelRect))
-        labelContext.draw(
-            label,
-            at: labelPoint,
-            anchor: labelAnchor
-        )
     }
-
 }

@@ -1049,21 +1049,28 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(topologyViewSource.contains("catalog: appModel.policyGroupCatalog"))
         #expect(topologyViewSource.contains("interaction.clearSelection"))
 
-            let bandLayers = try sourceSection(
-                topologyViewSource,
-                from: "private struct OverviewTopologyBandLayers",
-                to: "private struct OverviewTopologyBaseBand"
-            )
-            #expect(bandLayers.contains("allowsMotion: allowsMotion"))
-            #expect(topologyViewSource.contains("revision: catalog.structureRevision"))
-            let highlightBand = try sourceSection(
-                topologyViewSource,
-                from: "private struct OverviewTopologyHighlightBand",
-                to: "private struct OverviewTopologyHitBand"
-            )
-            #expect(highlightBand.contains("allowsMotion ? MicaTheme.Motion.stateChange : nil"))
-            #expect(highlightBand.contains("value: snapshot.activeSelection"))
-            #expect(!topologyViewSource.contains("TimelineView"))
+        let bandLayers = try sourceSection(
+            topologyViewSource,
+            from: "private struct OverviewTopologyBandLayers",
+            to: "private struct OverviewTopologyBaseBand"
+        )
+        #expect(bandLayers.contains("allowsMotion: allowsMotion"))
+        #expect(bandLayers.contains("policyStatusRevision == rhs.policyStatusRevision"))
+        #expect(!bandLayers.contains("nodeStatusByID == rhs.nodeStatusByID"))
+        #expect(topologyViewSource.contains("revision: catalog.structureRevision"))
+        // Task 08-20: the highlight overlay + second Canvas merged into the
+        // single opaque/linear base canvas; labels render in a dedicated layer.
+        let baseBand = try sourceSection(
+            topologyViewSource,
+            from: "private struct OverviewTopologyBaseBand",
+            to: "private struct OverviewTopologyLabelBand"
+        )
+        #expect(baseBand.contains("opaque: true"))
+        #expect(baseBand.contains("colorMode: .linear"))
+        #expect(baseBand.contains("allowsMotion ? MicaTheme.Motion.stateChange : nil"))
+        #expect(baseBand.contains("value: snapshot.activeSelection"))
+        #expect(!topologyViewSource.contains("OverviewTopologyHighlightBand"))
+        #expect(!topologyViewSource.contains("TimelineView"))
 
         #expect(topologySource.contains("private let nodeGeometryByID"))
         #expect(topologySource.contains("func nodeGeometry(id: String)"))

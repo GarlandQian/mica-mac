@@ -809,15 +809,22 @@ assertIncludes(
   "content.font(MicaTheme.font(for: role, scale: fontScale, weight: weight))",
   "The MicaTheme font modifier must own ordinary interface font construction",
 );
+// Task 08-20: topology text moved to the system-pipeline label band, which
+// reads the font scale from the environment via micaThemeFont.
 assertIncludes(
   workbenchSource,
-  "MicaTheme.font(for: .label, scale: fontScale, weight: .semibold)",
-  "Topology Canvas column labels must receive the active font scale",
+  "@Environment(\\.micaAppFontScale) private var fontScale",
+  "Topology label band must read the active font scale from the environment",
 );
 assertIncludes(
   workbenchSource,
-  ".font(MicaTheme.font(for: .label, scale: fontScale))",
-  "Topology Canvas node labels must use the scaled point size passed by the view layer",
+  ".micaThemeFont(.label, weight: .semibold)",
+  "Topology column titles must use the scaled semibold label role",
+);
+assertIncludes(
+  workbenchSource,
+  ".micaThemeFont(.label)",
+  "Topology node labels must use the scaled label role",
 );
 const appearanceRows = sourceSection(
   workbenchSource,
@@ -1219,7 +1226,10 @@ for (const topologyContract of [
 }
 assertExcludes(connectionTopology, ".prefix(", "Complete topology must not cap active connection paths");
 assertExcludes(connectionTopology, "maximumConnection", "Complete topology must not introduce a Top-N admission limit");
-assertIncludes(overviewTopologyView, "Canvas { context, _ in", "Topology must render through one Canvas pass");
+// Task 08-20 R6: exactly one opaque linear Canvas per band (base+highlight
+// merged); the label layer carries all text.
+assertIncludes(overviewTopologyView, "Canvas(\n            opaque: true,", "Topology must render through one opaque Canvas pass");
+assert(overviewTopologyView.split("Canvas(").length - 1 === 1, "Topology must render through exactly one Canvas per band (task 08-20 R6)");
 const overviewTopologyViewport = sourceSection(
   overviewTopologyView,
   "private struct OverviewTopologyViewport",
@@ -1288,17 +1298,21 @@ const overviewTopologyBandLayers = sourceSection(
   "private struct OverviewTopologyBaseBand",
 );
 assertIncludes(overviewTopologyBandLayers, "OverviewTopologyBaseBand(", "Topology bands must retain an isolated base drawing layer");
-assertIncludes(overviewTopologyBandLayers, "OverviewTopologyHighlightBand(", "Topology bands must retain an isolated highlight layer");
+assertIncludes(overviewTopologyBandLayers, "OverviewTopologyLabelBand(", "Topology bands must retain a dedicated system-text label layer (task 08-20)");
+assertIncludes(overviewTopologyBandLayers, "policyStatusRevision == rhs.policyStatusRevision", "Topology band equality must gate on the policy-status revision, never per-tick values (task 08-20 R5)");
 assertIncludes(overviewTopologyBandLayers, "OverviewTopologyHitBand(", "Topology bands must retain an isolated hit-testing layer");
 assertIncludes(overviewTopologyBandLayers, "allowsMotion: allowsMotion", "Topology bands must gate all motion through the resolved motion state");
 assertIncludes(overviewTopologyView, "revision: catalog.structureRevision", "Topology must react to a new real topology revision");
-const overviewTopologyHighlightBand = sourceSection(
+const overviewTopologyBaseBandSection = sourceSection(
   overviewTopologyView,
-  "private struct OverviewTopologyHighlightBand",
-  "private struct OverviewTopologyHitBand",
+  "private struct OverviewTopologyBaseBand",
+  "private struct OverviewTopologyLabelBand",
 );
-assertIncludes(overviewTopologyHighlightBand, "allowsMotion ? MicaTheme.Motion.stateChange : nil", "Topology highlight motion must be finite and gated on the resolved motion state");
-assertIncludes(overviewTopologyHighlightBand, "value: snapshot.activeSelection", "Topology highlight must react to explicit interaction");
+assertIncludes(overviewTopologyBaseBandSection, "opaque: true", "Topology base canvas must composite opaquely (task 08-20 R6)");
+assertIncludes(overviewTopologyBaseBandSection, "colorMode: .linear", "Topology base canvas must composite in linear space (task 08-20 R6)");
+assertIncludes(overviewTopologyBaseBandSection, "allowsMotion ? MicaTheme.Motion.stateChange : nil", "Topology highlight motion must be finite and gated on the resolved motion state");
+assertIncludes(overviewTopologyBaseBandSection, "value: snapshot.activeSelection", "Topology highlight must react to explicit interaction");
+assertExcludes(overviewTopologyView, "OverviewTopologyHighlightBand", "Topology selection highlight must render inside the single base canvas (task 08-20 R6)");
 assertExcludes(overviewTopologyView, "TimelineView", "Topology must not keep an idle clock alive");
 assertIncludes(overviewTopologyView, "private func minimumFlowHeight(for availableWidth: Int)", "Topology must scale its sparse-flow viewport with the available width");
 assertIncludes(overviewTopologyView, "return Int(min(max(scaledHeight, 680), 920).rounded())", "Topology must remain a primary 680-920 point surface when sparse");
@@ -1319,8 +1333,8 @@ for (const sankeyGeometryContract of [
 assertExcludes(overviewTopologyView, "ScrollView([.horizontal, .vertical])", "Topology must not compete with Overview for vertical scrolling");
 assertIncludes(overviewTopologyView, "ForEach(layout.renderBands)", "Complete topology must render through stable vertical bands");
 assertIncludes(overviewTopologyView, "struct OverviewTopologyBaseBand", "Topology base drawing must have an isolated invalidation boundary");
-assertIncludes(overviewTopologyView, "struct OverviewTopologyHighlightBand", "Topology highlighting must have an isolated invalidation boundary");
-assertIncludes(overviewTopologyView, "snapshot.activeSelection == nil ? 0 : 0.34", "Topology highlighting must preserve surrounding graph context");
+assertIncludes(overviewTopologyView, "struct OverviewTopologyLabelBand", "Topology labels must render in a dedicated system-text layer (task 08-20 R3/R7)");
+assertExcludes(overviewTopologyView, "snapshot.activeSelection == nil ? 0 : 0.34", "Topology must not dim the graph through a full-size overlay (task 08-20 R6)");
 assertIncludes(overviewTopologyView, "struct OverviewTopologyHitBand", "Topology hit testing must have an isolated invalidation boundary");
 assertIncludes(overviewTopologyView, "stageConnectionNavigation(", "Topology paths must open the matching connection in the same window");
 assertIncludes(overviewTopologyView, "runtime.interaction.snapshot.isHovering", "Topology hover must freeze only the presented snapshot");
@@ -1331,8 +1345,10 @@ assertIncludes(overviewTopology, "func clearSelection()", "Topology interaction 
 assertIncludes(overviewTopology, "func movePathSelection(", "Topology interaction must support bounded path stepping");
 assertIncludes(overviewTopologyView, ".accessibilityAddTraits(isPinned ? .isSelected : [])", "Topology paths must expose pinned state to accessibility");
 assertIncludes(overviewTopologyView, "Text(verbatim: node.node.name)", "Topology labels must consume the complete reported node name");
-assertIncludes(overviewTopologyView, "label.measure(", "Topology label alignment must use resolved font metrics");
-assertIncludes(overviewTopologyView, "labelContext.clip(to: Path(node.labelRect))", "Topology labels must remain clipped to their fitted column rectangle");
+assertIncludes(overviewTopologyView, "OverviewTopologyHeaderGeometry.clampedCenter(", "Topology column titles must clamp inside the band at any width (task 08-20 R4)");
+assertIncludes(overviewTopologyView, "OverviewTopologyHeaderGeometry.sliceWidth(", "Topology column titles must not overlap neighbor titles (task 08-20 R4)");
+assertIncludes(overviewTopologyView, "node.labelRect.midY - band.bounds.minY", "Topology labels must keep the geometry engine's fitted positions");
+assertIncludes(overviewTopologyView, "OverviewTopologyRuntime", "Topology node statuses must come from the memoized runtime cache (task 08-20 R5)");
 assertExcludes(overviewTopologyView, "displayLabel(", "Topology must not rewrite reported names using fixed character counts");
 for (const stateKind of ["kind: .noController", "kind: .loading", "kind: .unsupported", "kind: .empty", "kind: .failed"]) {
   assertIncludes(overviewSource, stateKind, `Overview must distinguish ${stateKind}`);

@@ -410,4 +410,149 @@ struct ConnectionTopologyTests {
             )
         }
     }
+
+    // MARK: - Task 08-20: header clamp + status memo
+
+    /// R4/AC2: a trailing column title ("代理链出口" / "Chain Exit") must stay
+    /// fully inside the band at any panel width; leading columns clamp too.
+    @Test func topologyHeaderGeometryClampsTitlesInsideBand() {
+        let band = OverviewTopologyLayout.RenderBand(
+            id: 0,
+            bounds: CGRect(x: 0, y: 0, width: 800, height: 400),
+            columns: [
+                OverviewTopologyLayout.ColumnGeometry(id: .source, centerX: 60),
+                OverviewTopologyLayout.ColumnGeometry(id: .rule, centerX: 230),
+                OverviewTopologyLayout.ColumnGeometry(id: .policyHop(0), centerX: 400),
+                OverviewTopologyLayout.ColumnGeometry(id: .policyHop(1), centerX: 570),
+                OverviewTopologyLayout.ColumnGeometry(id: .finalOutbound, centerX: 740),
+            ],
+            nodes: [],
+            edges: []
+        )
+
+        // Middle column keeps its center; slice never overlaps a neighbor.
+        let mid = band.columns[2]
+        let midSlice = OverviewTopologyHeaderGeometry.sliceWidth(for: mid, in: band)
+        #expect(midSlice == 340)
+        #expect(
+            OverviewTopologyHeaderGeometry.clampedCenter(
+                sliceWidth: midSlice,
+                columnCenterX: mid.centerX,
+                bandWidth: 800
+            ) == 400
+        )
+
+        // Trailing column: the whole slice stays inside the band.
+        let last = band.columns[4]
+        let lastSlice = OverviewTopologyHeaderGeometry.sliceWidth(for: last, in: band)
+        let lastCenter = OverviewTopologyHeaderGeometry.clampedCenter(
+            sliceWidth: lastSlice,
+            columnCenterX: last.centerX,
+            bandWidth: 800
+        )
+        #expect(lastCenter - lastSlice / 2 >= 0)
+        #expect(lastCenter + lastSlice / 2 <= 800)
+        #expect(lastCenter < last.centerX)
+
+        // Leading column clamps symmetrically.
+        let first = band.columns[0]
+        let firstSlice = OverviewTopologyHeaderGeometry.sliceWidth(for: first, in: band)
+        let firstCenter = OverviewTopologyHeaderGeometry.clampedCenter(
+            sliceWidth: firstSlice,
+            columnCenterX: first.centerX,
+            bandWidth: 800
+        )
+        #expect(firstCenter - firstSlice / 2 >= 0)
+        #expect(firstCenter > first.centerX)
+
+        // Degenerate inputs: single column and an over-wide slice both resolve
+        // to a centered, fully-visible title.
+        let single = OverviewTopologyLayout.RenderBand(
+            id: 1,
+            bounds: CGRect(x: 0, y: 0, width: 320, height: 200),
+            columns: [OverviewTopologyLayout.ColumnGeometry(id: .source, centerX: 40)],
+            nodes: [],
+            edges: []
+        )
+        let singleSlice = OverviewTopologyHeaderGeometry.sliceWidth(
+            for: single.columns[0],
+            in: single
+        )
+        #expect(singleSlice == 320)
+        #expect(
+            OverviewTopologyHeaderGeometry.clampedCenter(
+                sliceWidth: 500,
+                columnCenterX: 40,
+                bandWidth: 320
+            ) == 160
+        )
+    }
+
+    /// R5/AC3: node statuses are memoized on (policy revision, topology
+    /// revision); a repeat call with unchanged keys never re-resolves the
+    /// policy catalog, and a topology-only flip reuses the catalog cache.
+    @MainActor
+    @Test func topologyNodeStatusesMemoizeOnRevisionKeys() {
+        let runtime = OverviewTopologyRuntime()
+        let catalog = PolicyGroupCatalogSnapshot(
+            mode: "Rule",
+            groups: [
+                ProxyGroupViewState(
+                    id: "Auto",
+                    type: "URLTest",
+                    selected: "Tokyo",
+                    options: ["Tokyo"],
+                    optionDetails: [:],
+                    optionUsageRanks: [:],
+                    delays: ["Tokyo": 64]
+                ),
+            ]
+        )
+        let topology = ConnectionTopologyBuilder.build(from: [
+            connection(
+                id: "memo",
+                sourceIP: "10.0.0.2",
+                rule: "RuleSet",
+                rulePayload: "Streaming",
+                chains: ["Final", "Auto"]
+            ),
+        ])
+
+        let first = runtime.nodeStatuses(
+            topology: topology,
+            topologyRevision: 1,
+            policyRevision: 7,
+            catalog: catalog
+        )
+        #expect(first.values.contains(.ok))
+        let statisticsAfterFirst = runtime.policyInspectionCache.statistics
+
+        let second = runtime.nodeStatuses(
+            topology: topology,
+            topologyRevision: 1,
+            policyRevision: 7,
+            catalog: catalog
+        )
+        #expect(second == first)
+        // Memo hit: the policy index was not re-resolved at all.
+        #expect(runtime.policyInspectionCache.statistics == statisticsAfterFirst)
+
+        // Topology-only revision flip: memo misses once, but the policy index
+        // cache still hits (no catalog rebuild).
+        let third = runtime.nodeStatuses(
+            topology: topology,
+            topologyRevision: 2,
+            policyRevision: 7,
+            catalog: catalog
+        )
+        #expect(third == first)
+        #expect(
+            runtime.policyInspectionCache.statistics.cacheHitCount
+                == statisticsAfterFirst.cacheHitCount + 1
+        )
+        #expect(
+            runtime.policyInspectionCache.statistics.buildCount
+                == statisticsAfterFirst.buildCount
+        )
+    }
 }
