@@ -377,8 +377,8 @@ private struct OverviewTopologyViewport: View {
 
     private var topologyGraph: some View {
         // Task 08-23 R10: when long chains widen the graph past the panel the
-        // viewport scrolls horizontally; graphs narrower than the panel stay
-        // centered via the second frame's center alignment.
+        // viewport scrolls horizontally; the width floor keeps the content
+        // pinned to the full panel width otherwise.
         ScrollView(.horizontal, showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 ForEach(layout.renderBands) { band in
@@ -1314,9 +1314,9 @@ private enum OverviewTopologyDrawing {
         )
     }
 
-    /// Node bar (tasks 08-20 R2, 08-23 R3): controller-reported status fill
-    /// when the policy catalog reports one; neutral pills read through a
-    /// column-tinted fill + stroke on both appearances; the active trajectory
+    /// Node bar (tasks 08-20 R2, 08-23 R9): controller-reported status fill
+    /// when the policy catalog reports one; neutral nodes are solid
+    /// column-tint anchor bars (sankey standard); the active trajectory
     /// redraws in accent. Labels render in `OverviewTopologyLabelBand`.
     static func drawNode(
         _ node: OverviewTopologyLayout.NodeGeometry,

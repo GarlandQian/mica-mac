@@ -418,8 +418,9 @@ a split.
   graph uses 20-point node bars, 8-point gaps, true flow-width ribbons, and
   full-trajectory
   hover/pin highlighting. Edge strokes are tiered (tasks 08-20, 08-23): the
-  single active, hovered, or pinned trajectory redraws one point wider in the
-  signal accent; while a selection exists every other edge fades to an explicit
+  single active, hovered, or pinned trajectory redraws as a solid accent
+  ribbon at 85% opacity; while a selection exists every other edge fades to
+  an explicit
   alpha-baked neutral mist (`MicaTheme.edgeDimmed`); an edge touching a policy
   hop with a controller-reported status carries that status color; every
   remaining edge renders as a true sankey ribbon (task 08-23 R9): a closed
