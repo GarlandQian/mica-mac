@@ -1,7 +1,7 @@
 import Foundation
-import MicaCore
 import Testing
 @testable import Mica
+@testable import MicaCore
 
 private enum InjectedStoreFailure: Error {
     case save
@@ -137,6 +137,93 @@ private actor ControllerProbeScript {
     }
 }
 
+private actor MixedMihomoEndpointScript {
+    private var requestCounts: [String: Int] = [:]
+
+    func load(_ request: URLRequest) throws -> (Data, URLResponse) {
+        guard let url = request.url else {
+            throw MihomoClientError.invalidResponse
+        }
+        let path = url.path
+        let requestCount = (requestCounts[path] ?? 0) + 1
+        requestCounts[path] = requestCount
+
+        let statusCode: Int
+        let body: Data
+        switch path {
+        case "/version":
+            statusCode = 200
+            body = Data(#"{"version":"test"}"#.utf8)
+        case "/configs" where requestCount == 1:
+            statusCode = 200
+            body = Data(#"{"mode":"rule"}"#.utf8)
+        default:
+            statusCode = 503
+            body = Data()
+        }
+
+        guard let response = HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        ) else {
+            throw MihomoClientError.invalidResponse
+        }
+        return (body, response)
+    }
+
+    func requestCount(for path: String) -> Int {
+        requestCounts[path] ?? 0
+    }
+}
+
+private actor MixedSurgeEndpointScript {
+    private var requestCounts: [String: Int] = [:]
+
+    func load(_ request: URLRequest) throws -> (Data, URLResponse) {
+        guard let url = request.url else {
+            throw SurgeHttpAPIError.invalidResponse
+        }
+        let path = url.path
+        let requestCount = (requestCounts[path] ?? 0) + 1
+        requestCounts[path] = requestCount
+
+        let statusCode: Int
+        let body: Data
+        switch path {
+        case "/v1/outbound":
+            statusCode = 200
+            body = Data(#"{"mode":"rule"}"#.utf8)
+        case "/v1/policies":
+            statusCode = 200
+            body = Data(#"{"policies":[]}"#.utf8)
+        case "/v1/policy_groups" where requestCount == 1:
+            statusCode = 200
+            body = Data(
+                #"{"groups":[{"name":"Proxy","type":"select","selected":"A","policies":["A"]}]}"#.utf8
+            )
+        default:
+            statusCode = 503
+            body = Data()
+        }
+
+        guard let response = HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        ) else {
+            throw SurgeHttpAPIError.invalidResponse
+        }
+        return (body, response)
+    }
+
+    func requestCount(for path: String) -> Int {
+        requestCounts[path] ?? 0
+    }
+}
+
 struct LiveSessionTransactionTests {
     @Test func genericCancellationAndEndpointValidationUseTerminalCategories() {
         #expect(RouterTrialFailureCategory(error: CancellationError()) == .cancelled)
@@ -173,6 +260,135 @@ struct LiveSessionTransactionTests {
         #expect(state.lastFailure == nil)
     }
 
+    @Test func mixedEndpointLaneRecordsPartialSuccessWithoutTerminalizing() {
+        var state = SessionRefreshLaneState()
+        let began = state.begin()
+        #expect(began)
+
+        let completedAt = Date(timeIntervalSince1970: 42)
+        state.finishPartial(
+            "The optional provider endpoint is unavailable.",
+            at: completedAt
+        )
+
+        #expect(!state.isInFlight)
+        #expect(!state.terminalFailure)
+        #expect(state.retryAttempt == 0)
+        #expect(state.lastSuccessAt == completedAt)
+        #expect(
+            state.lastFailure == "The optional provider endpoint is unavailable."
+        )
+    }
+
+    @MainActor
+    @Test func mixedMihomoEndpointResultsRetainLastGoodAndKeepLaneCycling() async throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.controllerHealth = .checking(router: profile)
+
+        let script = MixedMihomoEndpointScript()
+        model.sessionMihomoClient = MihomoClient(
+            profile: profile,
+            dataLoader: { request in
+                try await script.load(request)
+            }
+        )
+        let generation = model.controllerSession.generation
+
+        try await model.performSessionRefreshAttempt(
+            .slow,
+            router: profile,
+            generation: generation,
+            source: .manual
+        )
+        let retainedConfig = try #require(
+            model.controllerSession.endpointCache.config
+        )
+
+        try await model.performSessionRefreshAttempt(
+            .slow,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+
+        let laneState = try #require(model.controllerSession.refreshLanes[.slow])
+        #expect(!laneState.terminalFailure)
+        #expect(!laneState.isInFlight)
+        #expect(laneState.lastFailure != nil)
+        #expect(model.controllerSession.endpointCache.config == retainedConfig)
+        #expect(model.controllerHealth.status(for: .version).isReady)
+        #expect(model.controllerHealth.status(for: .configs).isFailure)
+        #expect(await script.requestCount(for: "/version") == 2)
+        #expect(await script.requestCount(for: "/configs") == 2)
+    }
+
+    @MainActor
+    @Test func mixedSurgeEndpointResultsRetainLastGoodAndKeepLaneCycling() async throws {
+        let profile = RouterProfile(
+            displayName: "Surge",
+            host: "127.0.0.1",
+            controllerKind: .surgeCompatible
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        model.activeSessionControllerKind = .surgeCompatible
+
+        let script = MixedSurgeEndpointScript()
+        model.sessionSurgeClient = SurgeHttpAPIClient(
+            profile: profile,
+            dataLoader: { request in
+                try await script.load(request)
+            }
+        )
+        let generation = model.controllerSession.generation
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .manual
+        )
+        let retainedGroups = model.controllerSession.surgeRawSnapshot.policyGroups
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+
+        let laneState = try #require(model.controllerSession.refreshLanes[.medium])
+        #expect(!laneState.terminalFailure)
+        #expect(!laneState.isInFlight)
+        #expect(laneState.lastFailure != nil)
+        #expect(model.controllerSession.surgeRawSnapshot.policyGroups == retainedGroups)
+        #expect(model.controllerHealth.status(for: .configs).isReady)
+        #expect(model.controllerHealth.status(for: .proxies).isFailure)
+        #expect(await script.requestCount(for: "/v1/outbound") == 2)
+        #expect(await script.requestCount(for: "/v1/policy_groups") == 2)
+    }
+
     @Test func retryPolicyCapsAtThirtySecondsWithInjectableJitter() {
         #expect(SessionRetryPolicy.delay(forAttempt: 0, jitter: 0) == .seconds(2))
         #expect(SessionRetryPolicy.delay(forAttempt: 4, jitter: 0) == .seconds(30))
@@ -194,6 +410,154 @@ struct LiveSessionTransactionTests {
         state.consumeScheduledRetry()
         state.recordSuccess()
         #expect(state.reserveDelay(jitter: 0) == .seconds(2))
+    }
+
+    @MainActor
+    @Test func retryOnceWaveIgnoresLaterTerminalCallbackFromCancelledProducer() {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.liveStreamRequested = true
+        let generation = model.controllerSession.generation
+        model.installLiveSessionRuntime(for: profile, generation: generation)
+
+        model.handleLiveStreamFailure(
+            .traffic,
+            error: InjectedStoreFailure.save,
+            routerID: profile.id,
+            generation: generation
+        )
+        #expect(model.liveRetryState.isScheduled)
+        #expect(model.liveRetryState.attempt == 1)
+
+        model.handleLiveStreamFailure(
+            .logs,
+            error: MihomoClientError.unauthorized,
+            routerID: profile.id,
+            generation: generation
+        )
+
+        #expect(model.liveRetryState.isScheduled)
+        #expect(model.liveRetryState.attempt == 1)
+        if case .staleReconnecting = model.controllerSession.state {
+            // The second channel joined the first failure wave.
+        } else {
+            Issue.record("Expected the shared retry wave to remain reconnecting")
+        }
+        model.leaveLiveSession()
+    }
+
+    @MainActor
+    @Test func manualMihomoRefreshReplacesRuntimeAndCancelsOldProducersOffline() throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.unifiedSnapshot = UnifiedControllerSnapshot(
+            controllerType: .mihomoCompatible,
+            capabilities: .none,
+            checkedAt: Date(timeIntervalSince1970: 1)
+        )
+        model.liveStreamRequested = true
+        let generation = model.controllerSession.generation
+        model.installLiveSessionRuntime(for: profile, generation: generation)
+        let oldRuntime = try #require(model.liveSessionRuntime)
+
+        let oldProducers = (0..<4).map { _ in makeSleepingTask() }
+        model.liveTrafficTask = oldProducers[0]
+        model.liveLogsTask = oldProducers[1]
+        model.liveMemoryTask = oldProducers[2]
+        model.liveConnectionsTask = oldProducers[3]
+
+        model.restartRequestedMihomoLiveStreamsForManualRefresh(
+            router: profile,
+            generation: generation
+        )
+
+        let replacementRuntime = try #require(model.liveSessionRuntime)
+        let allOldProducersCancelled = oldProducers.allSatisfy { $0.isCancelled }
+        #expect(allOldProducersCancelled)
+        #expect(replacementRuntime !== oldRuntime)
+        #expect(
+            model.liveSessionRuntimeIdentity
+                == LiveSessionRuntimeIdentity(
+                    controllerID: profile.id,
+                    generation: generation
+                )
+        )
+        #expect(model.liveTrafficTask == nil)
+        #expect(model.liveLogsTask == nil)
+        #expect(model.liveMemoryTask == nil)
+        #expect(model.liveConnectionsTask == nil)
+
+        model.handleLiveStreamFailure(
+            .logs,
+            error: MihomoClientError.unauthorized,
+            routerID: profile.id,
+            generation: generation,
+            runtime: oldRuntime
+        )
+        #expect(model.liveSessionRuntime === replacementRuntime)
+        #expect(!model.liveRetryState.isScheduled)
+        model.leaveLiveSession()
+    }
+
+    @MainActor
+    @Test func cancelledLiveChannelFailureDoesNotMutateTheSession() throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.liveStreamRequested = true
+        let generation = model.controllerSession.generation
+        model.installLiveSessionRuntime(for: profile, generation: generation)
+        let runtime = try #require(model.liveSessionRuntime)
+
+        model.handleLiveStreamFailure(
+            .connections,
+            error: CancellationError(),
+            routerID: profile.id,
+            generation: generation
+        )
+
+        #expect(model.liveSessionRuntime === runtime)
+        #expect(model.controllerSession.state == .live)
+        #expect(!model.liveRetryState.isScheduled)
+        model.leaveLiveSession()
     }
 
     @MainActor

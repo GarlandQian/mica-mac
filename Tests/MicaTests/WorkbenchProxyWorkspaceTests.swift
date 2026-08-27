@@ -27,6 +27,299 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(distribution.buckets.allSatisfy { $0.fraction == 0.2 })
     }
 
+    @Test func healthSummaryClassifiesOptionalAvailabilityAndLatencyConservatively() {
+        var group = Self.group(
+            id: "Health",
+            selected: "Fast",
+            options: ["Fast", "Slow", "Timeout", "Dead", "Unknown"]
+        )
+        group.delays = [
+            "Fast": 40,
+            "Slow": 240,
+            "Timeout": 1_200,
+        ]
+        group.optionDetails = [
+            "Fast": Self.node(name: "Fast", alive: true),
+            "Slow": Self.node(name: "Slow", alive: true),
+            "Dead": Self.node(name: "Dead", alive: false),
+        ]
+
+        let summary = ProxyGroupHealthSummary(group: group)
+
+        #expect(summary.status == .degraded)
+        #expect(summary.memberCount == 5)
+        #expect(summary.availableCount == 2)
+        #expect(summary.unavailableCount == 2)
+        #expect(summary.unknownCount == 1)
+        #expect(summary.slowCount == 1)
+    }
+
+    @Test func healthSummarySeparatesHealthyFailedAndUnknownGroups() {
+        var healthy = Self.group(
+            id: "Healthy",
+            selected: "Fast",
+            options: ["Fast", "Alive"]
+        )
+        healthy.delays = ["Fast": 50]
+        healthy.optionDetails = [
+            "Fast": Self.node(name: "Fast", alive: true),
+            "Alive": Self.node(name: "Alive", alive: true),
+        ]
+
+        var failed = Self.group(
+            id: "Failed",
+            selected: "Dead",
+            options: ["Dead", "Timeout"]
+        )
+        failed.delays = ["Timeout": 1_000]
+        failed.optionDetails = [
+            "Dead": Self.node(name: "Dead", alive: false),
+        ]
+
+        let unknown = Self.group(
+            id: "Unknown",
+            selected: "No data",
+            options: ["No data"]
+        )
+
+        #expect(ProxyGroupHealthSummary(group: healthy).status == .healthy)
+        #expect(ProxyGroupHealthSummary(group: failed).status == .failed)
+        #expect(ProxyGroupHealthSummary(group: unknown).status == .unknown)
+    }
+
+    @Test func healthFilterPreservesControllerMemberOrder() throws {
+        var group = Self.group(
+            id: "Filter",
+            selected: "Current",
+            options: ["Current", "Slow", "Timeout", "Dead", "Unknown", "Normal"]
+        )
+        group.delays = ["Slow": 180, "Timeout": 1_200, "Normal": 90]
+        group.optionDetails = [
+            "Current": Self.node(name: "Current", alive: true),
+            "Slow": Self.node(name: "Slow", alive: true),
+            "Dead": Self.node(name: "Dead", alive: false),
+            "Normal": Self.node(name: "Normal", alive: true),
+        ]
+        let arranged = ProxyProjection.arrangedGroups(
+            [group],
+            mode: "Rule",
+            visibility: .followMode
+        )
+        let occurrence = try #require(arranged.first)
+        let index = ProxyProjection.activeGroupIndex(
+            in: arranged,
+            groupID: occurrence.id
+        )
+
+        #expect(
+            ProxyProjection.filteredRows(index.rows, healthFilter: .all)
+                .map(\.name)
+                == ["Current", "Slow", "Timeout", "Dead", "Unknown", "Normal"]
+        )
+        #expect(
+            ProxyProjection.filteredRows(index.rows, healthFilter: .degraded)
+                .map(\.name) == ["Slow", "Timeout", "Dead", "Unknown"]
+        )
+        #expect(
+            ProxyProjection.filteredRows(index.rows, healthFilter: .unavailable)
+                .map(\.name) == ["Timeout", "Dead"]
+        )
+        #expect(
+            ProxyProjection.filteredRows(index.rows, healthFilter: .slow)
+                .map(\.name) == ["Slow"]
+        )
+        #expect(
+            ProxyProjection.filteredRows(index.rows, healthFilter: .current)
+                .map(\.name) == ["Current"]
+        )
+    }
+
+    @Test func navigationTargetResolutionUsesStableOccurrenceAndMemberIDs() throws {
+        let groups = ProxyProjection.arrangedGroups(
+            [
+                Self.group(id: "Duplicate", selected: "A", options: ["A", "B"]),
+                Self.group(id: "Duplicate", selected: "C", options: ["C"]),
+                Self.group(id: "Unique", selected: "Node", options: ["Node"]),
+            ],
+            mode: "Rule",
+            visibility: .followMode
+        )
+        let unique = try #require(groups.last)
+        let resolved = ProxyProjection.resolveNavigationTarget(
+            groupID: unique.id,
+            nodeName: "Node",
+            in: groups
+        )
+        let firstDuplicate = try #require(groups.first)
+        let ambiguous = ProxyProjection.resolveNavigationTarget(
+            groupID: "Duplicate",
+            nodeName: "A",
+            in: groups
+        )
+
+        #expect(resolved.status == .resolved)
+        #expect(resolved.occurrence?.id == unique.id)
+        #expect(resolved.member?.id == "4:Node:0")
+        #expect(resolved.row?.name == "Node")
+        #expect(
+            resolved.revealTargetID
+                == ProxyProjection.revealTargetID(
+                    groupID: unique.id,
+                    memberID: "4:Node:0"
+                )
+        )
+        #expect(ambiguous.status == .ambiguousGroup)
+        #expect(firstDuplicate.id != groups[1].id)
+    }
+
+    @Test func catalogNavigationResolutionKeepsEmptyAndHiddenGlobalTruthful() throws {
+        let catalog = PolicyGroupCatalogSnapshot(
+            mode: "Rule",
+            groups: [
+                Self.group(
+                    id: "GLOBAL",
+                    selected: "Node A",
+                    options: ["Node A"]
+                ),
+            ]
+        )
+        let occurrence = try #require(
+            ProxyProjection.arrangedGroups(
+                catalog.groups,
+                mode: catalog.mode,
+                visibility: .alwaysShow
+            ).first
+        )
+
+        let hidden = ProxyProjection.resolveNavigationTarget(
+            groupOccurrenceID: occurrence.id,
+            nodeName: "Node A",
+            catalog: catalog,
+            visibility: .followMode
+        )
+        let visible = ProxyProjection.resolveNavigationTarget(
+            groupOccurrenceID: occurrence.id,
+            nodeName: "Node A",
+            catalog: catalog,
+            visibility: .alwaysShow
+        )
+        let empty = ProxyProjection.resolveNavigationTarget(
+            groupOccurrenceID: occurrence.id,
+            nodeName: "Node A",
+            catalog: .empty,
+            visibility: .alwaysShow
+        )
+
+        #expect(hidden.status == .hiddenGlobal)
+        #expect(hidden.occurrence?.id == occurrence.id)
+        #expect(visible.status == .resolved)
+        #expect(empty.status == .emptyCatalog)
+    }
+
+    @Test func policyInspectionResolvesDuplicateGroupsOnlyByExactOccurrence() throws {
+        let catalog = PolicyGroupCatalogSnapshot(
+            mode: "Rule",
+            groups: [
+                Self.group(id: "Duplicate", selected: "A", options: ["A"]),
+                Self.group(id: "Duplicate", selected: "B", options: ["B"]),
+            ]
+        )
+        let occurrences = ProxyProjection.arrangedGroups(
+            catalog.groups,
+            mode: catalog.mode,
+            visibility: .alwaysShow
+        )
+        let second = try #require(occurrences.last)
+        let index = OverviewPolicyInspectionIndex(catalog: catalog)
+
+        #expect(index.resolve(name: "Duplicate") == .ambiguous)
+        guard case .group(let resolved) = index.resolve(
+            groupOccurrenceID: second.id
+        ) else {
+            Issue.record("Expected the exact duplicate group occurrence")
+            return
+        }
+        #expect(resolved.occurrenceID == second.id)
+        #expect(resolved.selected == "B")
+    }
+
+    @Test func revealObstructionRepresentsEveryBlockingFilterAndDedicatedGlobalAction() {
+        let blockers: WorkbenchProxyFilterObstructions = [
+            .globalSearch,
+            .groupFilter,
+            .healthFilter,
+        ]
+        let filtered = WorkbenchProxyRevealObstruction.filters(
+            groupOccurrenceID: "group:0",
+            blockers: blockers
+        )
+
+        #expect(filtered.detailKey == "routing.reveal_blocked_multiple_filters_detail")
+        #expect(filtered.actionTitleKey == "routing.clear_filters_and_locate")
+        #expect(
+            WorkbenchProxyRevealObstruction.hiddenGlobal.actionTitleKey
+                == "routing.show_global_and_locate"
+        )
+    }
+
+    @MainActor
+    @Test func proxyNavigationIsSessionBoundAndNotPersisted() {
+        let suiteName = "MicaTests.WorkbenchProxyNavigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = WorkbenchWorkspaceStore(
+            defaults: defaults,
+            persistenceKey: "workspace",
+            persistenceDelay: .seconds(60)
+        )
+        let controllerID = UUID()
+        let generation = UUID()
+        let selection = WorkbenchProxyNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            groupOccurrenceID: "group",
+            nodeName: "node"
+        )
+
+        store.stageProxyNavigation(selection)
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .proxies)
+                .pendingProxySelection == selection
+        )
+        #expect(!store.hasPendingPersistence)
+        #expect(
+            store.consumeProxyNavigation(
+                controllerID: controllerID,
+                generation: UUID()
+            ) == nil
+        )
+        #expect(
+            !store.clearProxyNavigation(
+                controllerID: controllerID,
+                generation: UUID()
+            )
+        )
+
+        store.activateSession(controllerID: controllerID, generation: generation)
+        #expect(store.consumeProxyNavigation(
+            controllerID: controllerID,
+            generation: generation
+        ) == selection)
+        #expect(store.consumeProxyNavigation(
+            controllerID: controllerID,
+            generation: generation
+        ) == nil)
+
+        store.stageProxyNavigation(selection)
+        store.activateSession(controllerID: controllerID, generation: UUID())
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .proxies)
+                .pendingProxySelection == nil
+        )
+        #expect(defaults.data(forKey: "workspace") == nil)
+    }
+
     @Test func nodeDetailSeparatesKnownFieldsFromAdditionalControllerFields() {
         let detail = ProxyNodeViewState(
             snapshot: ProxySnapshot(
@@ -84,7 +377,138 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(scale.fraction(for: nil) == nil)
         #expect(scale.fraction(for: 0) == nil)
         #expect(index.rows.map(\.name) == ["Fast", "Slow", "Missing", "Zero"])
+        #expect(index.rows.map(\.delay) == [50, 200, nil, nil])
+        #expect(index.rows.last?.health == .unavailable)
         #expect(index.rows.map(\.latencyFraction) == [0.25, 1, nil, nil])
+    }
+
+    @Test func fullPolicyInspectorPreservesNonpositiveReportedLatency() throws {
+        var group = Self.group(
+            id: "Raw latency",
+            selected: "Zero",
+            options: ["Zero"]
+        )
+        group.delays = ["Zero": 0]
+        let catalog = PolicyGroupCatalogSnapshot(mode: "Rule", groups: [group])
+        let occurrence = try #require(
+            ProxyProjection.arrangedGroups(
+                catalog.groups,
+                mode: catalog.mode,
+                visibility: .alwaysShow
+            ).first
+        )
+        let snapshot = try #require(
+            OverviewPolicyInspectionProjection.snapshot(
+                groupOccurrenceID: occurrence.id,
+                nodeName: "Zero",
+                policyIndex: OverviewPolicyInspectionIndex(catalog: catalog),
+                language: .english
+            )
+        )
+        let latency = try #require(
+            snapshot.sections.flatMap(\.fields).first { $0.id == "latency" }
+        )
+
+        #expect(latency.value == OverviewFormat.latency(0))
+        #expect(latency.tone == .neutral)
+    }
+
+    @Test func proxyRevealSourceKeepsOneScrollOwnerAndStagesExactTargets() throws {
+        let root = try Self.source(named: "WorkbenchProxies.swift")
+        let panels = try Self.source(named: "WorkbenchProxyGroupPanels.swift")
+        let topology = try Self.source(named: "WorkbenchOverviewTopologyView.swift")
+        let inspection = try Self.source(
+            named: "WorkbenchOverviewPolicyInspection.swift"
+        )
+        let interaction = try Self.source(named: "WorkbenchProxyInteraction.swift")
+        let workspace = try Self.source(named: "WorkbenchWorkspaceStore.swift")
+
+        #expect(root.contains("ScrollViewReader"))
+        #expect(
+            root.contains(
+                "WorkbenchProxyScrollTarget.group(reveal.groupID)"
+            )
+        )
+        #expect(root.contains("proxy.scrollTo(reveal.targetID, anchor: .center)"))
+        #expect(root.contains("lastScrolledRevealToken"))
+        #expect(root.contains("groupProjection.visibleGroups.isEmpty"))
+        #expect(!root.contains(".scrollPosition(id: $scrollAnchorID"))
+        #expect(!panels.contains(".scrollTargetLayout()"))
+        #expect(panels.contains(".id(\n                            ProxyProjection.revealTargetID("))
+        #expect(topology.contains("workspaceStore.stageProxyNavigation("))
+        #expect(topology.contains("groupOccurrenceID:"))
+        #expect(inspection.contains("groupOccurrenceID:"))
+        #expect(workspace.contains("let groupOccurrenceID: String"))
+        #expect(panels.contains("\"routing.test_node \\(member.name)\""))
+        #expect(panels.contains(".accessibilityLabel("))
+        #expect(panels.contains(".accessibilityHint("))
+        #expect(root.contains("stored.groupFilters[groupOccurrenceID] = \"\""))
+        #expect(root.contains("healthFilter = .all"))
+        #expect(root.contains("searchText = \"\""))
+        #expect(root.contains("!groupProjection.arrangedGroups.isEmpty"))
+        #expect(root.contains("workspace.pendingProxySelection"))
+        #expect(interaction.contains("routing.show_global_and_locate"))
+
+        let catalogApply = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private func applyCatalogUpdate",
+                endingAt: "private func rebuildCatalogIndex"
+            )
+        )
+        #expect(catalogApply.contains("consumePendingProxyNavigation()"))
+        #expect(catalogApply.contains("resolveReveal()"))
+
+        let consumeNavigation = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private func consumePendingProxyNavigation",
+                endingAt: "private func resolveReveal"
+            )
+        )
+        #expect(!consumeNavigation.contains("pendingNavigation == nil"))
+
+        let acceptNavigation = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private func acceptProxyNavigation",
+                endingAt: "private func resolveReveal"
+            )
+        )
+        let revealReset = try #require(
+            acceptNavigation.range(of: "reveal = nil")?.lowerBound
+        )
+        let pendingReplacement = try #require(
+            acceptNavigation.range(of: "pendingNavigation = selection")?.lowerBound
+        )
+        #expect(revealReset < pendingReplacement)
+
+        let currentSelection = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private var currentNavigationSelection",
+                endingAt: "private func locateCurrentNode"
+            )
+        )
+        #expect(!currentSelection.contains("inspectorSelection"))
+        #expect(currentSelection.contains("visibility: .alwaysShow"))
+    }
+
+    @Test func revealIdentityRejectsObsoleteControllerAndGeneration() {
+        let controllerID = UUID()
+        let generation = UUID()
+        let reveal = WorkbenchProxyNavigationReveal(
+            controllerID: controllerID,
+            generation: generation,
+            groupID: "group:0",
+            memberID: "member:0",
+            nodeName: "Node",
+            token: UUID()
+        )
+
+        #expect(reveal.isCurrent(controllerID: controllerID, generation: generation))
+        #expect(!reveal.isCurrent(controllerID: UUID(), generation: generation))
+        #expect(!reveal.isCurrent(controllerID: controllerID, generation: UUID()))
     }
 
     @Test func activeGroupIndexBuildsOnlyTheActiveMembersAndFiltersCachedRows() throws {
@@ -869,5 +1293,42 @@ struct WorkbenchProxyWorkspaceTests {
             selected: selected,
             options: options
         )
+    }
+
+    private static func node(name: String, alive: Bool) -> ProxyNodeViewState {
+        ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: name,
+                type: "HTTP",
+                alive: alive
+            )
+        )
+    }
+
+    private static func source(named fileName: String) throws -> String {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = projectRoot
+            .appendingPathComponent("Sources/Mica/Features/Workbench")
+            .appendingPathComponent(fileName)
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private static func sourceSection(
+        in source: String,
+        startingAt start: String,
+        endingAt end: String
+    ) -> Substring? {
+        guard let startRange = source.range(of: start),
+              let endRange = source.range(
+                  of: end,
+                  range: startRange.upperBound..<source.endIndex
+              ) else {
+            return nil
+        }
+        return source[startRange.lowerBound..<endRange.lowerBound]
     }
 }

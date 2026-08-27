@@ -256,8 +256,12 @@ extension AppModel {
         }
 
         if let receivedAt = controllerSession.latestReceivedAt {
-            if controllerSession.lastSuccessAt != receivedAt {
-                controllerSession.lastSuccessAt = receivedAt
+            let latestSuccessAt = max(
+                controllerSession.lastSuccessAt ?? receivedAt,
+                receivedAt
+            )
+            if controllerSession.lastSuccessAt != latestSuccessAt {
+                controllerSession.lastSuccessAt = latestSuccessAt
             }
             liveStreamUpdatedAt = max(liveStreamUpdatedAt ?? receivedAt, receivedAt)
         }
@@ -349,6 +353,10 @@ extension AppModel {
                 localized("operation.full_refresh_progress"),
                 action: TrialCommandAction.refresh.title(language: presentationLanguage),
                 target: router.displayName
+            )
+            restartRequestedMihomoLiveStreamsForManualRefresh(
+                router: router,
+                generation: generation
             )
         }
 
@@ -575,6 +583,35 @@ extension AppModel {
         return activeSessionControllerKind ?? router.controllerKind
     }
 
+    static func usesMihomoLiveStreams(_ kind: ControllerKind) -> Bool {
+        switch kind {
+        case .mihomoCompatible, .nikkiMihomoCompatible,
+             .openClashMihomoCompatible, .cmfaCompatible, .stashCompatible:
+            true
+        case .autoDetect, .surgeCompatible, .singBoxCompatible,
+             .stashCmfaCompatible, .unknown, .unsupported:
+            false
+        }
+    }
+
+    func restartRequestedMihomoLiveStreamsForManualRefresh(
+        router: RouterProfile,
+        generation: UUID
+    ) {
+        guard Self.usesMihomoLiveStreams(runtimeControllerKind(for: router)),
+              liveStreamRequested,
+              isCurrentSession(routerID: router.id, generation: generation) else {
+            return
+        }
+
+        liveRetryState.reset()
+        startLiveStreams(
+            for: router,
+            isRetry: true,
+            generation: generation
+        )
+    }
+
     private func sessionRequiresRuntimeProbe(for router: RouterProfile) -> Bool {
         router.controllerKind == .autoDetect || router.controllerKind == .stashCmfaCompatible
     }
@@ -735,7 +772,7 @@ extension AppModel {
         }
     }
 
-    private func performSessionRefreshAttempt(
+    func performSessionRefreshAttempt(
         _ lane: SessionRefreshLane,
         router: RouterProfile,
         generation: UUID,
@@ -753,17 +790,36 @@ extension AppModel {
         controllerSession.refreshLanes[lane] = laneState
 
         do {
+            let outcome: SessionRefreshLaneOutcome
             if runtimeControllerKind(for: router) == .surgeCompatible {
-                try await refreshSurgeLane(lane, router: router, generation: generation)
+                outcome = try await refreshSurgeLane(
+                    lane,
+                    router: router,
+                    generation: generation
+                )
             } else {
-                try await refreshMihomoLane(lane, router: router, generation: generation)
+                outcome = try await refreshMihomoLane(
+                    lane,
+                    router: router,
+                    generation: generation
+                )
             }
 
             guard isCurrentSession(routerID: router.id, generation: generation) else { return }
             var completed = controllerSession.refreshLanes[lane] ?? laneState
-            completed.finishSuccess(at: Date())
+            switch outcome {
+            case .success:
+                completed.finishSuccess(at: Date())
+            case .partial(let message):
+                completed.finishPartial(message, at: Date())
+            }
             controllerSession.refreshLanes[lane] = completed
-            markSessionRefreshSuccess(router: router)
+            switch outcome {
+            case .success:
+                markSessionRefreshSuccess(router: router)
+            case .partial(let message):
+                markSessionRefreshFailure(message, router: router)
+            }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -783,13 +839,13 @@ extension AppModel {
         _ lane: SessionRefreshLane,
         router: RouterProfile,
         generation: UUID
-    ) async throws {
+    ) async throws -> SessionRefreshLaneOutcome {
         let client = sessionMihomoClient
             ?? MihomoClient(profile: router, secret: controllerSecrets[router.id])
 
         switch lane {
         case .fast:
-            return
+            return .success
 
         case .medium:
             let proxies = try await client.proxies()
@@ -809,7 +865,7 @@ extension AppModel {
                 .map(\.name)
             guard !smartGroups.isEmpty else {
                 controllerSession.endpointCache.smartWeights = nil
-                return
+                return .success
             }
 
             do {
@@ -827,6 +883,7 @@ extension AppModel {
                 // Smart weights are optional controller metadata. Keep the last
                 // successful values visible when only this endpoint is absent.
             }
+            return .success
 
         case .slow:
             async let versionResult = Self.captureEndpoint { try await client.version() }
@@ -840,13 +897,16 @@ extension AppModel {
                 providers: providersResult
             )
 
+            try Task.checkCancellation()
             try ensureCurrentSession(routerID: router.id, generation: generation)
             var nextHealth = currentPresentationHealth()
             var firstFailure: Error?
             var providerFailure: Error?
+            var successCount = 0
 
             switch results.version {
             case .success(let value):
+                successCount += 1
                 controllerSession.endpointCache.version = value
                 nextHealth.set(.version, status: .ready(value.version))
             case .failure(let error):
@@ -856,6 +916,7 @@ extension AppModel {
 
             switch results.config {
             case .success(let value):
+                successCount += 1
                 controllerSession.endpointCache.config = value
                 nextHealth.set(.configs, status: .ready(MicaStrings.displayMode(DashboardSnapshot.displayMode(value.mode), language: presentationLanguage)))
             case .failure(let error):
@@ -865,6 +926,7 @@ extension AppModel {
 
             switch results.rules {
             case .success(let value):
+                successCount += 1
                 controllerSession.endpointCache.rules = value
                 nextHealth.set(.rules, status: .ready(localized("endpoint.rules_count \(value.rules.count)")))
             case .failure(let error):
@@ -874,6 +936,7 @@ extension AppModel {
 
             switch results.providers.proxy {
             case .success(let value):
+                successCount += 1
                 controllerSession.endpointCache.proxyProviders = value
             case .failure(let error):
                 firstFailure = firstFailure ?? error
@@ -881,6 +944,7 @@ extension AppModel {
             }
             switch results.providers.rule {
             case .success(let value):
+                successCount += 1
                 controllerSession.endpointCache.ruleProviders = value
             case .failure(let error):
                 firstFailure = firstFailure ?? error
@@ -900,7 +964,14 @@ extension AppModel {
                 health: nextHealth,
                 domains: [.metadata, .routing, .insight]
             )
-            if let firstFailure { throw firstFailure }
+            guard let firstFailure else { return .success }
+            guard successCount > 0 else { throw firstFailure }
+            return .partial(
+                Self.routerTrialFailureMessage(
+                    for: firstFailure,
+                    language: presentationLanguage
+                )
+            )
         }
     }
 
@@ -908,7 +979,7 @@ extension AppModel {
         _ lane: SessionRefreshLane,
         router: RouterProfile,
         generation: UUID
-    ) async throws {
+    ) async throws -> SessionRefreshLaneOutcome {
         let client = sessionSurgeClient
             ?? SurgeHttpAPIClient(profile: router, apiKey: controllerSecrets[router.id])
         var snapshot = currentPendingSurgeSnapshot(router: router)
@@ -924,54 +995,145 @@ extension AppModel {
             async let policiesResult = Self.captureEndpoint { try await client.policies() }
             async let groupsResult = Self.captureEndpoint { try await client.policyGroups() }
             let results = await (outbound: outboundResult, policies: policiesResult, groups: groupsResult)
+            try Task.checkCancellation()
             try ensureCurrentSession(routerID: router.id, generation: generation)
             var firstFailure: Error?
+            var configFailure: Error?
+            var proxyFailure: Error?
+            var successCount = 0
 
             switch results.outbound {
-            case .success(let value): snapshot.outboundMode = value.mode
-            case .failure(let error): firstFailure = firstFailure ?? error
+            case .success(let value):
+                successCount += 1
+                snapshot.outboundMode = value.mode
+            case .failure(let error):
+                firstFailure = firstFailure ?? error
+                configFailure = error
             }
             switch results.policies {
-            case .success(let value): snapshot.policies = value.policies
-            case .failure(let error): firstFailure = firstFailure ?? error
+            case .success(let value):
+                successCount += 1
+                snapshot.policies = value.policies
+            case .failure(let error):
+                firstFailure = firstFailure ?? error
+                proxyFailure = proxyFailure ?? error
             }
             switch results.groups {
-            case .success(let value): snapshot.policyGroups = value.groups
-            case .failure(let error): firstFailure = firstFailure ?? error
+            case .success(let value):
+                successCount += 1
+                snapshot.policyGroups = value.groups
+            case .failure(let error):
+                firstFailure = firstFailure ?? error
+                proxyFailure = proxyFailure ?? error
             }
 
             snapshot.checkedAt = Date()
+            var nextHealth = currentPresentationHealth()
+            if let configFailure {
+                nextHealth.set(
+                    .configs,
+                    status: .failed(
+                        Self.shortFailureLabel(
+                            for: configFailure,
+                            language: presentationLanguage
+                        )
+                    )
+                )
+            } else {
+                nextHealth.set(
+                    .configs,
+                    status: .ready(
+                        MicaStrings.displayMode(
+                            snapshot.outboundMode,
+                            language: presentationLanguage
+                        )
+                    )
+                )
+            }
+            if let proxyFailure {
+                nextHealth.set(
+                    .proxies,
+                    status: .failed(
+                        Self.shortFailureLabel(
+                            for: proxyFailure,
+                            language: presentationLanguage
+                        )
+                    )
+                )
+            } else {
+                nextHealth.set(
+                    .proxies,
+                    status: .ready(
+                        localized(
+                            "endpoint.groups_count \(snapshot.policyGroups.count)"
+                        )
+                    )
+                )
+            }
             publishSurgePresentation(
                 snapshot,
                 router: router,
+                health: nextHealth,
                 domains: [.metadata, .policyGroups, .insight]
             )
-            if let firstFailure { throw firstFailure }
-            return
+            guard let firstFailure else { return .success }
+            guard successCount > 0 else { throw firstFailure }
+            return .partial(
+                Self.routerTrialFailureMessage(
+                    for: firstFailure,
+                    language: presentationLanguage
+                )
+            )
 
         case .slow:
             async let rulesResult = Self.captureEndpoint { try await client.rules() }
             async let dnsResult = Self.captureEndpoint { try await client.dnsCache() }
             let results = await (rules: rulesResult, dns: dnsResult)
+            try Task.checkCancellation()
             try ensureCurrentSession(routerID: router.id, generation: generation)
             var firstFailure: Error?
             var rulesFailure: Error?
+            var successCount = 0
 
             switch results.rules {
-            case .success(let value): snapshot.rules = value.rules
+            case .success(let value):
+                successCount += 1
+                snapshot.rules = value.rules
             case .failure(let error):
                 firstFailure = firstFailure ?? error
                 rulesFailure = error
             }
             switch results.dns {
-            case .success(let value): snapshot.dnsCacheEntryCount = value.entryCount
+            case .success(let value):
+                successCount += 1
+                snapshot.dnsCacheEntryCount = value.entryCount
             case .failure(let error): firstFailure = firstFailure ?? error
             }
 
             snapshot.checkedAt = Date()
+            var nextHealth = currentPresentationHealth()
+            if let rulesFailure {
+                nextHealth.set(
+                    .rules,
+                    status: .failed(
+                        Self.shortFailureLabel(
+                            for: rulesFailure,
+                            language: presentationLanguage
+                        )
+                    )
+                )
+            } else {
+                nextHealth.set(
+                    .rules,
+                    status: .ready(
+                        localized("endpoint.rules_count \(snapshot.rules.count)")
+                    )
+                )
+            }
             publishSurgePresentation(
                 snapshot,
                 router: router,
+                health: nextHealth,
                 domains: [.routing, .insight]
             )
             if let rulesFailure {
@@ -979,8 +1141,14 @@ extension AppModel {
                     .unavailable(Self.routerTrialFailureMessage(for: rulesFailure, language: presentationLanguage))
                 )
             }
-            if let firstFailure { throw firstFailure }
-            return
+            guard let firstFailure else { return .success }
+            guard successCount > 0 else { throw firstFailure }
+            return .partial(
+                Self.routerTrialFailureMessage(
+                    for: firstFailure,
+                    language: presentationLanguage
+                )
+            )
         }
 
         snapshot.checkedAt = Date()
@@ -990,6 +1158,7 @@ extension AppModel {
             connectionRatesReceivedAt: snapshot.checkedAt,
             domains: []
         )
+        return .success
     }
 
     private func publishMihomoPresentation(
@@ -1094,6 +1263,7 @@ extension AppModel {
         _ snapshot: SurgeControlSnapshot,
         router: RouterProfile,
         connectionRatesReceivedAt: Date? = nil,
+        health: ControllerHealthSnapshot? = nil,
         domains: DashboardPublicationDomains
     ) {
         let receivedAt = connectionRatesReceivedAt ?? snapshot.checkedAt ?? Date()
@@ -1113,11 +1283,19 @@ extension AppModel {
         if dashboardSessionControls.dashboardUpdatesPaused {
             controllerSession.pendingPresentation.surgeSnapshot = snapshot
             controllerSession.pendingPresentation.connectionState = .connected(version: "Surge HTTP API")
+            if var health {
+                health.finalize()
+                controllerSession.pendingPresentation.controllerHealth = health
+            }
             return
         }
 
         if !domains.isEmpty {
             publishStagedSurgePresentation(router: router, domains: domains)
+        }
+        if var health {
+            health.finalize()
+            controllerHealth = health
         }
         connectionState = .connected(version: "Surge HTTP API")
     }
@@ -1570,6 +1748,9 @@ extension AppModel {
         }
 
         let firstCommit = !controllerSession.hasCommittedBaseline
+        let retainedTerminalChannelFailure = firstCommit
+            ? isolatedTerminalMihomoChannelFailure(for: router)
+            : nil
         let receivedAt = controllerSession.baselineTransaction.latestReceivedAt
             ?? controllerSession.latestReceivedAt
             ?? Date()
@@ -1602,10 +1783,21 @@ extension AppModel {
         controllerSession.resetPendingPresentation()
 
         controllerSession.commitBaseline(at: receivedAt)
-        controllerSession.state = .live
-        setLiveStreamState(streamState)
         liveRetryState.recordSuccess()
-        operationState = nil
+        if let retainedTerminalChannelFailure {
+            controllerSession.state = .partial(retainedTerminalChannelFailure)
+            setLiveStreamState(.partial(retainedTerminalChannelFailure))
+            controllerSession.liveObservation.markFailure(partial: true)
+            operationState = .partial(
+                retainedTerminalChannelFailure,
+                target: router.displayName,
+                nextStep: localized("action.retry")
+            )
+        } else {
+            controllerSession.state = .live
+            setLiveStreamState(streamState)
+            operationState = nil
+        }
         updateLiveSessionRuntimePresentationDemand(forceVisible: true)
 
         for domain in [
@@ -1639,7 +1831,10 @@ extension AppModel {
         }
 
         let firstSuccess = controllerSession.lastSuccessAt == nil
-        controllerSession.lastSuccessAt = receivedAt
+        controllerSession.lastSuccessAt = max(
+            controllerSession.lastSuccessAt ?? receivedAt,
+            receivedAt
+        )
         recomputeSessionState()
         if firstSuccess {
             let generation = controllerSession.generation
@@ -1710,19 +1905,46 @@ extension AppModel {
         router: RouterProfile,
         streamState: LiveStreamState
     ) {
+        let terminalChannelFailure = isolatedTerminalMihomoChannelFailure(
+            for: router
+        )
         controllerSession.recordReceived(at: receivedAt)
         if controllerSession.baselineTransaction.isActive {
             _ = attemptSessionBaselineCommit(
                 for: router,
                 generation: controllerSession.generation
             )
+            if terminalChannelFailure != nil {
+                controllerSession.liveObservation.markFailure(
+                    partial: controllerSession.hasCommittedBaseline
+                )
+            }
             return
         }
 
-        controllerSession.lastSuccessAt = receivedAt
+        controllerSession.lastSuccessAt = max(
+            controllerSession.lastSuccessAt ?? receivedAt,
+            receivedAt
+        )
         liveRetryState.recordSuccess()
-        setLiveStreamState(streamState)
+        if terminalChannelFailure == nil {
+            setLiveStreamState(streamState)
+        } else {
+            controllerSession.liveObservation.markFailure(partial: true)
+        }
         recomputeSessionState()
+    }
+
+    private func isolatedTerminalMihomoChannelFailure(
+        for router: RouterProfile
+    ) -> String? {
+        guard Self.usesMihomoLiveStreams(runtimeControllerKind(for: router)),
+              liveSessionRuntime != nil,
+              !liveRetryState.isScheduled,
+              case .partial(let message) = liveStreamState else {
+            return nil
+        }
+        return message
     }
 
     func restartControllerLogStream() {
@@ -1782,7 +2004,8 @@ extension AppModel {
                     .logs,
                     error: error,
                     routerID: routerID,
-                    generation: generation
+                    generation: generation,
+                    runtime: runtime
                 )
             }
         }
@@ -1943,7 +2166,8 @@ extension AppModel {
                     .traffic,
                     error: error,
                     routerID: routerID,
-                    generation: generation
+                    generation: generation,
+                    runtime: runtime
                 )
             }
         }
@@ -1977,7 +2201,8 @@ extension AppModel {
                         .memory,
                         error: error,
                         routerID: routerID,
-                        generation: generation
+                        generation: generation,
+                        runtime: runtime
                     )
                 }
             }
@@ -2010,7 +2235,8 @@ extension AppModel {
                         .connections,
                         error: error,
                         routerID: routerID,
-                        generation: generation
+                        generation: generation,
+                        runtime: runtime
                     )
                 }
             }
@@ -2488,23 +2714,61 @@ extension AppModel {
         )
     }
 
-    private func handleLiveStreamFailure(
+    func handleLiveStreamFailure(
         _ channel: LiveStreamChannel,
         error: Error,
         routerID: RouterProfile.ID,
-        generation: UUID
+        generation: UUID,
+        runtime sourceRuntime: LiveSessionRuntime? = nil
     ) {
         guard isCurrentSession(routerID: routerID, generation: generation), liveStreamRequested else { return }
+        if let sourceRuntime {
+            guard let liveSessionRuntime,
+                  liveSessionRuntime === sourceRuntime else {
+                return
+            }
+        }
+
+        let disposition = RouterTrialFailureCategory(error: error).retryDisposition
+        guard disposition != .cancelled else { return }
+        guard !liveRetryState.isScheduled else { return }
 
         let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
-        let disposition = RouterTrialFailureCategory(error: error).retryDisposition
         let willRetry = disposition == .transient
             || (disposition == .retryOnce && liveRetryState.attempt == 0)
+        let isolatesTerminalChannel = !willRetry
+            && selectedRouter.map {
+                Self.usesMihomoLiveStreams(runtimeControllerKind(for: $0))
+            } == true
         controllerSession.liveObservation.markFailure(
             partial: controllerSession.hasCommittedBaseline
         )
-        cancelLiveSessionRuntime()
 
+        if isolatesTerminalChannel {
+            if controllerSession.hasCommittedBaseline {
+                controllerSession.state = .partial(message)
+                setLiveStreamState(.partial(message))
+                operationState = .partial(
+                    message,
+                    target: selectedRouter?.displayName,
+                    nextStep: localized("action.retry")
+                )
+            } else {
+                controllerSession.state = .failedBeforeFirstSnapshot(message)
+                // The baseline is not usable yet, but the generation-owned
+                // runtime and healthy sibling producers remain active.
+                setLiveStreamState(.partial(message))
+                connectionState = .failed(message)
+                operationState = .error(
+                    message,
+                    target: selectedRouter?.displayName,
+                    nextStep: localized("action.retry")
+                )
+            }
+            return
+        }
+
+        cancelLiveSessionRuntime()
         if controllerSession.hasCommittedBaseline {
             if willRetry {
                 cancelControllerOperationTasks()
@@ -2526,8 +2790,8 @@ extension AppModel {
             controllerSession.state = .failedBeforeFirstSnapshot(message)
             setLiveStreamState(.failed(message))
         }
-        connectionState = .failed(message)
 
+        connectionState = .failed(message)
         guard willRetry else { return }
         scheduleLiveStreamRetry(routerID: routerID, generation: generation)
     }

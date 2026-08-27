@@ -1601,6 +1601,50 @@ for (const reportedFieldContract of [
 assertExcludes(proxyPanels, "additionalMetadataText", "Proxy details must not collapse controller fields into one JSON value");
 assertExcludes(sourceSection(proxyPresentation, "enum ProxyWorkspaceProjection", "enum ProxyProjection"), "PolicyGroupUsageRank", "Local interaction state must not infer SMART rank");
 assertExcludes(proxies, "revealLimit", "Proxy nodes must not return to manual reveal pagination");
+assertIncludes(proxyRootContent, "ScrollViewReader", "Proxy reveal must use the one outer scroll owner");
+assertIncludes(proxyRootContent, "WorkbenchProxyScrollTarget.group(reveal.groupID)", "Proxy reveal must materialize a distant lazy group before targeting its node");
+assertIncludes(proxyRootContent, "proxy.scrollTo(reveal.targetID, anchor: .center)", "Proxy reveal must scroll the materialized node target");
+assertIncludes(proxyRootContent, "lastScrolledRevealToken", "Proxy reveal must deduplicate scrolling by request token");
+assertExcludes(proxyRootContent, ".scrollPosition(", "Proxy reveal must not keep an out-of-scope scroll-position target");
+assertExcludes(proxyPanels, ".scrollTargetLayout()", "Nested proxy grids must not declare a competing scroll target scope");
+assertIncludes(proxyPanels, "ProxyProjection.revealTargetID(", "Each proxy node tile must expose its exact reveal target ID");
+assertIncludes(proxyPanels, ".accessibilityLabel(", "Proxy icon commands must expose localized accessibility labels");
+assertIncludes(proxyPanels, '"routing.test_node \\(member.name)"', "The node-test icon must name its reported node");
+assertIncludes(overviewTopologyView, "workspaceStore.stageProxyNavigation(target)", "Topology Open Proxies must stage an exact target before navigation");
+assertIncludes(overviewPolicyInspection, "workspaceStore.stageProxyNavigation(target)", "Policy inspector Open Proxies must stage an exact target before navigation");
+assertIncludes(workspaceStore, "let groupOccurrenceID: String", "Proxy navigation must retain stable group occurrence identity");
+assertIncludes(proxyRoot, "stored.groupFilters[groupOccurrenceID] = \"\"", "Clear-and-locate must clear the exact group query");
+assertIncludes(proxyRoot, "healthFilter = .all", "Clear-and-locate must clear the health filter");
+assertIncludes(proxyRoot, "searchText = \"\"", "Clear-and-locate must clear global search");
+assertIncludes(proxyRoot, "!groupProjection.arrangedGroups.isEmpty", "Proxy no-match state must not override groups hidden by preference");
+assertIncludes(proxyRoot, "workspace.pendingProxySelection", "Same-page proxy navigation must consume newly staged targets");
+assertIncludes(proxyInteraction, "routing.show_global_and_locate", "Hidden GLOBAL must expose a dedicated explicit recovery action");
+const proxyCatalogApply = sourceSection(
+  proxyRoot,
+  "private func applyCatalogUpdate",
+  "private func rebuildCatalogIndex",
+);
+assertIncludes(proxyCatalogApply, "consumePendingProxyNavigation()", "Every accepted proxy catalog must consume any newly staged proxy target");
+assertIncludes(proxyCatalogApply, "resolveReveal()", "Every accepted proxy catalog must reconcile a pending reveal, including deferred commits");
+const proxyNavigationConsume = sourceSection(
+  proxyRoot,
+  "private func consumePendingProxyNavigation",
+  "private func resolveReveal",
+);
+assertExcludes(proxyNavigationConsume, "pendingNavigation == nil", "A new proxy target must supersede an unresolved older target");
+const proxyNavigationAccept = sourceSection(
+  proxyRoot,
+  "private func acceptProxyNavigation",
+  "private func resolveReveal",
+);
+assertIncludes(proxyNavigationAccept, "reveal = nil", "A replacement proxy target must cancel the obsolete reveal task before resolving");
+assertIncludes(proxyNavigationAccept, "pendingNavigation = selection", "A replacement proxy target must become the active pending request");
+const proxyCurrentNavigation = sourceSection(
+  proxyRoot,
+  "private var currentNavigationSelection",
+  "private func locateCurrentNode",
+);
+assertExcludes(proxyCurrentNavigation, "inspectorSelection", "Locate Current must use only controller-selected members");
 
 for (const stateCase of [
   "case noController", "case loading", "case unsupported", "case empty",

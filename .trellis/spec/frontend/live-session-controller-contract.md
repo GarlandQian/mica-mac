@@ -10,6 +10,17 @@ Apply this contract whenever code starts, replaces, pauses, refreshes, or ends t
 func enterLiveSession(for router: RouterProfile)
 func leaveLiveSession(reason: LiveSessionEndReason = .sessionEnd)
 func requestImmediateSessionRefresh(isUserInitiated: Bool = false)
+func restartRequestedMihomoLiveStreamsForManualRefresh(
+    router: RouterProfile,
+    generation: UUID
+)
+func handleLiveStreamFailure(
+    _ channel: LiveStreamChannel,
+    error: Error,
+    routerID: RouterProfile.ID,
+    generation: UUID,
+    runtime sourceRuntime: LiveSessionRuntime? = nil
+)
 func setPresentationPaused(_ paused: Bool)
 func registerLiveSessionWindowDemand(
     _ id: LiveSessionWindowDemandID,
@@ -77,6 +88,24 @@ var canTogglePresentationPause: Bool
   one latest follow-up, retry iteratively, and cancel on generation invalidation.
   Do not restore recursive retry or a second view-owned refresh loop.
 - Mihomo WebSocket receive failures are normalized to `MihomoClientError.connectionFailure` before retry classification. Traffic, logs, memory, and connections share one live retry reservation; concurrent channel failures cannot cancel and replace the pending retry or advance the backoff multiple times.
+- A Mihomo producer captures the installed `LiveSessionRuntime` and includes
+  that reference in failure handling. A callback from a replaced runtime is
+  rejected even when controller ID and generation still match. Cancellation is
+  a no-op. Once one retry is scheduled, every later callback from that failure
+  wave joins the existing reservation regardless of its error category.
+- A terminal Mihomo channel failure does not invalidate the generation-owned
+  runtime. It marks the aggregate stream/session partial (or failed before the
+  first baseline) while healthy sibling channels keep ingesting and publishing.
+  Retryable failures may perform one controlled all-stream rebuild through the
+  shared reservation.
+- User-initiated Refresh restarts requested streams for every resolved Mihomo
+  family (`mihomo`, Nikki, OpenClash, CMFA, and Stash), replaces the runtime,
+  and cancels all old producers before running the existing REST lanes. It does
+  not create a second refresh or retry subsystem.
+- A multi-endpoint refresh attempt returns success, partial success, or total
+  failure. Partial success publishes every successful endpoint, retains
+  last-good values for failures, records endpoint health, and keeps the lane
+  eligible for its next periodic cycle; it never terminalizes the whole lane.
 - sing-box status, groups, mode, connections, logs, and Tailscale producers are structured children of one task tree. Generation invalidation cancels every child and gracefully shuts down the gRPC channel; no second lossy mixed-domain queue may sit between the RPC streams and AppModel.
 - Manual refresh uses the lane single-flight/coalescing path. It never creates a second refresh subsystem.
 - Provider Update All reuses the existing provider operation task slot. It
@@ -124,6 +153,13 @@ var canTogglePresentationPause: Bool
   again. A publication staged while hidden is flushed from generation-owned
   staged state on re-entry, even when the actor revision was already consumed.
 - Last successful rows remain visible after an endpoint failure. The owning surface shows stale state; only never-loaded data uses an error empty state.
+- `ControllerSession.lastSuccessAt`, lane success times, and publication times
+  are monotonic maxima. An older domain publication must never move freshness
+  backward.
+- Locally derived connection rates key previous counters by reported ID plus
+  source-order occurrence. Duplicate-count changes or counter resets preserve
+  a controller-reported speed, otherwise they return unavailable rather than
+  borrowing another occurrence's counter.
 - Test stays available while paused. Refresh/reload/provider-update commands are disabled while paused. Menu, toolbar, Actions, Rules, and Sources consume the same capability rules.
 - Closing the final main window or sleeping invalidates the generation. App deactivation and minimization do not. Settings-only state cannot issue selected-session commands.
 - Profile save/delete persist before observable mutation. Storage failure keeps profiles, credentials, selection, and the active generation unchanged.
@@ -151,7 +187,11 @@ var canTogglePresentationPause: Bool
 | HTTP probe reports a conclusive unavailable port | Surface the transient failure and let the bounded probe retry run; do not wait for the sing-box readiness timeout. |
 | A profile targets a LAN IP over HTTP | The app bundle permits local networking and provides the system privacy explanation before URLSession contacts the configured controller. |
 | Several Mihomo live channels fail together | Keep one retry task and one backoff increment for the failure wave. |
+| Old same-generation producer reports after runtime replacement | Reject it by runtime identity; do not alter the replacement runtime or retry state. |
+| One Mihomo channel fails terminally after baseline | Keep the runtime and sibling producers active; retain data and expose partial state until explicit Refresh. |
+| User Refresh follows a terminal Mihomo channel failure | Cancel old producers, replace the same-generation runtime, restart requested streams, and run the shared REST lanes. |
 | Lane request already in flight | Set one follow-up flag; do not start another request. |
+| Some endpoints in one lane succeed and others fail | Publish successes, retain failed endpoints' last-good values, report partial, and leave the lane nonterminal. |
 | Endpoint fails after success | Keep last value, mark endpoint/surface stale, preserve `lastSuccessAt`. |
 | Endpoint has never succeeded | Show the localized error empty state and retry path. |
 | Transport reconnects after a committed baseline | Keep the prior snapshot read-only as `staleReconnecting`; replace it only after an atomic valid baseline. |
@@ -177,14 +217,24 @@ var canTogglePresentationPause: Bool
 | A policy member disappeared before selection | Reject the stale intent without cancelling or starting a selection task. |
 | sing-box Tailscale fails after prior status | Retain prior Tailscale status and mark it partial without failing the rest of the controller session. |
 | A runtime command is invoked while connecting/reconnecting or after a controller variant change | Reject it before task/client creation and keep every in-flight marker nil. |
+| Older domain receipt applies after a newer one | Keep `lastSuccessAt` at the newer timestamp. |
+| Duplicate reported connection IDs are stable across frames | Derive rates independently by source-order occurrence. |
+| Duplicate count changes or a counter decreases | Keep reported speed if present; otherwise leave derived speed unavailable. |
 
 ## 5. Good / Base / Bad Cases
 
 - Good: medium refresh fails after policy data loaded; the existing cards remain visible with a stale warning, while fast traffic continues.
+- Good: one terminal traffic socket fails while the log runtime continues to
+  publish; Refresh later replaces the runtime and cancels the old producers.
+- Good: rules and version refresh while one optional provider endpoint fails;
+  the lane reports partial and tries every endpoint again on its next cycle.
 - Good: `http://192.168.x.x:<port>` uses the user-configured endpoint with the
   narrow local-network ATS declaration and system privacy explanation.
 - Base: no controller exists; no generation or network task starts and command capabilities are false.
 - Bad: a refresh failure clears `dashboard`, starts another polling loop, changes selected controller, or exposes a user-facing Sync/Start Live mode. Removing the local-network declarations makes loopback appear healthy while a valid LAN IP can be blocked by macOS before reaching the controller.
+- Bad: one channel invalidates the shared runtime without cancelling/replacing
+  every producer, or a second callback reclassifies an already-scheduled retry
+  wave as terminal.
 
 ## 6. Tests Required
 
@@ -192,6 +242,18 @@ var canTogglePresentationPause: Bool
 - Auto Detect short-circuiting for HTTP success and conclusive transport failure, plus sing-box fallback for an unrecognized HTTP target.
 - Connection-test transport routing for Mihomo, Surge, and sing-box, including Auto Detect resolving to sing-box and backend-specific failure reports.
 - Live stream retry reservation deduplication and WebSocket transport-error normalization.
+- Terminal Mihomo channel isolation with a real actor publication from a
+  healthy sibling, cancellation no-op, mixed-category shared retry waves, and
+  rejection of an old same-generation runtime callback.
+- Offline manual Refresh lifecycle coverage: replacement runtime identity is
+  unchanged at controller/generation level, runtime object changes, and every
+  old Mihomo producer is cancelled without opening a network transport.
+- Mixed Mihomo and Surge endpoint fixtures: assert successful values publish,
+  failed endpoint health and last-good values remain, lane state is partial and
+  nonterminal, and a later cycle still runs.
+- Cross-domain out-of-order receipt tests for monotonic `lastSuccessAt`, plus
+  duplicate reported-ID rate tests for stable occurrences, count changes,
+  controller-reported rates, and counter resets.
 - Pause capabilities: Test true, Refresh false, fixed pause timestamp, reset on new generation.
 - Log 2,000/8 MiB FIFO ring behavior, closed connection 200/30-minute current-session retention, and traffic/memory/active-connection five-minute/300-sample budgets.
 - Deterministic 5/4/2/1 Hz visible publication cadence, non-restarting schedule
@@ -245,6 +307,31 @@ Task {
 
 // Correct: use the selected generation's coordinator and retain last values.
 requestImmediateSessionRefresh(isUserInitiated: true)
+```
+
+```swift
+// Wrong: every channel callback invalidates the actor, including a late
+// callback from the producer that belonged to the previous runtime.
+cancelLiveSessionRuntime()
+scheduleLiveStreamRetry(routerID: routerID, generation: generation)
+
+// Correct: reject stale runtime identity, join an existing retry wave, and
+// isolate a terminal Mihomo channel from healthy siblings.
+handleLiveStreamFailure(
+    channel,
+    error: error,
+    routerID: routerID,
+    generation: generation,
+    runtime: capturedRuntime
+)
+```
+
+```swift
+// Wrong: any optional endpoint failure terminalizes the whole lane.
+failed.finishFailure(message, disposition: category.retryDisposition)
+
+// Correct: mixed endpoint results remain retryable on the normal cadence.
+completed.finishPartial(message, at: receivedAt)
 ```
 
 ```swift

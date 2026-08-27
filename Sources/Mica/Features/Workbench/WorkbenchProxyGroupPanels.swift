@@ -9,6 +9,8 @@ struct ProxyExpandedGroupPresentation: Identifiable, Equatable {
     let filter: String
     let inspectedMemberID: String?
     let inspectedMember: ProxyNodeRowProjection?
+    let healthSummary: ProxyGroupHealthSummary
+    let healthFilter: ProxyHealthFilter
     let isSwitching: Bool
     let isTesting: Bool
     let isClearingFixed: Bool
@@ -24,6 +26,8 @@ struct ProxyPolicyGroupPanel: View {
 
     let presentation: ProxyExpandedGroupPresentation
     let scrollInteractionTracker: ProxyScrollInteractionTracker
+    let highlightedGroupID: String?
+    let highlightedMemberID: String?
     let commandsEnabled: Bool
     let canSelect: Bool
     let canTestGroup: Bool
@@ -35,6 +39,7 @@ struct ProxyPolicyGroupPanel: View {
     let onTestMember: (String) -> Void
     let onTestGroup: () -> Void
     let onClearFixed: () -> Void
+    let onLocateCurrent: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
@@ -99,7 +104,8 @@ struct ProxyPolicyGroupPanel: View {
                                     .multilineTextAlignment(.trailing)
                                     .fixedSize(horizontal: false, vertical: true)
 
-                                if let delay = presentation.item.selectedDelay {
+                                if let delay = presentation.item.selectedDelay,
+                                   delay > 0 {
                                     Text(verbatim: OverviewFormat.latency(delay))
                                         .micaThemeFont(.dataCaption, weight: .semibold)
                                         .foregroundStyle(
@@ -129,6 +135,10 @@ struct ProxyPolicyGroupPanel: View {
             )
             .padding(.horizontal, MicaTheme.Spacing.space3)
             .padding(.bottom, MicaTheme.Spacing.space2)
+
+            healthSummary
+                .padding(.horizontal, MicaTheme.Spacing.space3)
+                .padding(.bottom, MicaTheme.Spacing.space2)
         }
         .background(MicaTheme.surface)
         .clipShape(
@@ -152,6 +162,28 @@ struct ProxyPolicyGroupPanel: View {
     @ViewBuilder
     private var groupActions: some View {
         HStack(spacing: MicaTheme.Spacing.space1) {
+            Button(action: onLocateCurrent) {
+                Image(systemName: "scope")
+            }
+            .buttonStyle(.borderless)
+            .disabled(presentation.item.selected.proxyNonBlank == nil)
+            .frame(
+                minWidth: MicaTheme.Metrics.iconControlSize,
+                minHeight: MicaTheme.Metrics.iconControlSize
+            )
+            .help(
+                MicaStrings.localizedKey(
+                    "routing.locate_current_node",
+                    language: language
+                )
+            )
+            .accessibilityLabel(
+                MicaStrings.localizedKey(
+                    "routing.locate_current_node",
+                    language: language
+                )
+            )
+
             if canTestGroup || presentation.isTesting {
                 Button(action: onTestGroup) {
                     if presentation.isTesting {
@@ -263,8 +295,11 @@ struct ProxyPolicyGroupPanel: View {
                 MicaEmptyState(
                     systemImage: "tray",
                     titleKey: presentation.filter.proxyNilIfBlank == nil
+                        && presentation.healthFilter == .all
                         ? "routing.members_empty"
-                        : "routing.members_filtered_empty"
+                        : presentation.healthFilter == .all
+                            ? "routing.members_filtered_empty"
+                            : "routing.health_filter_empty"
                 )
             } else {
                 LazyVGrid(
@@ -284,6 +319,8 @@ struct ProxyPolicyGroupPanel: View {
                             scrollInteractionTracker: scrollInteractionTracker,
                             isInspected: presentation.inspectedMemberID
                                 == member.id,
+                            isHighlighted: highlightedGroupID == presentation.id
+                                && highlightedMemberID == member.id,
                             commandsEnabled: commandsEnabled,
                             canSelect: canSelect
                                 && presentation.occurrence.group.selectable,
@@ -296,12 +333,19 @@ struct ProxyPolicyGroupPanel: View {
                                 workspaceStore.selectInspector(
                                     .proxyNode(
                                         groupName: presentation.occurrence.group.id,
+                                        groupOccurrenceID: presentation.id,
                                         nodeName: member.name
                                     )
                                 )
                                 onSelectMember(member.id)
                             },
                             onTest: { onTestMember(member.id) }
+                        )
+                        .id(
+                            ProxyProjection.revealTargetID(
+                                groupID: presentation.id,
+                                memberID: member.id
+                            )
                         )
                     }
                 }
@@ -314,7 +358,47 @@ struct ProxyPolicyGroupPanel: View {
             "routing.available_nodes_count \(presentation.item.availableMemberCount) \(presentation.item.memberCount)",
             language: language
         )
-        return "\(presentation.item.type)  ·  \(availability)"
+        let health = MicaStrings.localizedKey(
+            presentation.healthSummary.status.titleKey,
+            language: language
+        )
+        return "\(presentation.item.type)  ·  \(health)  ·  \(availability)"
+    }
+
+    private var healthSummary: some View {
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            Circle()
+                .fill(presentation.healthSummary.status.tint)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+
+            Text(
+                MicaStrings.localized(
+                    "routing.health_counts \(presentation.healthSummary.availableCount) \(presentation.healthSummary.unavailableCount) \(presentation.healthSummary.unknownCount) \(presentation.healthSummary.slowCount)",
+                    language: language
+                )
+            )
+            .micaThemeFont(.dataCaption)
+            .foregroundStyle(MicaTheme.textSecondary)
+
+            Spacer(minLength: MicaTheme.Spacing.space2)
+
+            Text(
+                MicaStrings.localizedKey(
+                    presentation.healthSummary.status.titleKey,
+                    language: language
+                )
+            )
+            .micaThemeFont(.caption, weight: .semibold)
+            .foregroundStyle(presentation.healthSummary.status.tint)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            MicaStrings.localized(
+                "routing.health_accessibility \(presentation.item.groupID) \(presentation.healthSummary.availableCount) \(presentation.healthSummary.unavailableCount) \(presentation.healthSummary.unknownCount) \(presentation.healthSummary.slowCount)",
+                language: language
+            )
+        )
     }
 }
 
@@ -353,6 +437,7 @@ private struct ProxyPolicyNodeTile: View {
     let member: ProxyNodeRowProjection
     let scrollInteractionTracker: ProxyScrollInteractionTracker
     let isInspected: Bool
+    let isHighlighted: Bool
     let commandsEnabled: Bool
     let canSelect: Bool
     let canTest: Bool
@@ -388,7 +473,7 @@ private struct ProxyPolicyNodeTile: View {
                         if isMeasuring {
                             ProgressView()
                                 .controlSize(.small)
-                        } else if let delay = member.delay {
+                        } else if let delay = member.delay, delay > 0 {
                             Text(verbatim: OverviewFormat.latency(delay))
                                 .micaThemeFont(.dataCaption, weight: .semibold)
                                 .foregroundStyle(OverviewFormat.latencyTint(delay))
@@ -431,7 +516,7 @@ private struct ProxyPolicyNodeTile: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(member.name)
+            .help(member.tooltip(language: language))
             .accessibilityAddTraits(isInspected ? .isSelected : [])
 
             if canTest || isMeasuring {
@@ -466,6 +551,18 @@ private struct ProxyPolicyNodeTile: View {
                         language: language
                     )
                 )
+                .accessibilityLabel(
+                    MicaStrings.localized(
+                        "routing.test_node \(member.name)",
+                        language: language
+                    )
+                )
+                .accessibilityHint(
+                    MicaStrings.localized(
+                        "routing.help_test_node \(member.name)",
+                        language: language
+                    )
+                )
             }
         }
         .frame(minHeight: 70, alignment: .leading)
@@ -495,11 +592,14 @@ private struct ProxyPolicyNodeTile: View {
             reduceMotion || scrollInteractionTracker.isScrolling
                 ? nil
                 : MicaTheme.Motion.press,
-            value: isHovered
+            value: isHovered || isHighlighted
         )
     }
 
     private var tileFill: Color {
+        if isHighlighted {
+            return MicaTheme.accent.opacity(0.2)
+        }
         if member.isControllerSelected {
             return MicaTheme.accent.opacity(0.14)
         }
@@ -513,6 +613,9 @@ private struct ProxyPolicyNodeTile: View {
     }
 
     private var tileStroke: Color {
+        if isHighlighted {
+            return MicaTheme.accent
+        }
         if member.isControllerSelected {
             return MicaTheme.accent
         }
@@ -526,10 +629,11 @@ private struct ProxyPolicyNodeTile: View {
     }
 
     private var statusTint: Color {
-        switch member.alive {
-        case true: MicaTheme.statusOK
-        case false: MicaTheme.statusError
-        case nil: MicaTheme.textTertiary
+        switch member.health {
+        case .healthy: MicaTheme.statusOK
+        case .degraded: MicaTheme.statusWarning
+        case .unavailable: MicaTheme.statusError
+        case .unknown: MicaTheme.textTertiary
         }
     }
 
@@ -555,6 +659,37 @@ private extension ProxyLatencyDistributionBucket {
     }
 }
 
+private extension ProxyGroupHealthSummary.Status {
+    var titleKey: String {
+        switch self {
+        case .healthy: "routing.health_healthy"
+        case .degraded: "routing.health_degraded"
+        case .failed: "routing.health_failed"
+        case .unknown: "routing.health_unknown"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .healthy: MicaTheme.statusOK
+        case .degraded: MicaTheme.statusWarning
+        case .failed: MicaTheme.statusError
+        case .unknown: MicaTheme.textTertiary
+        }
+    }
+}
+
+private extension ProxyNodeHealthState {
+    var titleKey: String {
+        switch self {
+        case .healthy: "routing.health_healthy"
+        case .degraded: "routing.health_degraded"
+        case .unavailable: "routing.health_unavailable"
+        case .unknown: "routing.health_unknown"
+        }
+    }
+}
+
 private extension ProxyNodeRowProjection {
     var descriptor: String? {
         let values = [
@@ -564,6 +699,23 @@ private extension ProxyNodeRowProjection {
         ].compactMap { $0 }
         return values.isEmpty ? nil : values.joined(separator: "  ·  ")
     }
+
+    func tooltip(language: AppLanguage) -> String {
+        let status = MicaStrings.localizedKey(
+            health.titleKey,
+            language: language
+        )
+        let latency = delay.flatMap { delay in
+            delay > 0 ? OverviewFormat.latency(delay) : nil
+        }
+            ?? MicaStrings.localizedKey(
+                "overview.config_not_reported",
+                language: language
+            )
+        let values = [name, status, latency]
+            + [descriptor].compactMap { $0 }
+        return values.joined(separator: "  ·  ")
+    }
 }
 
 private extension String {
@@ -571,4 +723,3 @@ private extension String {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }
-

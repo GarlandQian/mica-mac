@@ -2,6 +2,53 @@ import Foundation
 import MicaCore
 import SwiftUI
 
+private extension ProxyHealthFilter {
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .all: "routing.health_filter_all"
+        case .degraded: "routing.health_filter_attention"
+        case .unavailable: "routing.health_filter_unavailable"
+        case .slow: "routing.health_filter_slow"
+        case .current: "routing.health_filter_current"
+        }
+    }
+}
+
+struct WorkbenchProxyNavigationReveal: Equatable, Sendable {
+    let controllerID: RouterProfile.ID
+    let generation: UUID
+    let groupID: String
+    let memberID: String
+    let nodeName: String
+    let token: UUID
+
+    var targetID: String {
+        ProxyProjection.revealTargetID(
+            groupID: groupID,
+            memberID: memberID
+        )
+    }
+
+    func isCurrent(controllerID: RouterProfile.ID?, generation: UUID) -> Bool {
+        self.controllerID == controllerID && self.generation == generation
+    }
+}
+
+enum WorkbenchProxyScrollTarget {
+    static func group(_ groupID: String) -> String {
+        "proxy-group:\(groupID)"
+    }
+
+    static func member(groupID: String, memberID: String) -> String {
+        ProxyProjection.revealTargetID(
+            groupID: groupID,
+            memberID: memberID
+        )
+    }
+}
+
 struct WorkbenchPolicyGroupsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
@@ -18,23 +65,17 @@ struct WorkbenchPolicyGroupsView: View {
     @State private var catalogRevisionSequence: UInt64 = 0
     @State private var presentationCoordinator = ProxyCatalogPresentationCoordinator()
     @State private var scrollInteractionTracker = ProxyScrollInteractionTracker()
+    @State private var healthFilter: ProxyHealthFilter = .all
+    @State private var reveal: WorkbenchProxyNavigationReveal?
+    @State private var lastScrolledRevealToken: UUID?
+    @State private var pendingNavigation: WorkbenchProxyNavigationSelection?
+    @State private var revealObstruction: WorkbenchProxyRevealObstruction?
+    @State private var unresolvedReason: WorkbenchProxyUnresolvedReason?
 
     var body: some View {
         WorkbenchPageScaffold {
             VStack(spacing: 0) {
-                WorkbenchCommandBar {
-                    WorkbenchCommandSummary(
-                        symbolName: "point.3.connected.trianglepath.dotted",
-                        titleKey: "routing.group_catalog",
-                        value: groupProjection.visibleGroups.count.formatted(),
-                        detail: groupVisibilitySummary
-                    )
-                } controls: {
-                    WorkbenchStatusBadge(
-                        text: modeBadgeText,
-                        tint: MicaTheme.textSecondary
-                    )
-                }
+                commandBar
 
                 if let staleMessage {
                     WorkbenchStaleNotice(message: staleMessage)
@@ -45,6 +86,7 @@ struct WorkbenchPolicyGroupsView: View {
         }
         .onAppear {
             receiveCatalog(appModel.policyGroupCatalog, forceImmediate: true)
+            consumePendingProxyNavigation()
         }
         .onDisappear {
             presentationCoordinator.reset()
@@ -57,18 +99,31 @@ struct WorkbenchPolicyGroupsView: View {
         }
         .onChange(of: appModel.policyGroupCatalog) { _, catalog in
             receiveCatalog(catalog)
+            consumePendingProxyNavigation()
+            resolveReveal()
         }
         .onChange(of: preferences.globalGroupVisibility) { _, _ in
             rebuildCatalogIndex()
+            resolveReveal()
         }
         .onChange(of: searchText) { _, _ in
             rebuildVisibleGroupProjection()
+            resolveReveal()
         }
         .onChange(of: workspace.openGroupIDs) { _, _ in
             rebuildExpandedGroupIndexes()
+            resolveReveal()
         }
         .onChange(of: workspace.groupFilters) { _, _ in
             rebuildExpandedProjections()
+            resolveReveal()
+        }
+        .onChange(of: workspace.pendingProxySelection) { _, _ in
+            consumePendingProxyNavigation()
+        }
+        .onChange(of: healthFilter) { _, _ in
+            rebuildExpandedProjections()
+            resolveReveal()
         }
         .onChange(of: proxyOperationActivity) { oldActivity, newActivity in
             guard oldActivity != newActivity,
@@ -83,53 +138,158 @@ struct WorkbenchPolicyGroupsView: View {
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if groupProjection.arrangedGroups.isEmpty {
-            emptyState
-        } else {
-            ScrollView {
-                LazyVStack(spacing: MicaTheme.Spacing.space4) {
-                    ForEach(groupPresentations) { presentation in
-                        ProxyPolicyGroupPanel(
-                            presentation: presentation,
-                            scrollInteractionTracker: scrollInteractionTracker,
-                            commandsEnabled: liveCommandsAvailable,
-                            canSelect: canSelectMember,
-                            canTestGroup: canTestGroup,
-                            canTestNode: canTestNode,
-                            measuringNode: appModel.measuringDelayNode,
-                            onToggle: { toggleGroup(presentation.id) },
-                            onFilterChange: {
-                                setGroupFilter($0, for: presentation.id)
-                            },
-                            onSelectMember: {
-                                selectMember($0, in: presentation.id)
-                            },
-                            onTestMember: {
-                                testMember($0, in: presentation.id)
-                            },
-                            onTestGroup: {
-                                testGroup(presentation.id)
-                            },
-                            onClearFixed: {
-                                clearFixedSelection(in: presentation.id)
-                            }
-                        )
-                    }
-                }
-                .padding(MicaTheme.Spacing.space4)
-                .frame(maxWidth: 1_320, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .scrollIndicators(.automatic)
-            .background(MicaTheme.canvas)
-            .proxyScrollInteraction(
-                in: .nodes,
-                coordinator: presentationCoordinator,
-                tracker: scrollInteractionTracker
+    private var commandBar: some View {
+        WorkbenchCommandBar {
+            WorkbenchCommandSummary(
+                symbolName: "point.3.connected.trianglepath.dotted",
+                titleKey: "routing.group_catalog",
+                value: groupProjection.visibleGroups.count.formatted(),
+                detail: groupVisibilitySummary
+            )
+        } controls: {
+            healthFilterPicker
+            WorkbenchStatusBadge(
+                text: modeBadgeText,
+                tint: MicaTheme.textSecondary
+            )
+        } commands: {
+            WorkbenchIconCommand(
+                titleKey: "routing.locate_current_node",
+                systemImage: "scope",
+                isEnabled: canLocateCurrentNode,
+                action: { locateCurrentNode() }
             )
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        VStack(spacing: 0) {
+            if let revealObstruction {
+                WorkbenchProxyRevealObstructionNotice(
+                    obstruction: revealObstruction,
+                    nodeName: reveal?.nodeName
+                        ?? pendingNavigation?.nodeName
+                        ?? "",
+                    recoverAndLocate: recoverRevealObstruction
+                )
+            }
+
+            if let unresolvedReason,
+               let pendingNavigation {
+                WorkbenchProxyUnresolvedNotice(
+                    nodeName: pendingNavigation.nodeName,
+                    reason: unresolvedReason
+                )
+            }
+
+            if shouldShowNoMatchingGroups {
+                noMatchingGroupsState
+            } else if groupProjection.arrangedGroups.isEmpty {
+                emptyState
+            } else if groupProjection.visibleGroups.isEmpty {
+                noMatchingGroupsState
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: MicaTheme.Spacing.space4) {
+                            ForEach(groupPresentations) { presentation in
+                                ProxyPolicyGroupPanel(
+                                    presentation: presentation,
+                                    scrollInteractionTracker: scrollInteractionTracker,
+                                    highlightedGroupID: reveal?.groupID,
+                                    highlightedMemberID: reveal?.memberID,
+                                    commandsEnabled: liveCommandsAvailable,
+                                    canSelect: canSelectMember,
+                                    canTestGroup: canTestGroup,
+                                    canTestNode: canTestNode,
+                                    measuringNode: appModel.measuringDelayNode,
+                                    onToggle: { toggleGroup(presentation.id) },
+                                    onFilterChange: {
+                                        setGroupFilter($0, for: presentation.id)
+                                    },
+                                    onSelectMember: {
+                                        selectMember($0, in: presentation.id)
+                                    },
+                                    onTestMember: {
+                                        testMember($0, in: presentation.id)
+                                    },
+                                    onTestGroup: {
+                                        testGroup(presentation.id)
+                                    },
+                                    onClearFixed: {
+                                        clearFixedSelection(in: presentation.id)
+                                    },
+                                    onLocateCurrent: {
+                                        locateCurrentNode(in: presentation.id)
+                                    }
+                                )
+                                .id(WorkbenchProxyScrollTarget.group(presentation.id))
+                            }
+                        }
+                        .padding(MicaTheme.Spacing.space4)
+                        .frame(maxWidth: 1_320, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, alignment: .top)
+                    }
+                    .scrollIndicators(.automatic)
+                    .background(MicaTheme.canvas)
+                    .proxyScrollInteraction(
+                        in: .nodes,
+                        coordinator: presentationCoordinator,
+                        tracker: scrollInteractionTracker
+                    )
+                    .task(id: reveal) {
+                        guard let reveal else { return }
+                        await Task.yield()
+                        guard !Task.isCancelled,
+                              self.reveal?.token == reveal.token,
+                              reveal.isCurrent(
+                                  controllerID: appModel.selectedRouterID,
+                                  generation: appModel
+                                      .controllerSessionPresentation.generation
+                              ) else {
+                            return
+                        }
+                        if lastScrolledRevealToken != reveal.token {
+                            proxy.scrollTo(
+                                WorkbenchProxyScrollTarget.group(reveal.groupID),
+                                anchor: .center
+                            )
+                            try? await Task.sleep(for: .milliseconds(16))
+                            guard !Task.isCancelled,
+                                  self.reveal?.token == reveal.token,
+                                  reveal.isCurrent(
+                                      controllerID: appModel.selectedRouterID,
+                                      generation: appModel
+                                          .controllerSessionPresentation.generation
+                                  ) else {
+                                return
+                            }
+                            proxy.scrollTo(reveal.targetID, anchor: .center)
+                            lastScrolledRevealToken = reveal.token
+                        }
+                        try? await Task.sleep(for: .milliseconds(900))
+                        guard !Task.isCancelled,
+                              self.reveal?.token == reveal.token else { return }
+                        self.reveal = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private var noMatchingGroupsState: some View {
+        WorkbenchStateView(
+            kind: .filterEmpty,
+            titleKey: "dashboard.no_matching_groups",
+            detailKey: "dashboard.no_matching_groups_hint"
+        )
+    }
+
+    private var shouldShowNoMatchingGroups: Bool {
+        !groupProjection.arrangedGroups.isEmpty
+            && !ProxySearchText.normalize(searchText).isEmpty
+            && groupProjection.visibleGroups.isEmpty
     }
 
     private var emptyState: some View {
@@ -167,6 +327,16 @@ struct WorkbenchPolicyGroupsView: View {
             )
         }
 
+        if !acceptedCatalog.groups.isEmpty {
+            return WorkbenchStateView(
+                kind: .filterEmpty,
+                titleKey: "routing.groups_hidden_by_preference",
+                detailKey: "routing.groups_hidden_by_preference_detail",
+                actionTitleKey: "routing.show_global_groups",
+                action: showGlobalGroups
+            )
+        }
+
         switch appModel.controllerSessionPresentation.state {
         case .partial(let message), .failedBeforeFirstSnapshot(let message),
              .failed(let message):
@@ -189,6 +359,30 @@ struct WorkbenchPolicyGroupsView: View {
                 action: appModel.refreshSelectedRouter
             )
         }
+    }
+
+    private var healthFilterPicker: some View {
+        Picker(
+            MicaStrings.localizedKey(
+                "routing.health_filter",
+                language: language
+            ),
+            selection: $healthFilter
+        ) {
+            ForEach(ProxyHealthFilter.allCases, id: \.rawValue) { filter in
+                Text(verbatim: filterTitle(filter))
+                    .tag(filter)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .accessibilityLabel(
+            MicaStrings.localizedKey(
+                "routing.health_filter",
+                language: language
+            )
+        )
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 
     private var workspace: WorkbenchDestinationWorkspace {
@@ -220,6 +414,8 @@ struct WorkbenchPolicyGroupsView: View {
                 inspectedMember: inspectedMemberID.flatMap {
                     index.recordsByID[$0]?.row
                 },
+                healthSummary: item.healthSummary,
+                healthFilter: healthFilter,
                 isSwitching: isSwitchingGroup(occurrence.group.id),
                 isTesting: isTestingGroup(occurrence.group.id),
                 isClearingFixed: appModel.clearingFixedGroupID
@@ -259,12 +455,21 @@ struct WorkbenchPolicyGroupsView: View {
     }
 
     private func resetCatalogPresentationForSessionBoundary() {
-        presentationCoordinator.reset(preservingScrollState: true)
+        scrollInteractionTracker.end(
+            in: .nodes,
+            coordinator: presentationCoordinator
+        )
+        presentationCoordinator.reset()
         acceptedCatalog = .empty
         acceptedCatalogRevision = .zero
         projectionCache = ProxyCatalogProjectionCache()
         groupProjection = .empty
         expandedProjections = [:]
+        reveal = nil
+        lastScrolledRevealToken = nil
+        pendingNavigation = nil
+        revealObstruction = nil
+        unresolvedReason = nil
         receiveCatalog(appModel.policyGroupCatalog, forceImmediate: true)
     }
 
@@ -285,6 +490,8 @@ struct WorkbenchPolicyGroupsView: View {
         acceptedCatalog = update.catalog
         acceptedCatalogRevision = update.revision
         rebuildCatalogIndex()
+        consumePendingProxyNavigation()
+        resolveReveal()
     }
 
     private func rebuildCatalogIndex() {
@@ -343,7 +550,8 @@ struct WorkbenchPolicyGroupsView: View {
                     groupID,
                     ProxyActiveGroupProjection(
                         index: index,
-                        query: currentWorkspace.groupFilters[groupID] ?? ""
+                        query: currentWorkspace.groupFilters[groupID] ?? "",
+                        healthFilter: healthFilter
                     )
                 )
             }
@@ -573,6 +781,248 @@ struct WorkbenchPolicyGroupsView: View {
         }
     }
 
+    private var canLocateCurrentNode: Bool {
+        currentNavigationSelection != nil && hasCurrentCatalogProjection
+    }
+
+    private var currentNavigationSelection: WorkbenchProxyNavigationSelection? {
+        guard let controllerID = appModel.selectedRouterID else { return nil }
+        let generation = appModel.controllerSessionPresentation.generation
+        let controllerGroups = ProxyProjection.arrangedGroups(
+            acceptedCatalog.groups,
+            mode: acceptedCatalog.mode,
+            visibility: .alwaysShow
+        )
+        if let activeGroupID = workspace.activeGroupID,
+           let occurrence = controllerGroups.first(
+               where: { $0.id == activeGroupID }
+           ),
+           let nodeName = occurrence.group.selected.proxyNonBlank {
+            return ProxyProjection.navigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                groupOccurrenceID: occurrence.id,
+                nodeName: nodeName
+            )
+        }
+
+        for occurrence in controllerGroups {
+            if let nodeName = occurrence.group.selected.proxyNonBlank {
+                return ProxyProjection.navigationSelection(
+                    controllerID: controllerID,
+                    generation: generation,
+                    groupOccurrenceID: occurrence.id,
+                    nodeName: nodeName
+                )
+            }
+        }
+        return nil
+    }
+
+    private func locateCurrentNode(in groupID: String? = nil) {
+        guard let controllerID = appModel.selectedRouterID,
+              hasCurrentCatalogProjection else { return }
+
+        let selection: WorkbenchProxyNavigationSelection?
+        if let groupID,
+           let occurrence = projectionCache.groupIndex.arrangedGroups.first(
+               where: { $0.id == groupID }
+           ),
+           let nodeName = occurrence.group.selected.proxyNonBlank {
+            selection = ProxyProjection.navigationSelection(
+                controllerID: controllerID,
+                generation: appModel.controllerSessionPresentation.generation,
+                groupOccurrenceID: occurrence.id,
+                nodeName: nodeName
+            )
+        } else {
+            selection = currentNavigationSelection
+        }
+
+        guard let selection else { return }
+        acceptProxyNavigation(selection)
+    }
+
+    private func consumePendingProxyNavigation() {
+        guard let controllerID = appModel.selectedRouterID,
+              let selection = workspaceStore.consumeProxyNavigation(
+                  controllerID: controllerID,
+                  generation: appModel.controllerSessionPresentation.generation
+              ) else {
+            return
+        }
+
+        acceptProxyNavigation(selection)
+    }
+
+    private func acceptProxyNavigation(
+        _ selection: WorkbenchProxyNavigationSelection
+    ) {
+        reveal = nil
+        pendingNavigation = selection
+        unresolvedReason = nil
+        revealObstruction = nil
+        resolveReveal()
+    }
+
+    private func resolveReveal() {
+        guard let pendingNavigation else { return }
+        guard let controllerID = appModel.selectedRouterID,
+              controllerID == pendingNavigation.controllerID,
+              appModel.controllerSessionPresentation.generation
+                  == pendingNavigation.generation,
+              hasCurrentCatalogProjection else {
+            return
+        }
+
+        let resolution = ProxyProjection.resolveNavigationTarget(
+            groupOccurrenceID: pendingNavigation.groupOccurrenceID,
+            nodeName: pendingNavigation.nodeName,
+            catalog: acceptedCatalog,
+            visibility: preferences.globalGroupVisibility
+        )
+
+        switch resolution.status {
+        case .emptyCatalog:
+            unresolvedReason = .emptyCatalog
+            revealObstruction = nil
+            return
+        case .hiddenGlobal:
+            unresolvedReason = nil
+            revealObstruction = .hiddenGlobal
+            return
+        case .missingGroup, .ambiguousGroup, .missingNode:
+            unresolvedReason = unresolvedReason(for: resolution.status)
+            revealObstruction = nil
+            return
+        case .resolved:
+            break
+        }
+
+        guard resolution.isResolved,
+              let occurrence = resolution.occurrence,
+              let member = resolution.member,
+              let row = resolution.row else {
+            unresolvedReason = unresolvedReason(for: resolution.status)
+            revealObstruction = nil
+            return
+        }
+        unresolvedReason = nil
+
+        let currentWorkspace = workspace
+        if !currentWorkspace.openGroupIDs.contains(occurrence.id) {
+            openGroup(occurrence.id)
+            return
+        }
+
+        let index = projectionCache.expandedGroupIndex(for: occurrence.id)
+        guard index.occurrence != nil else {
+            rebuildExpandedGroupIndexes()
+            return
+        }
+
+        var blockers: WorkbenchProxyFilterObstructions = []
+        if !groupProjection.visibleGroups.contains(where: {
+            $0.id == occurrence.id
+        }) {
+            blockers.insert(.globalSearch)
+        }
+        let textProjection = ProxyActiveGroupProjection(
+            index: index,
+            query: currentWorkspace.groupFilters[occurrence.id] ?? "",
+            healthFilter: .all
+        )
+        if !textProjection.members.contains(where: { $0.id == member.id }) {
+            blockers.insert(.groupFilter)
+        }
+        if !healthFilter.includes(row) {
+            blockers.insert(.healthFilter)
+        }
+        guard blockers.isEmpty else {
+            revealObstruction = .filters(
+                groupOccurrenceID: occurrence.id,
+                blockers: blockers
+            )
+            return
+        }
+        guard expandedProjections[occurrence.id]?.members.contains(where: {
+            $0.id == member.id
+        }) == true else {
+            rebuildExpandedProjections()
+            return
+        }
+
+        workspaceStore.update(
+            controllerID: controllerID,
+            destination: .proxies
+        ) { stored in
+            stored.activeGroupID = occurrence.id
+            stored.selectedGroupMemberIDs[occurrence.id] = member.id
+        }
+        workspaceStore.selectInspector(
+            .proxyNode(
+                groupName: occurrence.group.id,
+                groupOccurrenceID: occurrence.id,
+                nodeName: row.name
+            )
+        )
+        reveal = WorkbenchProxyNavigationReveal(
+            controllerID: controllerID,
+            generation: pendingNavigation.generation,
+            groupID: occurrence.id,
+            memberID: member.id,
+            nodeName: row.name,
+            token: UUID()
+        )
+        self.pendingNavigation = nil
+        revealObstruction = nil
+        unresolvedReason = nil
+    }
+
+    private func recoverRevealObstruction() {
+        switch revealObstruction {
+        case .hiddenGlobal:
+            preferences.globalGroupVisibility = .alwaysShow
+            rebuildCatalogIndex()
+        case .filters(let groupOccurrenceID, _):
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                workspaceStore.update(
+                    controllerID: appModel.selectedRouterID,
+                    destination: .proxies
+                ) { stored in
+                    stored.groupFilters[groupOccurrenceID] = ""
+                }
+                healthFilter = .all
+                searchText = ""
+            }
+            rebuildVisibleGroupProjection()
+            rebuildExpandedProjections()
+        case nil:
+            break
+        }
+        revealObstruction = nil
+        resolveReveal()
+    }
+
+    private func showGlobalGroups() {
+        preferences.globalGroupVisibility = .alwaysShow
+    }
+
+    private func unresolvedReason(
+        for status: ProxyNavigationTargetResolutionStatus
+    ) -> WorkbenchProxyUnresolvedReason? {
+        switch status {
+        case .resolved: nil
+        case .emptyCatalog: .emptyCatalog
+        case .hiddenGlobal: nil
+        case .missingGroup: .missingGroup
+        case .ambiguousGroup: .ambiguousGroup
+        case .missingNode: .missingNode
+        }
+    }
+
     private var staleMessage: String? {
         proxySessionPresentation.retainedDataMessage
     }
@@ -592,11 +1042,106 @@ struct WorkbenchPolicyGroupsView: View {
         )
     }
 
+    private func filterTitle(_ filter: ProxyHealthFilter) -> String {
+        MicaStrings.localizedKey(filter.titleKey, language: language)
+    }
+
     private var modeBadgeText: String {
         let mode = groupProjection.mode
         return MicaStrings.localized(
             "routing.mode_current \(mode)",
             language: language
         )
+    }
+}
+
+private struct WorkbenchProxyRevealObstructionNotice: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let obstruction: WorkbenchProxyRevealObstruction
+    let nodeName: String
+    let recoverAndLocate: () -> Void
+
+    var body: some View {
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(
+                        MicaStrings.localized(
+                            "routing.reveal_blocked_title \(nodeName)",
+                            language: language
+                        )
+                    )
+                    .micaThemeFont(.caption, weight: .semibold)
+
+                    Text(
+                        MicaStrings.localizedKey(
+                            obstruction.detailKey,
+                            language: language
+                        )
+                    )
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                }
+            } icon: {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(MicaTheme.statusWarning)
+            }
+
+            Spacer(minLength: MicaTheme.Spacing.space2)
+
+            Button(action: recoverAndLocate) {
+                Label(
+                    MicaStrings.localizedKey(
+                        obstruction.actionTitleKey,
+                        language: language
+                    ),
+                    systemImage: "scope"
+                )
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MicaTheme.statusWarning.opacity(0.08))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct WorkbenchProxyUnresolvedNotice: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let nodeName: String
+    let reason: WorkbenchProxyUnresolvedReason
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(
+                    MicaStrings.localized(
+                        "routing.reveal_unresolved \(nodeName)",
+                        language: language
+                    )
+                )
+                .micaThemeFont(.caption, weight: .semibold)
+                Text(
+                    MicaStrings.localizedKey(
+                        reason.detailKey,
+                        language: language
+                    )
+                )
+                .micaThemeFont(.caption)
+                .foregroundStyle(MicaTheme.textSecondary)
+            }
+        } icon: {
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(MicaTheme.textTertiary)
+        }
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
+        .padding(.vertical, MicaTheme.Spacing.space2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MicaTheme.surface)
     }
 }
