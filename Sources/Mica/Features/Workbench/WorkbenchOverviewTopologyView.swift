@@ -205,7 +205,7 @@ private struct OverviewTopologyWorkspace: View {
                                 language: language,
                                 interaction: runtime.interaction,
                                 onOpenPath: openPathInConnections,
-                                onOpenProxies: openProxies
+                                onOpenProxies: openProxies(for:)
                             )
                         }
                     }
@@ -220,7 +220,7 @@ private struct OverviewTopologyWorkspace: View {
                         interaction: runtime.interaction,
                         showsPathRows: runtime.isExpanded,
                         onOpenPath: openPathInConnections,
-                        onOpenProxies: openProxies
+                        onOpenProxies: openProxies(for:)
                     )
                 }
             }
@@ -272,8 +272,44 @@ private struct OverviewTopologyWorkspace: View {
         destination = .connections
     }
 
-    private func openProxies() {
+    private func openProxies(for node: ConnectionTopology.Node) {
+        guard let target = proxyNavigationTarget(for: node) else { return }
+        workspaceStore.stageProxyNavigation(target)
         destination = .proxies
+    }
+
+    private func proxyNavigationTarget(
+        for node: ConnectionTopology.Node
+    ) -> WorkbenchProxyNavigationSelection? {
+        guard let controllerID,
+              case .policyHop = node.columnID else {
+            return nil
+        }
+        let policyIndex = runtime.policyInspectionCache.resolve(
+            revision: appModel.policyGroupCatalogRevision,
+            catalog: appModel.policyGroupCatalog
+        )
+        switch policyIndex.resolve(name: node.name) {
+        case .group(let group):
+            let nodeName = group.selected.proxyNonBlank
+                ?? group.members.lazy.compactMap(\.proxyNonBlank).first
+            guard let nodeName else { return nil }
+            return ProxyProjection.navigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                groupOccurrenceID: group.occurrenceID,
+                nodeName: nodeName
+            )
+        case .member(let member):
+            return ProxyProjection.navigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                groupOccurrenceID: member.groupOccurrenceID,
+                nodeName: member.name
+            )
+        case .ambiguous, .missing:
+            return nil
+        }
     }
 
     /// Phase 3.3: pinned policy-node selection opens the workspace inspector
@@ -305,13 +341,24 @@ private struct OverviewTopologyWorkspace: View {
         )
         switch policyIndex.resolve(name: node.name) {
         case .group(let group):
-            workspaceStore.selectInspector(.proxyGroup(groupName: group.name))
+            workspaceStore.selectInspector(
+                .proxyGroup(
+                    groupName: group.name,
+                    groupOccurrenceID: group.occurrenceID
+                )
+            )
         case .member(let member):
             workspaceStore.selectInspector(
-                .proxyNode(groupName: member.groupName, nodeName: member.name)
+                .proxyNode(
+                    groupName: member.groupName,
+                    groupOccurrenceID: member.groupOccurrenceID,
+                    nodeName: member.name
+                )
             )
         case .ambiguous, .missing:
-            workspaceStore.selectInspector(.proxyGroup(groupName: node.name))
+            workspaceStore.selectInspector(
+                .proxyGroup(groupName: node.name, groupOccurrenceID: nil)
+            )
         }
     }
 }
@@ -330,7 +377,7 @@ private struct OverviewTopologyViewport: View {
     let interaction: OverviewTopologyInteractionState
     let showsPathRows: Bool
     let onOpenPath: (ConnectionTopology.PathRecord) -> Void
-    let onOpenProxies: () -> Void
+    let onOpenProxies: (ConnectionTopology.Node) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
@@ -501,8 +548,8 @@ private struct OverviewTopologyViewport: View {
                 }
             }
 
-            if isPolicySelection(selection) {
-                Button(action: onOpenProxies) {
+            if let policyNode = resolvablePolicyNode(for: selection) {
+                Button { onOpenProxies(policyNode) } label: {
                     Label(
                         MicaStrings.localizedKey(
                             WorkbenchDestination.proxies.titleKey,
@@ -538,13 +585,29 @@ private struct OverviewTopologyViewport: View {
         }
     }
 
-    private func isPolicySelection(_ selection: OverviewTopologySelection) -> Bool {
+    private func resolvablePolicyNode(
+        for selection: OverviewTopologySelection
+    ) -> ConnectionTopology.Node? {
         guard case .node(let nodeID) = selection,
               let node = index.node(id: nodeID),
               case .policyHop = node.columnID else {
-            return false
+            return nil
         }
-        return true
+        let policyIndex = runtime.policyInspectionCache.resolve(
+            revision: appModel.policyGroupCatalogRevision,
+            catalog: appModel.policyGroupCatalog
+        )
+        switch policyIndex.resolve(name: node.name) {
+        case .group(let group):
+            return group.selected.proxyNonBlank != nil
+                || group.members.contains { $0.proxyNonBlank != nil }
+                ? node
+                : nil
+        case .member:
+            return node
+        case .ambiguous, .missing:
+            return nil
+        }
     }
 
     /// State-change motion gate (design.md §2): Reduce Motion, a paused stream,
@@ -1064,7 +1127,7 @@ private struct OverviewTopologyAccessibilityRepresentation: View {
     let language: AppLanguage
     let interaction: OverviewTopologyInteractionState
     let onOpenPath: (ConnectionTopology.PathRecord) -> Void
-    let onOpenProxies: () -> Void
+    let onOpenProxies: (ConnectionTopology.Node) -> Void
 
     var body: some View {
         let policyIndex = policyCache.resolve(
@@ -1116,7 +1179,7 @@ private struct OverviewTopologyAccessibilityNodes: View {
     let policyIndex: OverviewPolicyInspectionIndex
     let language: AppLanguage
     let interaction: OverviewTopologyInteractionState
-    let onOpenProxies: () -> Void
+    let onOpenProxies: (ConnectionTopology.Node) -> Void
 
     var body: some View {
         VStack {
@@ -1147,17 +1210,19 @@ private struct OverviewTopologyAccessibilityNodes: View {
                         )
                     )
 
-                    Button(action: onOpenProxies) {
-                        Text(
-                            MicaStrings.localizedKey(
-                                WorkbenchDestination.proxies.titleKey,
-                                language: language
+                    if canOpenProxies(node) {
+                        Button { onOpenProxies(node) } label: {
+                            Text(
+                                MicaStrings.localizedKey(
+                                    WorkbenchDestination.proxies.titleKey,
+                                    language: language
+                                )
                             )
+                        }
+                        .accessibilityLabel(
+                            "\(MicaStrings.localizedKey(WorkbenchDestination.proxies.titleKey, language: language)), \(inspection?.title ?? node.name)"
                         )
                     }
-                    .accessibilityLabel(
-                        "\(MicaStrings.localizedKey(WorkbenchDestination.proxies.titleKey, language: language)), \(inspection?.title ?? node.name)"
-                    )
                 }
             }
         }
@@ -1181,6 +1246,19 @@ private struct OverviewTopologyAccessibilityNodes: View {
         return ([inspection.subtitle].compactMap { $0 } + fieldValues)
             .compactMap(\.overviewNonBlank)
             .joined(separator: ", ")
+    }
+
+    private func canOpenProxies(_ node: ConnectionTopology.Node) -> Bool {
+        guard case .policyHop = node.columnID else { return false }
+        switch policyIndex.resolve(name: node.name) {
+        case .group(let group):
+            return group.selected.proxyNonBlank != nil
+                || group.members.contains { $0.proxyNonBlank != nil }
+        case .member:
+            return true
+        case .ambiguous, .missing:
+            return false
+        }
     }
 }
 

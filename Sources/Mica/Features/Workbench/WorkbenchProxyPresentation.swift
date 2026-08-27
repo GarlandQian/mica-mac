@@ -120,12 +120,15 @@ struct ProxyGroupDirectoryItem: Identifiable, Equatable {
     let selectedDelay: Int?
     let availableMemberCount: Int
     let latencyDistribution: ProxyLatencyDistribution
+    let health: ProxyGroupHealthSummary
     let hidden: Bool
     let selectable: Bool
     let hasFixedSelection: Bool
     let reportedUsageRanks: [PolicyGroupUsageRank]
 
     var id: String { key.rawValue }
+
+    var healthSummary: ProxyGroupHealthSummary { health }
 }
 
 struct ProxyNodeRowProjection: Identifiable, Equatable {
@@ -138,6 +141,7 @@ struct ProxyNodeRowProjection: Identifiable, Equatable {
     let delay: Int?
     let latencyFraction: Double?
     let alive: Bool?
+    let health: ProxyNodeHealthState
     let usageRank: PolicyGroupUsageRank?
     let isControllerSelected: Bool
 
@@ -147,10 +151,204 @@ struct ProxyNodeRowProjection: Identifiable, Equatable {
         guard !values.isEmpty else { return nil }
         return values.joined(separator: " / ")
     }
+
+    var isSlow: Bool {
+        ProxyNodeHealthState.grade(for: delay) == .slow
+    }
+}
+
+enum ProxyNodeHealthState: String, CaseIterable, Equatable, Hashable, Sendable {
+    case healthy
+    case degraded
+    case unavailable
+    case unknown
+
+    static func grade(for delay: Int?) -> LatencyHealthGrade? {
+        guard let delay, delay > 0 else { return nil }
+        return LatencyHealthGrade.allCases.first { $0.includes(delay: delay) }
+    }
+
+    static func classify(alive: Bool?, delay: Int?) -> Self {
+        if let delay, delay <= 0 {
+            return .unavailable
+        }
+        return classify(alive: alive, grade: grade(for: delay))
+    }
+
+    static func classify(alive: Bool?, grade: LatencyHealthGrade?) -> Self {
+        if alive == false {
+            return .unavailable
+        }
+        if let grade {
+            switch grade {
+            case .fast, .normal:
+                return .healthy
+            case .slow:
+                return .degraded
+            case .timeout:
+                return .unavailable
+            }
+        }
+        return alive == true ? .healthy : .unknown
+    }
+}
+
+enum ProxyHealthFilter: String, CaseIterable, Equatable, Hashable, Sendable {
+    case all
+    case degraded
+    case unavailable
+    case slow
+    case current
+
+    func includes(_ row: ProxyNodeRowProjection) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .degraded:
+            row.health != .healthy
+        case .unavailable:
+            row.health == .unavailable
+        case .slow:
+            row.isSlow
+        case .current:
+            row.isControllerSelected
+        }
+    }
+}
+
+struct ProxyGroupHealthSummary: Equatable {
+    enum Status: String, CaseIterable, Equatable, Hashable, Sendable {
+        case healthy
+        case degraded
+        case failed
+        case unknown
+    }
+
+    let status: Status
+    let memberCount: Int
+    let availableCount: Int
+    let unavailableCount: Int
+    let unknownCount: Int
+    let slowCount: Int
+    let latencyDistribution: ProxyLatencyDistribution
+
+    init(group: ProxyGroupViewState) {
+        var availableCount = 0
+        var unavailableCount = 0
+        var unknownCount = 0
+        var slowCount = 0
+        var hasIssue = false
+        var latencyCounts: [ProxyLatencyDistributionBucket.Kind: Int] = [:]
+
+        for member in group.options {
+            let detail = group.detail(for: member)
+            let delay = group.delays[member] ?? detail?.latestHistoryDelay
+            let grade = ProxyNodeHealthState.grade(for: delay)
+            let state = ProxyNodeHealthState.classify(
+                alive: detail?.alive,
+                delay: delay
+            )
+            switch state {
+            case .healthy:
+                availableCount += 1
+            case .degraded:
+                availableCount += 1
+                hasIssue = true
+            case .unavailable:
+                unavailableCount += 1
+                hasIssue = true
+            case .unknown:
+                unknownCount += 1
+                hasIssue = true
+            }
+            if grade == .slow {
+                slowCount += 1
+            }
+
+            let bucket: ProxyLatencyDistributionBucket.Kind
+            guard let delay, delay > 0 else {
+                bucket = .unavailable
+                latencyCounts[bucket, default: 0] += 1
+                continue
+            }
+            switch grade {
+            case .fast: bucket = .fast
+            case .normal: bucket = .normal
+            case .slow: bucket = .slow
+            case .timeout, .none: bucket = .timeout
+            }
+            latencyCounts[bucket, default: 0] += 1
+        }
+
+        memberCount = group.options.count
+        self.availableCount = availableCount
+        self.unavailableCount = unavailableCount
+        self.unknownCount = unknownCount
+        self.slowCount = slowCount
+        latencyDistribution = ProxyLatencyDistribution(
+            counts: latencyCounts,
+            total: group.options.count
+        )
+
+        let hasUsableMember = availableCount > 0
+        let hasExplicitFailure = unavailableCount > 0
+        if hasUsableMember {
+            status = hasIssue ? .degraded : .healthy
+        } else if hasExplicitFailure {
+            status = .failed
+        } else {
+            status = .unknown
+        }
+    }
+}
+
+enum ProxyNavigationTargetResolutionStatus: String, Equatable, Sendable {
+    case resolved
+    case emptyCatalog
+    case hiddenGlobal
+    case missingGroup
+    case ambiguousGroup
+    case missingNode
+}
+
+struct ProxyNavigationTargetResolution: Equatable {
+    let status: ProxyNavigationTargetResolutionStatus
+    let occurrence: ProxyGroupOccurrence?
+    let member: ProxyMemberOccurrence?
+    let row: ProxyNodeRowProjection?
+
+    var isResolved: Bool {
+        status == .resolved && occurrence != nil && member != nil && row != nil
+    }
+
+    var revealTargetID: String? {
+        guard let occurrence, let member else { return nil }
+        return ProxyProjection.revealTargetID(
+            groupID: occurrence.id,
+            memberID: member.id
+        )
+    }
 }
 
 struct ProxyLatencyDistribution: Equatable {
     let buckets: [ProxyLatencyDistributionBucket]
+
+    init(
+        counts: [ProxyLatencyDistributionBucket.Kind: Int],
+        total: Int
+    ) {
+        let denominator = max(1, total)
+        buckets = ProxyLatencyDistributionBucket.Kind.allCases.compactMap {
+            kind in
+            let count = counts[kind, default: 0]
+            guard count > 0 else { return nil }
+            return ProxyLatencyDistributionBucket(
+                kind: kind,
+                count: count,
+                fraction: Double(count) / Double(denominator)
+            )
+        }
+    }
 
     init(group: ProxyGroupViewState) {
         var counts: [ProxyLatencyDistributionBucket.Kind: Int] = [:]
@@ -173,17 +371,7 @@ struct ProxyLatencyDistribution: Equatable {
             counts[kind, default: 0] += 1
         }
 
-        let total = max(1, group.options.count)
-        buckets = ProxyLatencyDistributionBucket.Kind.allCases.compactMap {
-            kind in
-            let count = counts[kind, default: 0]
-            guard count > 0 else { return nil }
-            return ProxyLatencyDistributionBucket(
-                kind: kind,
-                count: count,
-                fraction: Double(count) / Double(total)
-            )
-        }
+        self.init(counts: counts, total: group.options.count)
     }
 }
 
@@ -347,14 +535,21 @@ struct ProxyActiveGroupProjection: Equatable {
         members: []
     )
 
-    init(index: ProxyActiveGroupIndex, query: String) {
+    init(
+        index: ProxyActiveGroupIndex,
+        query: String,
+        healthFilter: ProxyHealthFilter = .all
+    ) {
         let needle = ProxySearchText.normalize(query)
         occurrence = index.occurrence
-        if needle.isEmpty {
+        if needle.isEmpty, healthFilter == .all {
             members = index.rows
         } else {
             members = index.records
-                .filter { $0.searchableText.contains(needle) }
+                .filter { record in
+                    (needle.isEmpty || record.searchableText.contains(needle))
+                        && healthFilter.includes(record.row)
+                }
                 .map(\.row)
         }
     }
@@ -783,6 +978,24 @@ struct ProxyMemberResolution: Equatable {
 }
 
 enum ProxyProjection {
+    static func navigationSelection(
+        controllerID: RouterProfile.ID,
+        generation: UUID,
+        groupOccurrenceID: String,
+        nodeName: String
+    ) -> WorkbenchProxyNavigationSelection? {
+        guard !groupOccurrenceID.isEmpty,
+              nodeName.proxyNonBlank != nil else {
+            return nil
+        }
+        return WorkbenchProxyNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            groupOccurrenceID: groupOccurrenceID,
+            nodeName: nodeName
+        )
+    }
+
     static func memberInteractions(
         in group: ProxyGroupViewState,
         selectionActionAvailable: Bool,
@@ -853,6 +1066,9 @@ enum ProxyProjection {
 
         let baseRows = memberOccurrences(in: occurrence.group).map { member in
             let detail = occurrence.group.detail(for: member.name)
+            let reportedDelay = occurrence.group.delays[member.name]
+                ?? detail?.latestHistoryDelay
+            let displayDelay = reportedDelay.flatMap { $0 > 0 ? $0 : nil }
             return ProxyNodeRowProjection(
                 id: member.id,
                 name: member.name,
@@ -860,10 +1076,13 @@ enum ProxyProjection {
                 type: detail?.type,
                 providerName: detail?.providerName,
                 transportNames: detail?.transportNames ?? [],
-                delay: occurrence.group.delays[member.name]
-                    ?? detail?.latestHistoryDelay,
+                delay: displayDelay,
                 latencyFraction: nil,
                 alive: detail?.alive,
+                health: ProxyNodeHealthState.classify(
+                    alive: detail?.alive,
+                    delay: reportedDelay
+                ),
                 usageRank: occurrence.group.usageRank(for: member.name),
                 isControllerSelected: occurrence.group.selected == member.name
             )
@@ -882,6 +1101,7 @@ enum ProxyProjection {
                 delay: base.delay,
                 latencyFraction: latencyScale.fraction(for: base.delay),
                 alive: base.alive,
+                health: base.health,
                 usageRank: base.usageRank,
                 isControllerSelected: base.isControllerSelected
             )
@@ -917,6 +1137,120 @@ enum ProxyProjection {
             ),
             query: query
         )
+    }
+
+    static func filteredRows(
+        _ rows: [ProxyNodeRowProjection],
+        healthFilter: ProxyHealthFilter
+    ) -> [ProxyNodeRowProjection] {
+        rows.filter(healthFilter.includes)
+    }
+
+    static func resolveNavigationTarget(
+        groupOccurrenceID: String,
+        nodeName: String,
+        catalog: PolicyGroupCatalogSnapshot,
+        visibility: GlobalGroupVisibility
+    ) -> ProxyNavigationTargetResolution {
+        guard !catalog.groups.isEmpty else {
+            return ProxyNavigationTargetResolution(
+                status: .emptyCatalog,
+                occurrence: nil,
+                member: nil,
+                row: nil
+            )
+        }
+
+        let completeGroups = arrangedGroups(
+            catalog.groups,
+            mode: catalog.mode,
+            visibility: .alwaysShow
+        )
+        let complete = resolveNavigationTarget(
+            groupID: groupOccurrenceID,
+            nodeName: nodeName,
+            in: completeGroups
+        )
+        guard complete.isResolved,
+              complete.occurrence?.group.id
+                  .caseInsensitiveCompare("GLOBAL") == .orderedSame else {
+            return complete
+        }
+
+        let visibleGroups = arrangedGroups(
+            catalog.groups,
+            mode: catalog.mode,
+            visibility: visibility
+        )
+        let visible = resolveNavigationTarget(
+            groupID: groupOccurrenceID,
+            nodeName: nodeName,
+            in: visibleGroups
+        )
+        guard !visible.isResolved else { return visible }
+        return ProxyNavigationTargetResolution(
+            status: .hiddenGlobal,
+            occurrence: complete.occurrence,
+            member: complete.member,
+            row: complete.row
+        )
+    }
+
+    static func resolveNavigationTarget(
+        groupID: String,
+        nodeName: String,
+        in groups: [ProxyGroupOccurrence]
+    ) -> ProxyNavigationTargetResolution {
+        let matchingOccurrences: [ProxyGroupOccurrence]
+        if let exactOccurrence = groups.first(where: { $0.id == groupID }) {
+            matchingOccurrences = [exactOccurrence]
+        } else {
+            matchingOccurrences = groups.filter { $0.group.id == groupID }
+        }
+        guard !matchingOccurrences.isEmpty else {
+            return ProxyNavigationTargetResolution(
+                status: .missingGroup,
+                occurrence: nil,
+                member: nil,
+                row: nil
+            )
+        }
+        guard matchingOccurrences.count == 1,
+              let occurrence = matchingOccurrences.first else {
+            return ProxyNavigationTargetResolution(
+                status: .ambiguousGroup,
+                occurrence: nil,
+                member: nil,
+                row: nil
+            )
+        }
+
+        guard let member = memberOccurrences(in: occurrence.group)
+            .first(where: { $0.name == nodeName }) else {
+            return ProxyNavigationTargetResolution(
+                status: .missingNode,
+                occurrence: occurrence,
+                member: nil,
+                row: nil
+            )
+        }
+
+        let index = activeGroupIndex(
+            in: [occurrence],
+            groupID: occurrence.id
+        )
+        return ProxyNavigationTargetResolution(
+            status: .resolved,
+            occurrence: occurrence,
+            member: member,
+            row: index.recordsByID[member.id]?.row
+        )
+    }
+
+    static func revealTargetID(groupID: String, memberID: String) -> String {
+        let group = "\(groupID.utf8.count):\(groupID)"
+        let member = "\(memberID.utf8.count):\(memberID)"
+        return "proxy-node:\(group):\(member)"
     }
 
     static func preferredMemberID(in group: ProxyGroupViewState) -> String? {
@@ -1042,25 +1376,22 @@ enum ProxyProjection {
     static func directoryItem(
         for occurrence: ProxyGroupOccurrence
     ) -> ProxyGroupDirectoryItem {
-        ProxyGroupDirectoryItem(
+        let health = ProxyGroupHealthSummary(group: occurrence.group)
+        return ProxyGroupDirectoryItem(
             key: occurrence.key,
             groupID: occurrence.group.id,
             type: occurrence.group.type,
             selected: occurrence.group.selected,
             memberCount: occurrence.group.options.count,
-            selectedDelay: occurrence.group.delays[occurrence.group.selected]
-                ?? occurrence.group.detail(
-                    for: occurrence.group.selected
-                )?.latestHistoryDelay,
-            availableMemberCount: occurrence.group.options.reduce(into: 0) {
-                count, member in
-                if occurrence.group.detail(for: member)?.alive != false {
-                    count += 1
-                }
-            },
-            latencyDistribution: ProxyLatencyDistribution(
-                group: occurrence.group
-            ),
+            selectedDelay: (
+                occurrence.group.delays[occurrence.group.selected]
+                    ?? occurrence.group.detail(
+                        for: occurrence.group.selected
+                    )?.latestHistoryDelay
+            ).flatMap { $0 > 0 ? $0 : nil },
+            availableMemberCount: health.availableCount,
+            latencyDistribution: health.latencyDistribution,
+            health: health,
             hidden: occurrence.group.hidden,
             selectable: occurrence.group.selectable,
             hasFixedSelection: occurrence.group.details?.fixed?.proxyNonBlank != nil,

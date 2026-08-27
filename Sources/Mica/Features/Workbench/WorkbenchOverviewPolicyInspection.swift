@@ -7,6 +7,7 @@ import SwiftUI
 struct OverviewPolicyMemberInspection: Equatable {
     let name: String
     let groupName: String
+    let groupOccurrenceID: String
     let groupType: String
     let isControllerSelected: Bool
     let detail: ProxyNodeViewState?
@@ -16,6 +17,7 @@ struct OverviewPolicyMemberInspection: Equatable {
 
 struct OverviewPolicyGroupInspection: Equatable {
     let name: String
+    let occurrenceID: String
     let type: String
     let selected: String
     let members: [String]
@@ -39,42 +41,66 @@ struct OverviewPolicyInspectionIndex: Equatable {
 
     private let groupsByName: [String: [OverviewPolicyGroupInspection]]
     private let membersByName: [String: [OverviewPolicyMemberInspection]]
+    private let groupsByOccurrenceID: [String: OverviewPolicyGroupInspection]
+    private let membersByOccurrenceID: [
+        String: [String: [OverviewPolicyMemberInspection]]
+    ]
     let operationCounts: OperationCounts
 
     init(catalog: PolicyGroupCatalogSnapshot) {
         var groupsByName: [String: [OverviewPolicyGroupInspection]] = [:]
         var membersByName: [String: [OverviewPolicyMemberInspection]] = [:]
+        var groupsByOccurrenceID: [String: OverviewPolicyGroupInspection] = [:]
+        var membersByOccurrenceID: [
+            String: [String: [OverviewPolicyMemberInspection]]
+        ] = [:]
         var memberWriteCount = 0
 
+        var groupOccurrences: [String: Int] = [:]
         for group in catalog.groups {
+            let occurrence = groupOccurrences[group.id, default: 0]
+            groupOccurrences[group.id] = occurrence + 1
+            let occurrenceID = ProxyGroupKey(
+                groupID: group.id,
+                occurrence: occurrence
+            ).rawValue
             for memberName in group.options {
                 let member = Self.member(
                     named: memberName,
                     in: group,
+                    occurrenceID: occurrenceID,
                     isControllerSelected: group.selected == memberName
                 )
                 membersByName[memberName, default: []].append(member)
+                membersByOccurrenceID[occurrenceID, default: [:]][
+                    memberName,
+                    default: []
+                ].append(member)
                 memberWriteCount += 1
             }
 
             let selectedMember = Self.member(
                 named: group.selected,
                 in: group,
+                occurrenceID: occurrenceID,
                 isControllerSelected: true
             )
-            groupsByName[group.id, default: []].append(
-                OverviewPolicyGroupInspection(
-                    name: group.id,
-                    type: group.type,
-                    selected: group.selected,
-                    members: group.options,
-                    selectedMember: selectedMember
-                )
+            let inspection = OverviewPolicyGroupInspection(
+                name: group.id,
+                occurrenceID: occurrenceID,
+                type: group.type,
+                selected: group.selected,
+                members: group.options,
+                selectedMember: selectedMember
             )
+            groupsByName[group.id, default: []].append(inspection)
+            groupsByOccurrenceID[occurrenceID] = inspection
         }
 
         self.groupsByName = groupsByName
         self.membersByName = membersByName
+        self.groupsByOccurrenceID = groupsByOccurrenceID
+        self.membersByOccurrenceID = membersByOccurrenceID
         operationCounts = OperationCounts(
             groupWriteCount: catalog.groups.count,
             memberWriteCount: memberWriteCount
@@ -91,15 +117,30 @@ struct OverviewPolicyInspectionIndex: Equatable {
         return .missing
     }
 
+    func resolve(
+        groupOccurrenceID: String,
+        nodeName: String? = nil
+    ) -> OverviewPolicyInspectionResolution {
+        guard let group = groupsByOccurrenceID[groupOccurrenceID] else {
+            return .missing
+        }
+        guard let nodeName else { return .group(group) }
+        let members = membersByOccurrenceID[groupOccurrenceID]?[nodeName] ?? []
+        return members.count == 1 ? .member(members[0]) :
+            members.isEmpty ? .missing : .ambiguous
+    }
+
     private static func member(
         named name: String,
         in group: ProxyGroupViewState,
+        occurrenceID: String,
         isControllerSelected: Bool
     ) -> OverviewPolicyMemberInspection {
         let detail = group.detail(for: name)
         return OverviewPolicyMemberInspection(
             name: name,
             groupName: group.id,
+            groupOccurrenceID: occurrenceID,
             groupType: group.type,
             isControllerSelected: isControllerSelected,
             detail: detail,
@@ -198,6 +239,25 @@ struct OverviewPolicyInspectionSnapshot: Equatable {
 /// in stable key order. Resolution is name-exact and unique-only; ambiguous or
 /// missing names return `nil` so callers can present the truthful fallback.
 enum OverviewPolicyInspectionProjection {
+    static func snapshot(
+        groupOccurrenceID: String,
+        nodeName: String?,
+        policyIndex: OverviewPolicyInspectionIndex,
+        language: AppLanguage
+    ) -> OverviewPolicyInspectionSnapshot? {
+        switch policyIndex.resolve(
+            groupOccurrenceID: groupOccurrenceID,
+            nodeName: nodeName
+        ) {
+        case .group(let group):
+            return groupSnapshot(group: group, language: language)
+        case .member(let member):
+            return memberSnapshot(member: member, language: language)
+        case .ambiguous, .missing:
+            return nil
+        }
+    }
+
     static func snapshot(
         name: String,
         policyIndex: OverviewPolicyInspectionIndex,
@@ -461,13 +521,13 @@ enum OverviewPolicyInspectionProjection {
         titleKey: String = "overview.hud.latency",
         to fields: inout [OverviewPolicyInspectionField]
     ) {
-        guard let delay, delay > 0 else { return }
+        guard let delay else { return }
         fields.append(
             OverviewPolicyInspectionField(
                 id: id,
                 label: .localized(titleKey),
                 value: OverviewFormat.latency(delay),
-                tone: latencyTone(delay),
+                tone: delay > 0 ? latencyTone(delay) : .neutral,
                 monospaced: true
             )
         )
@@ -573,11 +633,7 @@ struct WorkbenchPolicyInspectorView: View {
             revision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
-        if let snapshot = OverviewPolicyInspectionProjection.snapshot(
-            name: inspectedName,
-            policyIndex: policyIndex,
-            language: language
-        ) {
+        if let snapshot = inspectionSnapshot(policyIndex: policyIndex) {
             header(
                 title: snapshot.title,
                 subtitle: snapshot.subtitle,
@@ -611,11 +667,48 @@ struct WorkbenchPolicyInspectorView: View {
         }
     }
 
+    private func inspectionSnapshot(
+        policyIndex: OverviewPolicyInspectionIndex
+    ) -> OverviewPolicyInspectionSnapshot? {
+        switch selection {
+        case .proxyGroup(let groupName, let occurrenceID):
+            guard let occurrenceID else {
+                return OverviewPolicyInspectionProjection.snapshot(
+                    name: groupName,
+                    policyIndex: policyIndex,
+                    language: language
+                )
+            }
+            return OverviewPolicyInspectionProjection.snapshot(
+                groupOccurrenceID: occurrenceID,
+                nodeName: nil,
+                policyIndex: policyIndex,
+                language: language
+            )
+        case .proxyNode(_, let occurrenceID, let nodeName):
+            guard let occurrenceID else {
+                return OverviewPolicyInspectionProjection.snapshot(
+                    name: nodeName,
+                    policyIndex: policyIndex,
+                    language: language
+                )
+            }
+            return OverviewPolicyInspectionProjection.snapshot(
+                groupOccurrenceID: occurrenceID,
+                nodeName: nodeName,
+                policyIndex: policyIndex,
+                language: language
+            )
+        case .none, .connection, .rule, .log, .source, .controller:
+            return nil
+        }
+    }
+
     private var inspectedName: String {
         switch selection {
-        case .proxyGroup(let groupName):
+        case .proxyGroup(let groupName, _):
             groupName
-        case .proxyNode(_, let nodeName):
+        case .proxyNode(_, _, let nodeName):
             nodeName
         case .none, .connection, .rule, .log, .source, .controller:
             ""
@@ -693,14 +786,16 @@ struct WorkbenchPolicyInspectorView: View {
     private var actionSection: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             MicaHairlineSeparator()
-            Button(action: openProxies) {
-                Label(
-                    MicaStrings.localizedKey(
-                        WorkbenchDestination.proxies.titleKey,
-                        language: language
-                    ),
-                    systemImage: WorkbenchDestination.proxies.symbolName
-                )
+            if proxyNavigationTarget != nil {
+                Button(action: openProxies) {
+                    Label(
+                        MicaStrings.localizedKey(
+                            WorkbenchDestination.proxies.titleKey,
+                            language: language
+                        ),
+                        systemImage: WorkbenchDestination.proxies.symbolName
+                    )
+                }
             }
             if let singlePath {
                 Button { openPath(singlePath) } label: {
@@ -733,7 +828,52 @@ struct WorkbenchPolicyInspectorView: View {
     }
 
     private func openProxies() {
+        guard let target = proxyNavigationTarget else { return }
+        workspaceStore.stageProxyNavigation(target)
         destination = .proxies
+    }
+
+    private var proxyNavigationTarget: WorkbenchProxyNavigationSelection? {
+        guard let controllerID = appModel.selectedRouterID else { return nil }
+        let generation = appModel.controllerSessionPresentation.generation
+        let policyIndex = inspectionCache.resolve(
+            revision: appModel.policyGroupCatalogRevision,
+            catalog: appModel.policyGroupCatalog
+        )
+        switch selection {
+        case .proxyNode(_, let groupOccurrenceID, let nodeName):
+            guard let groupOccurrenceID,
+                  case .member = policyIndex.resolve(
+                      groupOccurrenceID: groupOccurrenceID,
+                      nodeName: nodeName
+                  ) else {
+                return nil
+            }
+            return ProxyProjection.navigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                groupOccurrenceID: groupOccurrenceID,
+                nodeName: nodeName
+            )
+        case .proxyGroup(let groupName, let groupOccurrenceID):
+            guard let groupOccurrenceID,
+                  case .group(let group) = policyIndex.resolve(
+                      groupOccurrenceID: groupOccurrenceID
+                  ),
+                  group.name == groupName,
+                  let nodeName = group.selected.proxyNonBlank
+                      ?? group.members.lazy.compactMap(\.proxyNonBlank).first else {
+                return nil
+            }
+            return ProxyProjection.navigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                groupOccurrenceID: groupOccurrenceID,
+                nodeName: nodeName
+            )
+        case .none, .connection, .rule, .log, .source, .controller:
+            return nil
+        }
     }
 
     private func openPath(_ path: ConnectionTopology.PathRecord) {

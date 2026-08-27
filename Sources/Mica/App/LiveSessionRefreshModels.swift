@@ -343,6 +343,11 @@ enum SessionRefreshLane: String, CaseIterable, Hashable, Sendable {
     }
 }
 
+enum SessionRefreshLaneOutcome: Equatable, Sendable {
+    case success
+    case partial(String)
+}
+
 struct SessionRefreshLaneState: Equatable {
     var isInFlight = false
     var pendingFollowUp = false
@@ -364,8 +369,16 @@ struct SessionRefreshLaneState: Equatable {
     mutating func finishSuccess(at date: Date) {
         isInFlight = false
         retryAttempt = 0
-        lastSuccessAt = date
+        lastSuccessAt = max(lastSuccessAt ?? date, date)
         lastFailure = nil
+        terminalFailure = false
+    }
+
+    mutating func finishPartial(_ message: String, at date: Date) {
+        isInFlight = false
+        retryAttempt = 0
+        lastSuccessAt = max(lastSuccessAt ?? date, date)
+        lastFailure = message
         terminalFailure = false
     }
 

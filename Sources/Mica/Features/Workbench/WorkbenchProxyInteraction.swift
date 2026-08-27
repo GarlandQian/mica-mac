@@ -77,6 +77,62 @@ enum ProxyInteractionRegion: Hashable {
     case inspector
 }
 
+struct WorkbenchProxyFilterObstructions: OptionSet, Equatable, Sendable {
+    let rawValue: UInt8
+
+    static let globalSearch = Self(rawValue: 1 << 0)
+    static let groupFilter = Self(rawValue: 1 << 1)
+    static let healthFilter = Self(rawValue: 1 << 2)
+}
+
+enum WorkbenchProxyRevealObstruction: Equatable, Sendable {
+    case hiddenGlobal
+    case filters(
+        groupOccurrenceID: String,
+        blockers: WorkbenchProxyFilterObstructions
+    )
+
+    var detailKey: String {
+        switch self {
+        case .hiddenGlobal:
+            "routing.reveal_blocked_global_detail"
+        case .filters(_, let blockers):
+            if blockers == .globalSearch {
+                "routing.reveal_blocked_search_detail"
+            } else if blockers == .groupFilter {
+                "routing.reveal_blocked_group_filter_detail"
+            } else if blockers == .healthFilter {
+                "routing.reveal_blocked_health_filter_detail"
+            } else {
+                "routing.reveal_blocked_multiple_filters_detail"
+            }
+        }
+    }
+
+    var actionTitleKey: String {
+        switch self {
+        case .hiddenGlobal: "routing.show_global_and_locate"
+        case .filters: "routing.clear_filters_and_locate"
+        }
+    }
+}
+
+enum WorkbenchProxyUnresolvedReason: String, Equatable, Sendable {
+    case emptyCatalog
+    case missingGroup
+    case ambiguousGroup
+    case missingNode
+
+    var detailKey: String {
+        switch self {
+        case .emptyCatalog: "routing.reveal_empty_catalog_detail"
+        case .missingGroup: "routing.reveal_missing_group_detail"
+        case .ambiguousGroup: "routing.reveal_ambiguous_group_detail"
+        case .missingNode: "routing.reveal_missing_node_detail"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ProxyCatalogPresentationCoordinator {

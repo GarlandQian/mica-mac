@@ -21,6 +21,28 @@ struct WorkbenchRuleNavigationSelection: Equatable, Sendable {
     let payload: String
 }
 
+struct WorkbenchProxyNavigationSelection: Equatable, Sendable {
+    let controllerID: RouterProfile.ID
+    let generation: UUID
+    /// Stable occurrence identity produced from the controller-reported group
+    /// order.  This is intentionally not the raw group name: two reported
+    /// groups may share that name and must remain independently addressable.
+    let groupOccurrenceID: String
+    let nodeName: String
+
+    init(
+        controllerID: RouterProfile.ID,
+        generation: UUID,
+        groupOccurrenceID: String,
+        nodeName: String
+    ) {
+        self.controllerID = controllerID
+        self.generation = generation
+        self.groupOccurrenceID = groupOccurrenceID
+        self.nodeName = nodeName
+    }
+}
+
 /// Typed selection shown in the workspace inspector (design.md §3). Surfaces
 /// populate this in redesign Phases 3-6; the workspace store owns it so
 /// inspector selection never touches AppModel or live-session state. Values
@@ -28,8 +50,8 @@ struct WorkbenchRuleNavigationSelection: Equatable, Sendable {
 /// `clearSessionBoundState(controllerID:)` and are never persisted.
 enum WorkbenchInspectorSelection: Equatable, Sendable {
     case none
-    case proxyGroup(groupName: String)
-    case proxyNode(groupName: String, nodeName: String)
+    case proxyGroup(groupName: String, groupOccurrenceID: String?)
+    case proxyNode(groupName: String, groupOccurrenceID: String?, nodeName: String)
     case connection(id: String)
     case rule(type: String, payload: String)
     case log(id: String)
@@ -50,6 +72,7 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
     var selectedGroupMemberIDs: [String: String]
     var pendingConnectionSelection: WorkbenchConnectionNavigationSelection?
     var pendingRuleSelection: WorkbenchRuleNavigationSelection?
+    var pendingProxySelection: WorkbenchProxyNavigationSelection?
 
     init(
         searchText: String = "",
@@ -63,7 +86,8 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
         groupFilters: [String: String] = [:],
         selectedGroupMemberIDs: [String: String] = [:],
         pendingConnectionSelection: WorkbenchConnectionNavigationSelection? = nil,
-        pendingRuleSelection: WorkbenchRuleNavigationSelection? = nil
+        pendingRuleSelection: WorkbenchRuleNavigationSelection? = nil,
+        pendingProxySelection: WorkbenchProxyNavigationSelection? = nil
     ) {
         self.searchText = searchText
         self.filters = filters
@@ -77,6 +101,7 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
         self.selectedGroupMemberIDs = selectedGroupMemberIDs
         self.pendingConnectionSelection = pendingConnectionSelection
         self.pendingRuleSelection = pendingRuleSelection
+        self.pendingProxySelection = pendingProxySelection
     }
 
     mutating func clearSessionBoundState() {
@@ -87,6 +112,7 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
         selectedGroupMemberIDs.removeAll(keepingCapacity: false)
         pendingConnectionSelection = nil
         pendingRuleSelection = nil
+        pendingProxySelection = nil
     }
 }
 
@@ -110,6 +136,7 @@ private final class WorkbenchWorkspaceState {
     private(set) var selectedGroupMemberIDs: [String: String]
     private(set) var pendingConnectionSelection: WorkbenchConnectionNavigationSelection?
     private(set) var pendingRuleSelection: WorkbenchRuleNavigationSelection?
+    private(set) var pendingProxySelection: WorkbenchProxyNavigationSelection?
 
     init(_ workspace: WorkbenchDestinationWorkspace) {
         searchText = workspace.searchText
@@ -124,6 +151,7 @@ private final class WorkbenchWorkspaceState {
         selectedGroupMemberIDs = workspace.selectedGroupMemberIDs
         pendingConnectionSelection = workspace.pendingConnectionSelection
         pendingRuleSelection = workspace.pendingRuleSelection
+        pendingProxySelection = workspace.pendingProxySelection
     }
 
     var snapshot: WorkbenchDestinationWorkspace {
@@ -139,7 +167,8 @@ private final class WorkbenchWorkspaceState {
             groupFilters: groupFilters,
             selectedGroupMemberIDs: selectedGroupMemberIDs,
             pendingConnectionSelection: pendingConnectionSelection,
-            pendingRuleSelection: pendingRuleSelection
+            pendingRuleSelection: pendingRuleSelection,
+            pendingProxySelection: pendingProxySelection
         )
     }
 
@@ -170,6 +199,9 @@ private final class WorkbenchWorkspaceState {
         }
         if pendingRuleSelection != workspace.pendingRuleSelection {
             pendingRuleSelection = workspace.pendingRuleSelection
+        }
+        if pendingProxySelection != workspace.pendingProxySelection {
+            pendingProxySelection = workspace.pendingProxySelection
         }
 
         return true
@@ -305,9 +337,12 @@ final class WorkbenchWorkspaceStore {
                 didChange = true
             }
             if previousGeneration != nil,
-               (workspace.pendingConnectionSelection != nil || workspace.pendingRuleSelection != nil) {
+               (workspace.pendingConnectionSelection != nil
+                || workspace.pendingRuleSelection != nil
+                || workspace.pendingProxySelection != nil) {
                 workspace.pendingConnectionSelection = nil
                 workspace.pendingRuleSelection = nil
+                workspace.pendingProxySelection = nil
                 didChange = true
             }
             if didChange {
@@ -438,6 +473,74 @@ final class WorkbenchWorkspaceStore {
             $0.pendingRuleSelection = nil
         }
         return selection
+    }
+
+    func stageProxyNavigation(_ selection: WorkbenchProxyNavigationSelection) {
+        update(
+            controllerID: selection.controllerID,
+            destination: .proxies
+        ) { workspace in
+            workspace.pendingProxySelection = selection
+        }
+    }
+
+    func consumeProxyNavigation(
+        controllerID: RouterProfile.ID,
+        generation: UUID
+    ) -> WorkbenchProxyNavigationSelection? {
+        let workspace = workspace(
+            controllerID: controllerID,
+            destination: .proxies
+        )
+        guard let selection = workspace.pendingProxySelection,
+              selection.controllerID == controllerID,
+              selection.generation == generation else {
+            return nil
+        }
+
+        update(controllerID: controllerID, destination: .proxies) {
+            $0.pendingProxySelection = nil
+        }
+        return selection
+    }
+
+    @discardableResult
+    func clearProxyNavigation(
+        controllerID: RouterProfile.ID,
+        generation: UUID
+    ) -> Bool {
+        let workspace = workspace(
+            controllerID: controllerID,
+            destination: .proxies
+        )
+        guard let selection = workspace.pendingProxySelection,
+              selection.controllerID == controllerID,
+              selection.generation == generation else {
+            return false
+        }
+
+        update(controllerID: controllerID, destination: .proxies) {
+            $0.pendingProxySelection = nil
+        }
+        return true
+    }
+
+    /// Drops a pending proxy target after the destination has resolved it as
+    /// missing or stale. This is local session state only and never persists.
+    @discardableResult
+    func clearProxyNavigation(controllerID: RouterProfile.ID) -> Bool {
+        let workspace = workspace(
+            controllerID: controllerID,
+            destination: .proxies
+        )
+        guard workspace.pendingProxySelection != nil else {
+            return false
+        }
+
+        update(controllerID: controllerID, destination: .proxies) {
+            $0.pendingProxySelection = nil
+        }
+        return true
     }
 
     /// Records a typed inspector selection from a workbench surface and reveals

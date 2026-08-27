@@ -534,6 +534,150 @@ a split.
 - Provider diagnostics choose the newest real command across individual Update
   and Update All records rather than assuming only one action exists.
 
+## Scenario: Exact Proxy Reveal And Health Triage
+
+### 1. Scope / Trigger
+
+Apply this scenario when changing policy-group health projection, Overview or
+inspector Open Proxies actions, workspace navigation state, proxy catalog
+deferral, group disclosure, programmatic node reveal, or proxy content states.
+
+### 2. Signatures
+
+```swift
+struct WorkbenchProxyNavigationSelection: Equatable, Sendable {
+    let controllerID: RouterProfile.ID
+    let generation: UUID
+    let groupOccurrenceID: String
+    let nodeName: String
+}
+
+func stageProxyNavigation(_ selection: WorkbenchProxyNavigationSelection)
+func consumeProxyNavigation(
+    controllerID: RouterProfile.ID,
+    generation: UUID
+) -> WorkbenchProxyNavigationSelection?
+
+enum ProxyNavigationTargetResolutionStatus: String, Equatable, Sendable {
+    case resolved, emptyCatalog, hiddenGlobal
+    case missingGroup, ambiguousGroup, missingNode
+}
+```
+
+### 3. Contracts
+
+- Every Overview topology, VoiceOver, and policy-inspector Open Proxies action
+  stages controller ID, generation, stable group occurrence ID, and node name
+  before changing destination. A raw duplicate group name is never first-match
+  navigation.
+- The Proxies page observes pending workspace navigation even when it is already
+  visible. A newly staged selection cancels any in-flight reveal task before it
+  replaces an unresolved target. Accepted immediate or deferred catalogs first
+  consume the newest selection and then resolve it.
+- Empty catalog, hidden GLOBAL, missing group, duplicate raw group, and missing
+  node remain distinct outcomes. An unresolved current-generation target stays
+  available for a later catalog commit; controller or generation replacement
+  clears it.
+- Global search, the exact group's local query, and health filter form one
+  obstruction set. Clear Filters and Locate clears all three local filters in
+  one transaction. GLOBAL visibility is separate and changes only after the
+  explicit Show GLOBAL and Locate action.
+- Root content distinguishes no controller, loading, unsupported, unloaded,
+  hidden-by-preference, global-search no match, first failure, and retained
+  stale data. A non-empty search must not override hidden-by-preference when the
+  arranged catalog itself is empty.
+- Locate Current reads only controller-reported selected members. Inspector-only
+  selection is never treated as controller current.
+- Proxy health uses controller `alive`, positive reported/history delay, and
+  `LatencyHealthGrade`. Attention includes every nonhealthy row; Unavailable is
+  unavailable only; Slow is `.slow` only and excludes timeout. A missing delay
+  preserves optionality and falls back to reported `alive`; an explicitly
+  non-positive delay is unavailable in summaries, filters, color, and compact
+  display while the full inspector may preserve the raw controller value.
+- One outer `ScrollViewReader` owns proxy reveal. The request validates token,
+  controller, and generation; jumps without animation to the lazy group ID,
+  waits one frame for member materialization, validates again, scrolls to the
+  exact member ID, and records the token only after that node scroll. Nested
+  scroll owners, `scrollPosition`, and member-grid `scrollTargetLayout` are
+  forbidden.
+- A reveal briefly highlights the exact node and synchronizes the workspace
+  inspector. Catalog refresh alone never creates a new reveal token or steals
+  scroll position. Reduce Motion keeps a static equivalent.
+- Icon-only node test commands retain localized help, accessibility label, and
+  accessibility hint containing the controller-reported node name.
+
+### 4. Validation & Error Matrix
+
+| Input or change | Required result |
+| --- | --- |
+| Staged controller/generation is stale | Reject and clear at the session boundary; no remote action |
+| Exact occurrence and member exist | Expand group, materialize group, scroll once to member, highlight, inspect |
+| Raw group name matches multiple occurrences | Truthful ambiguous state; never first match |
+| Catalog is currently empty | Consume and explain the target; retry resolution on a later accepted catalog |
+| GLOBAL target is hidden by preference | Dedicated obstruction; only explicit Show GLOBAL and Locate changes preference |
+| Search, group query, and health filter all hide target | One Clear Filters and Locate action clears all three and resumes reveal |
+| New target arrives while an old reveal is running | Cancel old task/token and resolve only the new selection |
+| Deferred catalog commits after scrolling | Consume the newest staged target and re-resolve pending navigation |
+| Search has no visible match but arranged groups exist | Show no-match state |
+| Only hidden groups remain before search projection | Show hidden-by-preference state |
+| Delay is zero or negative | Compact value unavailable; health unavailable; raw inspector value retained |
+| Grade is timeout | Included in Attention and Unavailable, excluded from Slow |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a duplicate-named group's occurrence is staged from the inspector,
+  filters are cleared once, the distant lazy group materializes, and the exact
+  member is centered and highlighted.
+- Base: the controller reports an empty policy catalog; the page explains the
+  empty target and resolves it automatically if the same generation later
+  publishes the group.
+- Bad: destination changes without staging, raw group name chooses the first
+  match, hidden GLOBAL silently changes a preference, a deferred catalog leaves
+  a target permanently unresolved, or a nested scroll target cannot materialize
+  the node.
+
+### 6. Tests Required
+
+- `WorkbenchProxyWorkspaceTests`: health classification and filter subsets,
+  non-positive compact delay plus raw inspector value, stable group/member
+  occurrence resolution, hidden GLOBAL, empty catalog, obstruction sets,
+  workspace consume/generation rejection, and reveal identity rejection.
+- Source contract: every Overview entry stages before navigation; the page
+  observes pending workspace selection, accepts a new selection by cancelling
+  the old reveal, accepted catalogs consume then resolve, and Current excludes
+  inspector state.
+- Source contract: exactly one outer scroll reader, lazy group then exact member
+  targeting, token recorded after member scroll, no `scrollPosition`, no nested
+  `scrollTargetLayout`, and localized node-test label/hint/help.
+- Localization resolver: every new state, reason, action, accessibility label,
+  and hint has English and Simplified-Chinese values with matching placeholders.
+- Runtime UI/VoiceOver smoke remains user-authorized only; automated coverage
+  must not load a profile or contact a controller.
+
+### 7. Wrong vs Correct
+
+```swift
+// Wrong: navigation loses occurrence identity and relies on a later first match.
+destination = .proxies
+
+// Correct: stage the exact session-bound target before changing destination.
+workspaceStore.stageProxyNavigation(selection)
+destination = .proxies
+```
+
+```swift
+// Wrong: a nested lazy member is targeted before its group exists in the view.
+proxy.scrollTo(reveal.targetID)
+
+// Correct: materialize the group in the same scroll owner, revalidate, then
+// target the exact member and record completion.
+proxy.scrollTo(WorkbenchProxyScrollTarget.group(reveal.groupID))
+try await Task.sleep(for: .milliseconds(16))
+guard reveal.isCurrent(controllerID: controllerID, generation: generation) else { return }
+proxy.scrollTo(reveal.targetID, anchor: .center)
+lastScrolledRevealToken = reveal.token
+```
+
 ## Scenario: Audited Diagnostics And Actions Projection
 
 ### 1. Scope / Trigger

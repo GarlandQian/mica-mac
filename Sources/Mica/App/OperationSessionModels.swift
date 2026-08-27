@@ -504,22 +504,50 @@ extension String {
 }
 
 struct ConnectionTransferRateTracker: Equatable, Sendable {
+    private struct OccurrenceIdentity: Hashable, Sendable {
+        var reportedID: String
+        var occurrence: Int
+    }
+
     private struct Counters: Equatable, Sendable {
         var upload: Int?
         var download: Int?
     }
 
     private var previousSampleAt: Date?
-    private var countersByConnectionID: [String: Counters] = [:]
+    private var countersByOccurrence: [OccurrenceIdentity: Counters] = [:]
+    private var occurrenceCountsByReportedID: [String: Int] = [:]
 
     mutating func enriching(
         _ response: ConnectionsResponse,
         receivedAt: Date
     ) -> ConnectionsResponse {
+        guard previousSampleAt != nil else {
+            recordInitialCounters(from: response.connections)
+            previousSampleAt = receivedAt
+            return response
+        }
+
         let elapsed = previousSampleAt.map { receivedAt.timeIntervalSince($0) }
-        let connections = response.connections.map { connection in
+        let currentCounts = response.connections.reduce(into: [String: Int]()) { counts, connection in
+            counts[connection.id, default: 0] += 1
+        }
+        var occurrences: [String: Int] = [:]
+        var nextCounters: [OccurrenceIdentity: Counters] = [:]
+        nextCounters.reserveCapacity(response.connections.count)
+        var connections: [ConnectionSnapshot] = []
+        connections.reserveCapacity(response.connections.count)
+
+        for connection in response.connections {
+            let occurrence = occurrences[connection.id, default: 0]
+            occurrences[connection.id] = occurrence + 1
+            let identity = OccurrenceIdentity(
+                reportedID: connection.id,
+                occurrence: occurrence
+            )
             var projected = connection
-            if let previous = countersByConnectionID[connection.id],
+            if occurrenceCountsByReportedID[connection.id] == currentCounts[connection.id],
+               let previous = countersByOccurrence[identity],
                let elapsed,
                elapsed > 0 {
                 projected.uploadSpeed = connection.uploadSpeed
@@ -527,13 +555,16 @@ struct ConnectionTransferRateTracker: Equatable, Sendable {
                 projected.downloadSpeed = connection.downloadSpeed
                     ?? Self.bytesPerSecond(current: connection.download, previous: previous.download, elapsed: elapsed)
             }
-            return projected
+            connections.append(projected)
+            nextCounters[identity] = Counters(
+                upload: connection.upload,
+                download: connection.download
+            )
         }
 
         previousSampleAt = receivedAt
-        countersByConnectionID = response.connections.reduce(into: [:]) { values, connection in
-            values[connection.id] = Counters(upload: connection.upload, download: connection.download)
-        }
+        countersByOccurrence = nextCounters
+        occurrenceCountsByReportedID = currentCounts
 
         return ConnectionsResponse(
             uploadTotal: response.uploadTotal,
@@ -543,14 +574,33 @@ struct ConnectionTransferRateTracker: Equatable, Sendable {
         )
     }
 
+    private mutating func recordInitialCounters(from connections: [ConnectionSnapshot]) {
+        var occurrenceCounts: [String: Int] = [:]
+        occurrenceCounts.reserveCapacity(connections.count)
+        var counters: [OccurrenceIdentity: Counters] = [:]
+        counters.reserveCapacity(connections.count)
+
+        for connection in connections {
+            let occurrence = occurrenceCounts[connection.id, default: 0]
+            occurrenceCounts[connection.id] = occurrence + 1
+            counters[
+                OccurrenceIdentity(reportedID: connection.id, occurrence: occurrence)
+            ] = Counters(upload: connection.upload, download: connection.download)
+        }
+
+        countersByOccurrence = counters
+        occurrenceCountsByReportedID = occurrenceCounts
+    }
+
     mutating func reset() {
         previousSampleAt = nil
-        countersByConnectionID.removeAll(keepingCapacity: false)
+        countersByOccurrence.removeAll(keepingCapacity: false)
+        occurrenceCountsByReportedID.removeAll(keepingCapacity: false)
     }
 
     private static func bytesPerSecond(current: Int?, previous: Int?, elapsed: TimeInterval) -> Int? {
-        guard let current, let previous, current >= 0, previous >= 0 else { return nil }
-        let delta = current >= previous ? current - previous : 0
+        guard let current, let previous, current >= previous, previous >= 0 else { return nil }
+        let delta = current - previous
         let value = (Double(delta) / elapsed).rounded()
         guard value.isFinite else { return nil }
         return Int(min(value, Double(Int.max)))

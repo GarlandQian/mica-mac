@@ -483,6 +483,106 @@ struct SessionStreamStateTests {
         #expect(next.connections.first?.downloadSpeed == 300)
     }
 
+    @Test func connectionTransferRatesAreDerivedPerOccurrenceForDuplicateReportedIDs() {
+        var tracker = ConnectionTransferRateTracker()
+        _ = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(id: "duplicate", upload: 100, download: 300),
+                    ConnectionSnapshot(id: "duplicate", upload: 1_000, download: 2_000),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 10)
+        )
+
+        let next = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(id: "duplicate", upload: 300, download: 700),
+                    ConnectionSnapshot(id: "duplicate", upload: 1_600, download: 3_200),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 12)
+        )
+
+        #expect(next.connections.map(\.id) == ["duplicate", "duplicate"])
+        #expect(next.connections.map(\.upload) == [300, 1_600])
+        #expect(next.connections.map(\.download) == [700, 3_200])
+        #expect(next.connections.map(\.uploadSpeed) == [100, 300])
+        #expect(next.connections.map(\.downloadSpeed) == [200, 600])
+    }
+
+    @Test func connectionTransferRatesDoNotGuessWhenDuplicateOccurrenceCountChanges() {
+        var tracker = ConnectionTransferRateTracker()
+        _ = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(id: "duplicate", upload: 100, download: 300),
+                    ConnectionSnapshot(id: "duplicate", upload: 1_000, download: 2_000),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        let ambiguous = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(id: "duplicate", upload: 1_200, download: 2_400),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 21)
+        )
+
+        #expect(ambiguous.connections.first?.uploadSpeed == nil)
+        #expect(ambiguous.connections.first?.downloadSpeed == nil)
+
+        let stable = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(id: "duplicate", upload: 1_300, download: 2_600),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 22)
+        )
+
+        #expect(stable.connections.first?.uploadSpeed == 100)
+        #expect(stable.connections.first?.downloadSpeed == 200)
+    }
+
+    @Test func connectionTransferRatesPreserveReportedRatesAcrossCounterReset() {
+        var tracker = ConnectionTransferRateTracker()
+        _ = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(id: "duplicate", upload: 1_000, download: 2_000),
+                    ConnectionSnapshot(id: "duplicate", upload: 3_000, download: 4_000),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 30)
+        )
+
+        let reset = tracker.enriching(
+            ConnectionsResponse(
+                connections: [
+                    ConnectionSnapshot(
+                        id: "duplicate",
+                        upload: 10,
+                        download: 20,
+                        uploadSpeed: 7,
+                        downloadSpeed: 9
+                    ),
+                    ConnectionSnapshot(id: "duplicate", upload: 30, download: 40),
+                ]
+            ),
+            receivedAt: Date(timeIntervalSince1970: 31)
+        )
+
+        #expect(reset.connections[0].uploadSpeed == 7)
+        #expect(reset.connections[0].downloadSpeed == 9)
+        #expect(reset.connections[1].uploadSpeed == nil)
+        #expect(reset.connections[1].downloadSpeed == nil)
+    }
+
     @Test func connectionTransferRatesHandleCounterResetAndPreserveReportedRates() {
         var tracker = ConnectionTransferRateTracker()
         _ = tracker.enriching(

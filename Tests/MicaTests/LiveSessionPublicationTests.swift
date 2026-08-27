@@ -1055,6 +1055,209 @@ struct LiveSessionPublicationTests {
     }
 
     @MainActor
+    @Test func terminalMihomoChannelFailureKeepsRuntimeAndSiblingPublicationAlive() async throws {
+        let gate = PublicationSleepGate()
+        let (model, profile) = makeLiveModel(gate: gate)
+        let generation = model.controllerSession.generation
+        model.connectionState = .connected(version: "test")
+        model.liveStreamRequested = true
+        model.registerLiveSessionWindowDemand(
+            LiveSessionWindowDemandID(),
+            destination: .logs
+        )
+        model.installLiveSessionRuntime(for: profile, generation: generation)
+        let runtime = try #require(model.liveSessionRuntime)
+        let identity = try #require(model.liveSessionRuntimeIdentity)
+
+        model.handleLiveStreamFailure(
+            .traffic,
+            error: MihomoClientError.unauthorized,
+            routerID: profile.id,
+            generation: generation
+        )
+
+        #expect(model.liveSessionRuntime === runtime)
+        #expect(model.liveSessionRuntimeIdentity == identity)
+        #expect(model.connectionState == .connected(version: "test"))
+        #expect(model.liveStreamState.isPartial)
+
+        let receivedAt = Date(timeIntervalSince1970: 10)
+        _ = await runtime.ingestLog(
+            LogMessage(type: "info", payload: "healthy sibling"),
+            source: .mihomoWebSocket,
+            receivedAt: receivedAt,
+            id: "healthy-sibling"
+        )
+        let publication = try #require(
+            await runtime.publication(for: .logs, force: true)
+        )
+        model.applyLiveSessionRuntimePublication(publication, runtime: runtime)
+
+        #expect(model.logsCatalog.entries.map(\.id) == ["healthy-sibling"])
+        #expect(model.liveSessionRuntime === runtime)
+        #expect(model.liveStreamState.isPartial)
+        #expect(model.controllerSession.liveObservation.state == .partial)
+        #expect(model.controllerSession.lastSuccessAt == receivedAt)
+        model.leaveLiveSession()
+    }
+
+    @MainActor
+    @Test func terminalMihomoChannelFailureBeforeBaselineRemainsPartialAfterCommit() async throws {
+        let gate = PublicationSleepGate()
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore(),
+            sessionPublicationSleepOperation: { domain, cadence in
+                await gate.sleep(domain: domain, cadence: cadence)
+            }
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.liveStreamRequested = true
+        let logsWindow = LiveSessionWindowDemandID()
+        model.registerLiveSessionWindowDemand(
+            logsWindow,
+            destination: .logs
+        )
+        let generation = model.controllerSession.generation
+        model.installLiveSessionRuntime(for: profile, generation: generation)
+        let runtime = try #require(model.liveSessionRuntime)
+        let identity = try #require(model.liveSessionRuntimeIdentity)
+
+        model.handleLiveStreamFailure(
+            .traffic,
+            error: MihomoClientError.unauthorized,
+            routerID: profile.id,
+            generation: generation,
+            runtime: runtime
+        )
+
+        if case .failedBeforeFirstSnapshot = model.controllerSession.state {
+            // The REST baseline has not committed yet.
+        } else {
+            Issue.record("Expected the session to remain failed before its baseline")
+        }
+        #expect(model.liveStreamState.isPartial)
+        #expect(model.controllerSession.liveObservation.state == .failed)
+        #expect(model.liveSessionRuntime === runtime)
+
+        model.controllerSession.endpointCache.version = VersionResponse(
+            version: "1.0"
+        )
+        model.controllerSession.endpointCache.config = try JSONDecoder().decode(
+            ConfigResponse.self,
+            from: Data(#"{"mode":"rule"}"#.utf8)
+        )
+        model.controllerSession.endpointCache.proxies = ProxiesResponse(
+            proxies: [:]
+        )
+        model.controllerSession.endpointCache.connections = ConnectionsResponse(
+            connections: []
+        )
+
+        #expect(
+            model.attemptSessionBaselineCommit(
+                for: profile,
+                generation: generation
+            )
+        )
+        #expect(model.controllerSession.hasCommittedBaseline)
+        #expect(model.controllerSession.state.failureDetail != nil)
+        #expect(model.liveStreamState.isPartial)
+        #expect(model.controllerSession.liveObservation.state == .partial)
+        #expect(model.liveSessionRuntime === runtime)
+
+        let receivedAt = Date(timeIntervalSince1970: 20)
+        let scheduled = await runtime.ingestLog(
+            LogMessage(type: "info", payload: "pre-baseline sibling"),
+            source: .mihomoWebSocket,
+            receivedAt: receivedAt,
+            id: "pre-baseline-sibling"
+        )
+        model.scheduleLiveSessionRuntimePublications(
+            scheduled,
+            runtime: runtime,
+            identity: identity
+        )
+        for _ in 0..<100 {
+            guard model.logsCatalog.entries.isEmpty,
+                  await gate.recordedCalls().isEmpty else {
+                break
+            }
+            await Task.yield()
+        }
+        if model.logsCatalog.entries.isEmpty {
+            await gate.release(.logs)
+        }
+        for _ in 0..<100 where model.logsCatalog.entries.isEmpty {
+            await Task.yield()
+        }
+
+        #expect(model.logsCatalog.entries.map(\.id) == ["pre-baseline-sibling"])
+        #expect(model.controllerSession.state.failureDetail != nil)
+        #expect(model.liveStreamState.isPartial)
+        #expect(model.controllerSession.liveObservation.state == .partial)
+        model.unregisterLiveSessionWindowDemand(logsWindow)
+        model.leaveLiveSession()
+    }
+
+    @MainActor
+    @Test func outOfOrderDomainCompletionsKeepLastSuccessMonotonic() {
+        let gate = PublicationSleepGate()
+        let (model, profile) = makeLiveModel(gate: gate)
+        let newer = Date(timeIntervalSince1970: 200)
+        let older = Date(timeIntervalSince1970: 100)
+
+        model.completeLiveTransportIngestion(
+            receivedAt: newer,
+            router: profile,
+            streamState: .live
+        )
+        model.completeLiveTransportIngestion(
+            receivedAt: older,
+            router: profile,
+            streamState: .live
+        )
+
+        #expect(model.controllerSession.lastSuccessAt == newer)
+        #expect(model.controllerSessionPresentation.lastSuccessAt == newer)
+        model.leaveLiveSession()
+    }
+
+    @MainActor
+    @Test func manualRefreshRecognizesEveryResolvedMihomoRuntimeKind() {
+        let mihomoKinds: [ControllerKind] = [
+            .mihomoCompatible,
+            .nikkiMihomoCompatible,
+            .openClashMihomoCompatible,
+            .cmfaCompatible,
+            .stashCompatible,
+        ]
+        let otherKinds: [ControllerKind] = [
+            .autoDetect,
+            .surgeCompatible,
+            .singBoxCompatible,
+            .stashCmfaCompatible,
+            .unknown,
+            .unsupported,
+        ]
+
+        for kind in mihomoKinds {
+            #expect(AppModel.usesMihomoLiveStreams(kind))
+        }
+        for kind in otherKinds {
+            #expect(!AppModel.usesMihomoLiveStreams(kind))
+        }
+    }
+
+    @MainActor
     private func makeModel(
         routers: [RouterProfile] = [],
         selectedRouterID: RouterProfile.ID? = nil,
