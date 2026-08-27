@@ -362,3 +362,35 @@ Completed and archived the native Logs, Rules, and Sources data-browser phase wh
 ### Status
 
 [OK] **Completed**
+
+## Session 12 — 概览流向彩带与双模式焕新（08-23）
+
+**Outcome**: 08-23 全部实现与终审完成（R1–R10），等待用户目验归档。
+- R1–R8 + F1（493783a）：列身份色/渐变彩边/药丸/闭式 sliceWidth/barycenter 流向排序/摘要条修复；trellis-check 抓出跨 band 渐变端点回退 blocker（tint 表提升到全量 layout 作用域修复）
+- R9（62c75b7）：真 Sankey——边按几何宽度绘制闭合 ribbon（d3 双贝塞尔构造），45% 渐变填充，节点实心锚点块。几何引擎本就是 Sankey（flow×valueScale + assignEdgeCenters 打包 + width/2+2 命中容差），细描边渲染才是异常
+- R10（c6a626f）：minimumColumnStep=168 下限，长链图加宽 + 横向滚动，不再截断标签；新增 7 列/1068/132/短链 800 单测
+- 增量终审 run ae5045cd：AC8/AC9 PASS，全门禁绿；should-fix 契约措辞与注释 nit 已顺手修
+
+**门禁**：309 tests / verifier / perf benchmark 全绿。
+**Learnings**：BandLayers 按 352pt y 切片准入边（跨 band 边共享 band 不共享节点）——任何 per-band 派生表必须从全量 layout 构建；trellis-check 看门狗会把只读审查误判为 "completed without edits"，读 output artifact 为准。
+
+
+## Session 10: Workbench 实时链路与策略组定位收口
+
+**Date**: 2026-08-27
+**Task**: Workbench 实时链路与策略组定位收口
+**Branch**: `main`
+
+### Summary
+
+完成 D1-D14 与 terminal-before-baseline 边界修复，强化 Mihomo/Surge 实时状态、精确策略节点定位、健康筛选和可访问性；离线 build、106 XCTest、333 Swift Testing、源码/本地化门禁及两轮 Release 基准全部通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `031a096` | (see git log) |
+
+### Status
+
+[OK] **Completed**
