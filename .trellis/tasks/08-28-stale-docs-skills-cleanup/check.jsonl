@@ -1,0 +1,4 @@
+{"file":".trellis/tasks/08-28-stale-docs-skills-cleanup/research/documentation-spec-classification.md","reason":"Verify final documentation/spec diff matches the researched delete/rewrite/keep boundary."}
+{"file":".trellis/tasks/08-28-stale-docs-skills-cleanup/research/ai-integrations-skills-and-task-lifecycle.md","reason":"Verify no supported integration, hook, skill, link, history, or active task was removed or altered outside the approved exception."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Check controller claims and safety boundaries against the active backend contract."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Check session, generation, Tailscale, and verification claims against the active live-session contract."}

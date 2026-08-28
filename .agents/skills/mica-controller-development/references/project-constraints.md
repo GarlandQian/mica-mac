@@ -83,8 +83,7 @@ Native design skills supply generic guidance. Mica-specific UI authority is
 - Use native window chrome and opaque Workbench content surfaces; no custom
   content glass, decorative gradients, nested cards, or fabricated charts.
 - Use existing Workbench primitives, SF Symbols, semantic text styles, and the
-  accessible Rose Pine-inspired tokens defined by the UI contract and
-  `MicaStyle`.
+  accessible Mica Ops tokens defined by `MicaTheme` and the UI contract.
 - Visible copy is English and Simplified Chinese. Dynamic localization reads
   `micaAppLanguage`; text scale uses injected Dynamic Type without multiplying
   control/layout geometry.

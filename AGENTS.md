@@ -12,7 +12,7 @@
 - Mica controls already-running remote controller APIs. Never download, bundle, launch, or manage a local core; never modify system networking, OpenWrt, LuCI, SSH, or `ubus`. Automated checks must not contact a controller or invoke remote actions. Do not add mock controller business data to production UI.
 - Keep controller-reported business data visible and selectable in active UI. Exports exclude credentials, tokens, authorization values, subscription URLs, Keychain contents, and raw response or stream bodies.
 - Preserve controller order and optionality. Gate actions through capabilities; validate controller ID and session generation after asynchronous work. Mica has one selected live controller and does not fail over automatically.
-- For macOS UI work, load `macos-app-design`, `apple-hig-expert`, and `swiftui-liquid-glass`. Use existing `MicaStyle`/Workbench primitives and the UI contract; no custom content glass, fabricated charts, or ordinary modal workflows. Keep visible copy in English and Simplified Chinese.
+- For macOS UI work, load `macos-app-design`, `apple-hig-expert`, and `swiftui-liquid-glass`. Use the current `MicaTheme` and Workbench primitives with the UI contract; no custom content glass, fabricated charts, or ordinary modal workflows. Keep visible copy in English and Simplified Chinese.
 - Add a Swift package only for a verified material benefit; record the rationale, compatibility, license, cost, and boundary tests in the active task and durable documentation.
 - Keep scratch output under `tmp/codex/`, then remove disposable artifacts. Do not use destructive Git commands or revert unrelated changes. Run runtime smoke only when the user or task explicitly permits it.
 
