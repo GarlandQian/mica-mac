@@ -394,3 +394,24 @@ Completed and archived the native Logs, Rules, and Sources data-browser phase wh
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: 清理过时文档与 AI 集成
+
+**Date**: 2026-08-28
+**Task**: 清理过时文档与 AI 集成
+**Branch**: `main`
+
+### Summary
+
+删除 8 个占位 spec，重写 Mica 文档、索引与 Thinking Guides，修正 MicaTheme 指导，保留 Codex/Claude/Pi 集成和有效 skills，并归档已完成的 08-16 任务。静态链接、JSON、skill、任务状态与 diff 检查通过；未运行应用、控制器或 runtime smoke。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7a5e98c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
