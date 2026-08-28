@@ -7,7 +7,6 @@ All disposable output belongs under `tmp/codex/`.
 ```bash
 node --check scripts/verify-real-controller-source.mjs
 node scripts/verify-real-controller-source.mjs
-node --check scripts/verify-runtime-smoke.mjs
 python3 -m json.tool Sources/Mica/Resources/Localizable.xcstrings >/dev/null
 git diff --check
 swift build --scratch-path tmp/codex/swift-build
@@ -15,7 +14,14 @@ swift test --scratch-path tmp/codex/swift-build
 python3 .agents/skills/apple-hig-expert/scripts/hig_checker.py batch tmp/codex/hig-audit.json
 ```
 
-The source verifier checks the durable ten-destination/native-Settings/Liquid Glass/single-live-session contract without reading active or archived Trellis task directories. The HIG batch input is a temporary task artifact and must be removed after its score is recorded in the task/journal. The runtime smoke script remains available as an optional compatibility check, but it is not part of the default finish gate and must be skipped when the user requests no smoke testing.
+The source verifier checks the durable ten-destination/native-Settings/Liquid Glass/single-live-session contract without reading active or archived Trellis task directories. The HIG batch input is a temporary task artifact and must be removed after its score is recorded in the task/journal. Runtime smoke is not part of the default finish gate and may run only when the user or active task explicitly authorizes it; skip it when no smoke testing is requested.
+
+When explicitly authorized, run the optional smoke syntax and probe separately:
+
+```bash
+node --check scripts/verify-runtime-smoke.mjs
+node scripts/verify-runtime-smoke.mjs tmp/codex/swift-build/debug/Mica
+```
 
 For measured hot-path changes, run the opt-in offline Release benchmark after the focused tests:
 
@@ -49,11 +55,17 @@ When explicitly requested, UI smoke may launch the already-built Mica executable
 
 ## Trellis Agents
 
-Project-scoped Trellis integrations are installed for Codex and Claude Code.
+Project-scoped Trellis integrations are installed for Codex, Claude Code, and Pi.
 
 Codex roles are configured in `.codex/agents/`. The project does not pin their models or reasoning levels and does not override Trellis's default Codex dispatch mode. Trellis-generated configuration and workflow files remain the source of truth for agent behavior.
 
 Claude Code uses `.claude/settings.json` to register SessionStart, per-prompt workflow-state, and sub-agent context hooks. Its Trellis agents live in `.claude/agents/`, reusable workflow skills in `.claude/skills/trellis-*`, and explicit continuation/finish commands under `.claude/commands/trellis/`. Existing non-Trellis Claude skills are preserved during installation.
+
+Pi loads `.pi/extensions/trellis/index.ts` from `.pi/settings.json`. The
+extension handles `session_start` and `before_agent_start`, bridges the active
+Trellis context into shell commands, and exposes the native Trellis subagent
+tool. Pi's workflow prompts live under `.pi/prompts/` and its agent roles under
+`.pi/agents/`.
 
 ## Product Boundary
 

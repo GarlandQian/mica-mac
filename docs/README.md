@@ -7,7 +7,7 @@ This directory stores stable project knowledge that should survive after a Trell
 - `ARCHITECTURE.md`: module ownership, data flow, state boundaries, and persistence.
 - `DATA_MODEL.md`: controller objects, response fields, availability states, and ordering contracts.
 - `CONTROLLER_COMPATIBILITY.md`: backend families, supported operations, and truthful unavailable boundaries.
-- `UI_GUIDELINES.md`: macOS/SwiftUI conventions, controller data presentation, Rose Pine-inspired tokens, accessibility, and interaction rules.
+- `UI_GUIDELINES.md`: macOS/SwiftUI conventions, controller data presentation, Mica Ops tokens, accessibility, and interaction rules.
 - `DEVELOPMENT.md`: build, test, smoke, temporary-file, and release-development workflow.
 
 Create a file only when it contains durable knowledge. Do not add dated plans, chat transcripts, temporary research, or progress checklists here.

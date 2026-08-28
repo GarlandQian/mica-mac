@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/08-28-stale-docs-skills-cleanup/research/documentation-spec-classification.md","reason":"Exact evidence-backed delete/rewrite/keep classification for documentation, specs, AGENTS guidance, and the Mica project skill."}
+{"file":".trellis/tasks/08-28-stale-docs-skills-cleanup/research/ai-integrations-skills-and-task-lifecycle.md","reason":"Authoritative keep/archive classification for Codex, Claude Code, Pi, skills, symlinks, generated files, and task lifecycle."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Active authority for controller ordering, optionality, capability, privacy, and validation claims retained in documentation."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Active authority for generation, lifecycle, publication, stale-data, and Tailscale wording retained in documentation."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Current Mica SwiftUI primitive and inspector ownership guidance that the cleaned frontend index must retain."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Current AppModel, session, window, preference, and projection ownership guidance that the cleaned frontend index must retain."}
