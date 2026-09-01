@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/09-01-workbench-cross-surface-acceptance/research/workbench-contract-context.md","reason":"Complete task-local routing digest of the authoritative Workbench IA, inspector, page archetype, state, performance, accessibility, and validation constraints."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Controller/generation, stale retention, pause, destination visibility, and automated-safety invariants must survive UX changes."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Shared MicaTheme/Workbench primitive, flat-content, inspector, typography, motion, and pointer-interaction conventions."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Defines AppModel, per-window workspace, inspector selection, derived-state, and publication ownership boundaries."}
+{"file":".trellis/tasks/09-01-workbench-cross-surface-acceptance/research/cross-surface-audit.md","reason":"Task-specific static evidence, confirmed defects, source anchors, audit matrix, and implementation boundaries."}
