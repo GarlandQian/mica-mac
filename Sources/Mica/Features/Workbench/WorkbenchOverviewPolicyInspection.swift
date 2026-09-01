@@ -877,13 +877,13 @@ struct WorkbenchPolicyInspectorView: View {
     }
 
     private func openPath(_ path: ConnectionTopology.PathRecord) {
-        if let controllerID = appModel.selectedRouterID,
-           let connectionID = path.reportedConnectionID.overviewNonBlank {
+        if let controllerID = appModel.selectedRouterID {
             workspaceStore.stageConnectionNavigation(
                 WorkbenchConnectionNavigationSelection(
                     controllerID: controllerID,
                     generation: appModel.controllerSessionPresentation.generation,
-                    connectionID: connectionID
+                    sourceIndex: path.sourceIndex,
+                    reportedConnectionID: path.reportedConnectionID
                 )
             )
         }

@@ -79,6 +79,7 @@ struct WorkbenchDiagnosticsView: View {
                         issues: snapshot.issues,
                         usesSplitLayout: contentWidth >= 900,
                         selectedIssueID: $selectedIssueID,
+                        isActionEnabled: diagnosticsActionAvailability.isEnabled,
                         onAction: perform
                     )
                 }
@@ -141,6 +142,7 @@ struct WorkbenchDiagnosticsView: View {
     }
 
     private func perform(_ action: WorkbenchDiagnosticsAction) {
+        guard diagnosticsActionAvailability.isEnabled(action) else { return }
         switch action {
         case .refresh:
             if appModel.canRefreshSelectedRouter {
@@ -157,6 +159,17 @@ struct WorkbenchDiagnosticsView: View {
         case .navigate(let destination):
             self.destination = destination
         }
+    }
+
+    private var diagnosticsActionAvailability: WorkbenchDiagnosticsActionAvailability {
+        WorkbenchDiagnosticsActionAvailability(
+            canRefresh: appModel.canRefreshSelectedRouter,
+            canTest: appModel.canTestSelectedRouter,
+            canTogglePresentationPause: appModel.canTogglePresentationPause,
+            isPresentationPaused: appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused,
+            hasSelectedController: appModel.selectedRouter != nil,
+            isBusy: appModel.isBusy
+        )
     }
 
     private func reconcileSelection(

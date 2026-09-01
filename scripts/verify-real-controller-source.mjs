@@ -672,7 +672,8 @@ assertIncludes(actionsPresentation, "showsRelatedDestinations", "Actions must re
 assertIncludes(actionsRoot, "recoveryCanvas", "Actions must use a dedicated recovery composition");
 assertIncludes(actionsRoot, "commandCanvas", "Actions must use a dedicated connected command composition");
 assertIncludes(actionsRoot, "appModel.actionsRuntimeOperationRows", "Actions must consume evidence-free runtime command rows");
-assertIncludes(actionsRoot, "let usesTwoColumns = availableWidth >= 900", "Actions must adapt connected commands by measured width");
+assertIncludes(actionsPresentation, "struct WorkbenchActionsLayoutDecision", "Actions must derive sparse density through a pure layout decision");
+assertIncludes(actionsRoot, "WorkbenchActionsLayoutDecision.resolve(", "Actions must consume the shared sparse layout decision");
 assertExcludes(actionsRoot, "WorkbenchManagementFormCanvas", "Actions must not force recovery and commands into a grouped form");
 assertExcludes(
   management,
@@ -1235,7 +1236,11 @@ const overviewTopologyViewport = sourceSection(
   "private struct OverviewTopologyViewport",
   "private struct OverviewTopologyIdleSummary",
 );
-assertExcludes(overviewTopologyViewport, "ScrollView(.horizontal)", "Complete topology must fit its available width without a nested horizontal viewport");
+assertIncludes(overviewTopologyViewport, "ScrollView(.horizontal)", "Long-chain topology must retain its bounded horizontal viewport");
+assertIncludes(overviewTopologyViewport, ".scrollPosition($scrollPosition)", "Topology selection reveal must use stable scroll position state");
+assertIncludes(overviewTopologyViewport, "hasHorizontalOverflow ? .visible : .hidden", "Topology must expose a native horizontal indicator only for overflow");
+assertIncludes(overviewTopologyViewport, "@Environment(\\.accessibilityReduceMotion)", "Topology selection reveal must respect Reduce Motion");
+assertIncludes(overviewTopologyViewport, "withAnimation(MicaTheme.Motion.reveal)", "Topology selection reveal must use the finite theme motion token");
 assertIncludes(overviewTopologyViewport, ".frame(maxWidth: .infinity, alignment: .center)", "Complete topology must center its width-fitted canvas");
 assertIncludes(overviewTopologyViewport, ".help(hoverTooltip", "Topology hover must revert to a standard tooltip carrying the truthful route label");
 assertExcludes(overviewTopologyViewport, "OverviewTopologyHUDOverlay(", "The node-anchored floating HUD overlay must stay deleted");
@@ -1321,7 +1326,7 @@ assertIncludes(overviewTopologyView, "uniqueKeysWithValues: layout.nodes.map", "
 assertIncludes(overviewTopologyView, "with: .linearGradient(", "Topology flow edges must render as source-to-target tint gradients (task 08-23 R2)");
 assertIncludes(overviewTopologyView, "ribbon.closeSubpath()", "Topology flow edges must render as closed sankey ribbons at their true flow width (task 08-23 R9)");
 assertIncludes(overviewTopology, "minimumColumnStep: CGFloat = 168", "Topology must enforce a minimum column step so long chains never crush labels (task 08-23 R10)");
-assertIncludes(overviewTopologyView, "ScrollView(.horizontal, showsIndicators: false)", "Topology viewport must scroll horizontally when long chains widen the graph (task 08-23 R10)");
+assertIncludes(overviewTopology, "enum OverviewTopologyViewportTargetResolver", "Topology selection reveal must resolve targets from existing geometry");
 assertExcludes(overviewTopologyView, "min(max(edge.width, 0.75), 2.5)", "Topology ribbons must not clamp edges to hairline stroke widths (task 08-23 R9)");
 assertIncludes(overviewTopologyView, "MicaTheme.edgeDimmed", "Topology dimmed edges must use the explicit alpha-baked mist token, never bare tertiary label alpha (task 08-23 R5)");
 assertIncludes(overviewTopologyView, "columnHeaderHeight - 6", "Topology column identity ticks must sit directly under the titles (task 08-23 R4)");
@@ -1804,6 +1809,20 @@ assertIncludes(dataPages, "struct WorkbenchRuleConnectionIndexCache", "Rules mus
 assertIncludes(dataPages, "dashboardSessionControls.closedConnectionRecords", "Connections must keep retained closed history separate from active rows");
 assertIncludes(dataPages, "appModel.clearClosedConnections()", "Closed history must expose an explicit clear command");
 assertIncludes(chrome, ".inspector(isPresented:", "Data-page details must remain in-window inspectors");
+for (const inspectorOwnershipContract of [
+  "var owningDestination: WorkbenchDestination?",
+  "inspectorOwningDestination",
+  "func clearInspectorSelection(ownedBy destination: WorkbenchDestination)",
+  "func dismissInspector()",
+  "func prepareInspectorForDestinationChange(to destination: WorkbenchDestination)",
+  "func inspectorSelection(",
+]) {
+  assertIncludes(workspaceStore, inspectorOwnershipContract, `Inspector continuity must retain ${inspectorOwnershipContract}`);
+}
+assertIncludes(chrome, "workspaceStore.prepareInspectorForDestinationChange(to: destination)", "Root destination changes must hide non-owned inspector detail");
+assertIncludes(workspaceView, "workspaceStore.dismissInspector()", "Inspector close buttons must perform a true dismiss");
+assertIncludes(overviewTopologyView, "from: .overview", "Overview policy inspection must preserve its explicit inspector origin");
+assertExcludes(workbenchCode, "selectInspector(.none)", "Page reconciliation must clear inspector selection only through its recorded owner");
 assertIncludes(dataPages, ".textSelection(.enabled)", "Business values must remain selectable");
 assertIncludes(dataPages, "metadata?.remoteDestination", "Connection projection must preserve complete remote destinations");
 assertIncludes(dataPages, "connection.id", "Connection projection must preserve complete connection IDs");
@@ -1832,6 +1851,19 @@ const connectionCloseIntent = sourceSection(
 for (const identityField of ["let routerID: RouterProfile.ID", "let generation: UUID", "func isCurrent(", "func reconciled("]) {
   assertIncludes(connectionCloseIntent, identityField, `Connection close confirmation must retain ${identityField}`);
 }
+
+for (const connectionNavigationContract of [
+  "let sourceIndex: Int",
+  "let reportedConnectionID: String",
+  "func matches(sourceIndex: Int, reportedConnectionID: String)",
+]) {
+  assertIncludes(workspaceStore, connectionNavigationContract, `Connection navigation must retain occurrence identity through ${connectionNavigationContract}`);
+}
+assertIncludes(connectionsRoot, "pending.matches(", "Connections must wait for the exact reported occurrence before consuming navigation");
+assertIncludes(connectionsRoot, "navigation.matches(", "Connections must resolve navigation to the exact reported occurrence");
+assertIncludes(dashboard, "sourceIndex: connection.sourceIndex", "Overview summaries must navigate duplicate and blank connection IDs by occurrence");
+assertIncludes(overviewTopologyView, "sourceIndex: path.sourceIndex", "Topology paths must navigate duplicate and blank connection IDs by occurrence");
+assertIncludes(overviewPolicyInspection, "sourceIndex: path.sourceIndex", "Policy inspection must navigate duplicate and blank connection IDs by occurrence");
 
 for (const providerContract of [
   "source.testURL",
@@ -1935,6 +1967,12 @@ assert(
 );
 assertIncludes(controllerDetailSection, "deleteConfirmation(profile, confirmation: pendingDelete)", "Controller deletion confirmation must stay inline with the selected detail");
 assertExcludes(controllersSource, ".safeAreaInset(", "Controller deletion confirmation must not become a detached bottom bar");
+const controllerDeleteConfirmationSource = sourceSection(
+  controllersSource,
+  "private func deleteConfirmation(",
+  "@ViewBuilder\n    private func deleteConfirmationContent(",
+);
+assertIncludes(controllerDeleteConfirmationSource, ".onExitCommand", "Controller delete confirmation must cancel with Escape only while visible");
 const controllerListProjection = sourceSection(controllerPresentation, "enum WorkbenchControllerListProjection", "struct WorkbenchConnectionTestProjection");
 assertIncludes(controllerListProjection, "guard !normalizedQuery.isEmpty else { return profiles }", "Empty controller search must preserve persisted order");
 assertExcludes(controllerListProjection, ".sorted", "Controllers must never reorder profiles automatically");
@@ -1966,11 +2004,23 @@ assertIncludes(configurationSource, '$0.id == "tailscale"', "Tailscale presentat
 assertIncludes(configurationSource, "return status != .unavailable", "Unsupported Tailscale controls must remain absent");
 assertIncludes(configurationSource, "appModel.singBoxTailscaleStatus != nil", "Reported Tailscale status must remain visible before capability refresh completes");
 assertIncludes(configurationSource, "appModel.singBoxTailscaleError != nil", "Reported Tailscale failure must remain visible before capability refresh completes");
+assertIncludes(statusBar, "appModel.canTestSelectedRouter", "Toolbar Test must use the shared AppModel gate");
+assertIncludes(statusBar, "appModel.canRefreshSelectedRouter", "Toolbar Refresh must use the shared AppModel gate");
+assertIncludes(statusBar, "appModel.canTogglePresentationPause", "Toolbar pause must use the shared AppModel gate");
+assertIncludes(statusBar, "guard isEnabled else { return }", "Toolbar commands must reject stale disabled intents");
+assertIncludes(configurationSource, "isActionEnabled: appModel.canRefreshSelectedRouter", "Configuration state actions must use the shared refresh gate");
+assertIncludes(configurationSource, "guard appModel.canRefreshSelectedRouter else { return }", "Configuration refresh actions must reject stale disabled intents");
 assertIncludes(management, "appModel.performDiagnosticsRuntimeOperation", "Actions must use capability-gated AppModel operations");
 assertIncludes(actionsPresentation, "input.capabilities.supports(action)", "Actions must honor runtime capabilities");
 assertIncludes(actionsRoot, "snapshot?.visibleOperationIDs", "Actions must invalidate confirmations when executable operations disappear");
 assertIncludes(actionsRoot, "inlineConfirmation(command)", "Dangerous actions must confirm beside the originating operation");
 assertExcludes(actionsRoot, ".safeAreaInset(", "Action confirmation must not become a detached bottom bar");
+const actionsConfirmationSource = sourceSection(
+  actionsRoot,
+  "private func inlineConfirmation(",
+  "@ViewBuilder\n    private func confirmationContent(",
+);
+assertIncludes(actionsConfirmationSource, ".onExitCommand", "Action confirmation must cancel with Escape only while visible");
 assertIncludes(actionsPresentation, 'case "memory":', "Actions must classify the memory dispatcher explicitly");
 assertIncludes(actionsPresentation, "controllerType == .cmfaCompatible", "CMFA commands must retain their verified subset");
 assertExcludes(sourceSection(actionsPresentation, 'case "memory":', 'case "dns-flush":'), ".singBoxCompatible", "sing-box observation memory must not become a Mihomo command");
@@ -1995,11 +2045,16 @@ assertIncludes(diagnosticsPresentation, "controllerAccessIssue", "Diagnostics mu
 assertIncludes(diagnosticsPresentation, "endpointIsExpected", "Diagnostics must suppress unsupported endpoint failures by capability");
 assertIncludes(diagnosticsPresentation, "deduplicatedAndSorted", "Diagnostics must deduplicate and prioritize stable issue IDs");
 assertIncludes(diagnosticsPresentation, "reconciledSelection", "Diagnostics must reconcile issue selection by stable ID");
+assertIncludes(diagnosticsPresentation, "struct WorkbenchDiagnosticsActionAvailability", "Diagnostics must derive issue-action availability from shared command gates");
 assertIncludes(diagnosticsPresentation, "if !isChecking", "Diagnostics checking state must gate provisional failures");
 assertIncludes(diagnosticsPresentation, "guard input.lastSuccessAt != nil else { return [] }", "Diagnostics must not claim available areas before the first baseline");
 assertIncludes(diagnosticsPresentation, '"diagnostics.evidence_unavailable"', "Diagnostics must replace unsafe evidence with localized fallback copy");
 assertIncludes(diagnosticsRoot, "usesSplitLayout: contentWidth >= 900", "Diagnostics must choose master-detail from measured width");
 assertIncludes(diagnosticsComponents, "struct WorkbenchDiagnosticsIssueWorkspace", "Diagnostics must own one adaptive issue workspace");
+assertIncludes(diagnosticsComponents, ".disabled(!isActionEnabled(action))", "Diagnostics issue actions must reflect their shared command gates");
+assertIncludes(diagnosticsRoot, "guard diagnosticsActionAvailability.isEnabled(action) else { return }", "Diagnostics must reject stale disabled issue actions");
+assertIncludes(diagnosticsRoot, "canRefresh: appModel.canRefreshSelectedRouter", "Diagnostics Refresh must use the shared AppModel gate");
+assertIncludes(diagnosticsRoot, "canTest: appModel.canTestSelectedRouter", "Diagnostics Test fallback must use the shared AppModel gate");
 const diagnosticsIssueRowSource = sourceSection(
   diagnosticsComponents,
   "private struct WorkbenchDiagnosticsIssueRow: View {",
@@ -2109,6 +2164,9 @@ assertIncludes(xcstringsResolver, "removingUnresolvedFormatSpecifiers", "Dynamic
 for (const testContract of [
   "destinationsKeepTheFixedProductOrder",
   "editorPresentationsUseUniqueViewIdentityForTheSameDraft",
+  "inspectorDestinationTransitionsHideAndRestoreWithoutErasingWorkspaceSelection",
+  "latePageOwnedInspectorClearCannotEraseAnotherDestinationSelection",
+  "connectionNavigationUsesReportedOccurrenceForDuplicateAndBlankIDs",
   "publicationCadencesMatchTheVisibleDomainBudgets",
   "destinationsObserveOnlyTheirExpensiveLiveDomains",
   "visibleLogBurstsUseOneNonRestartingFiveHertzPublisher",
@@ -2124,6 +2182,8 @@ for (const testContract of [
   "nodeDetailSeparatesKnownFieldsFromAdditionalControllerFields",
   "latencyScaleUsesOnlyPositiveReportedValuesWithoutReordering",
   "closingInspectorPreservesGroupStateAndDoesNotAutoReopen",
+  "actionsLayoutUsesCompactSingleColumnOnlyForSparseCommands",
+  "diagnosticsActionsUseSharedLiveCommandAvailability",
   "activeGroupIndexBuildsOnlyTheActiveMembersAndFiltersCachedRows",
   "proxyWorkspaceKeepsIndependentFilterAndSelectionPerGroup",
   "reportedSmartRanksNeverReorderOrInferNodeRows",
@@ -2150,6 +2210,8 @@ for (const testContract of [
   "overviewNetworkFactsKeepCompleteReportedValuesAndOmitMissingFields",
   "overviewTopActiveConnectionsKeepOccurrenceIdentityAndMissingCountersUnavailable",
   "overviewTopologyHitIndexUsesPointerSizedTargets",
+  "topologyViewportTargetsNodesEdgesAndPolicyFirstPaths",
+  "topologyViewportScrollsOnlyForOffscreenOverflowTargets",
   "completePathUsesDynamicDepthAndPreservesChainSemantics",
   "everyConnectionAndCompletePathIsAdmittedWithoutCaps",
   "sharedVerticesAndEdgesRetainEveryPathMembership",

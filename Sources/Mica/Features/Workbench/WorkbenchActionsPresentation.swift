@@ -186,6 +186,7 @@ struct WorkbenchActionsSnapshot: Equatable {
     let availability: WorkbenchActionsAvailability
     let targetScope: WorkbenchControllerTargetScope
     let showsTargetCorrection: Bool
+    let commandCount: Int
     let executableCount: Int
     let groups: [WorkbenchActionCommandGroup]
     let relatedDestinations: [WorkbenchDestination]
@@ -193,6 +194,28 @@ struct WorkbenchActionsSnapshot: Equatable {
 
     var visibleOperationIDs: [String] {
         groups.flatMap(\.commands).map(\.id)
+    }
+}
+
+struct WorkbenchActionsLayoutDecision: Equatable, Sendable {
+    static let compactMaximumWidth: CGFloat = 780
+    static let denseMaximumWidth: CGFloat = 1_080
+    static let twoColumnThreshold: CGFloat = 900
+
+    let maximumContentWidth: CGFloat
+    let usesTwoColumns: Bool
+
+    static func resolve(
+        commandCount: Int,
+        availableWidth: CGFloat
+    ) -> WorkbenchActionsLayoutDecision {
+        let isSparse = commandCount <= 2
+        return WorkbenchActionsLayoutDecision(
+            maximumContentWidth: isSparse
+                ? compactMaximumWidth
+                : denseMaximumWidth,
+            usesTwoColumns: !isSparse && availableWidth >= twoColumnThreshold
+        )
     }
 }
 
@@ -220,6 +243,7 @@ enum WorkbenchActionsProjection {
             availability: effectiveAvailability,
             targetScope: targetScope,
             showsTargetCorrection: showsTargetCorrection,
+            commandCount: commands.count,
             executableCount: commands.reduce(into: 0) { count, command in
                 if command.isEnabled { count += 1 }
             },

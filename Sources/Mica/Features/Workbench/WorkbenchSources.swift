@@ -100,8 +100,8 @@ struct WorkbenchSourcesView: View {
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.source(id: selection))
-            } else if case .source = workspaceStore.inspectorSelection {
-                workspaceStore.selectInspector(.none)
+            } else {
+                workspaceStore.clearInspectorSelection(ownedBy: .sources)
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in

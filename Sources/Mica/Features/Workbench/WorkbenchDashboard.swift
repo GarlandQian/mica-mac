@@ -575,7 +575,7 @@ private struct OverviewConnectionHighlightsSection: View {
             } else {
                 ForEach(rows) { row in
                     Button {
-                        openConnection(row.connectionID)
+                        openConnection(row)
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
@@ -610,14 +610,14 @@ private struct OverviewConnectionHighlightsSection: View {
         MicaStrings.localizedKey("overview.config_not_reported", language: language)
     }
 
-    private func openConnection(_ connectionID: String) {
-        if let controllerID = appModel.selectedRouterID,
-           let reportedID = connectionID.overviewNonBlank {
+    private func openConnection(_ connection: OverviewActiveConnection) {
+        if let controllerID = appModel.selectedRouterID {
             workspaceStore.stageConnectionNavigation(
                 WorkbenchConnectionNavigationSelection(
                     controllerID: controllerID,
                     generation: appModel.controllerSessionPresentation.generation,
-                    connectionID: reportedID
+                    sourceIndex: connection.sourceIndex,
+                    reportedConnectionID: connection.connectionID
                 )
             )
         }

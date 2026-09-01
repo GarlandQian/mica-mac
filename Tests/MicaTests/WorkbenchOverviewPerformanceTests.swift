@@ -769,6 +769,116 @@ struct WorkbenchOverviewPerformanceTests {
         )
     }
 
+    @Test func topologyViewportTargetsNodesEdgesAndPolicyFirstPaths() async throws {
+        let topology = ConnectionTopologyBuilder.build(
+            from: MicaPerformanceFixtures.connections(count: 6, topology: .shared)
+        )
+        let index = OverviewTopologyIndex(topology: topology)
+        let layout = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 420
+        )
+        let node = try #require(topology.nodes.first)
+        let edge = try #require(topology.edges.first)
+        let path = try #require(
+            topology.paths.first { path in
+                path.stages.contains { stage in
+                    if case .policyHop = stage.columnID { return true }
+                    return false
+                }
+            }
+        )
+        let policyStage = try #require(
+            path.stages.first { stage in
+                if case .policyHop = stage.columnID { return true }
+                return false
+            }
+        )
+
+        let nodeTarget = try #require(
+            OverviewTopologyViewportTargetResolver.target(
+                for: .node(node.id),
+                index: index,
+                layout: layout
+            )
+        )
+        #expect(nodeTarget.id == .node(node.id))
+        #expect(nodeTarget.centerX == layout.nodeGeometry(id: node.id)?.rect.midX)
+
+        let edgeTarget = try #require(
+            OverviewTopologyViewportTargetResolver.target(
+                for: .edge(edge.id),
+                index: index,
+                layout: layout
+            )
+        )
+        let sourceX = try #require(layout.nodeGeometry(id: edge.sourceID)?.rect.midX)
+        let targetX = try #require(layout.nodeGeometry(id: edge.targetID)?.rect.midX)
+        #expect(edgeTarget.id == .edge(edge.id))
+        #expect(edgeTarget.centerX == (sourceX + targetX) / 2)
+
+        let pathTarget = try #require(
+            OverviewTopologyViewportTargetResolver.target(
+                for: .path(path.id),
+                index: index,
+                layout: layout
+            )
+        )
+        #expect(pathTarget.id == .path(path.id))
+        #expect(
+            pathTarget.centerX
+                == layout.nodeGeometry(id: policyStage.nodeID)?.rect.midX
+        )
+        #expect(
+            OverviewTopologyViewportTargetResolver.target(
+                for: .node("missing-node"),
+                index: index,
+                layout: layout
+            ) == nil
+        )
+    }
+
+    @Test func topologyViewportScrollsOnlyForOffscreenOverflowTargets() {
+        let target = OverviewTopologyViewportTarget(
+            id: .node("far-node"),
+            centerX: 720
+        )
+
+        #expect(
+            OverviewTopologyViewportTargetResolver.contentOffsetX(
+                for: target,
+                visibleRect: CGRect(x: 0, y: 0, width: 900, height: 400),
+                contentWidth: 900
+            ) == nil
+        )
+        #expect(
+            OverviewTopologyViewportTargetResolver.contentOffsetX(
+                for: target,
+                visibleRect: CGRect(x: 500, y: 0, width: 300, height: 400),
+                contentWidth: 900
+            ) == nil
+        )
+        #expect(
+            OverviewTopologyViewportTargetResolver.contentOffsetX(
+                for: target,
+                visibleRect: CGRect(x: 0, y: 0, width: 300, height: 400),
+                contentWidth: 900
+            ) == 570
+        )
+
+        let leadingTarget = OverviewTopologyViewportTarget(
+            id: .edge("leading-edge"),
+            centerX: 40
+        )
+        #expect(
+            OverviewTopologyViewportTargetResolver.contentOffsetX(
+                for: leadingTarget,
+                visibleRect: CGRect(x: 500, y: 0, width: 300, height: 400),
+                contentWidth: 900
+            ) == 0
+        )
+    }
+
     @Test func topologyLayoutUsesZashboardSankeyScaleOrderingAndBands() async throws {
         let connections = (0..<9).map { index in
             ConnectionSnapshot(
@@ -1037,7 +1147,10 @@ struct WorkbenchOverviewPerformanceTests {
             from: "private struct OverviewTopologyViewport",
             to: "private struct OverviewTopologyIdleSummary")
         #expect(topologyViewport.contains("LazyVStack"))
-        #expect(!topologyViewport.contains("ScrollView(.horizontal)"))
+        #expect(topologyViewport.contains("ScrollView(.horizontal)"))
+        #expect(topologyViewport.contains(".scrollPosition($scrollPosition)"))
+        #expect(topologyViewport.contains("hasHorizontalOverflow ? .visible : .hidden"))
+        #expect(topologyViewport.contains("if reduceMotion"))
         #expect(topologyViewport.contains("MicaTheme.surface"))
         #expect(topologyViewport.contains(".help(hoverTooltip"))
         #expect(topologyViewport.contains(".onMoveCommand(perform: movePathSelection)"))

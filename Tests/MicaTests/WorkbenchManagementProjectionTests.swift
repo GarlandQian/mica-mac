@@ -367,8 +367,43 @@ struct WorkbenchManagementProjectionTests {
 
         #expect(snapshot.availability == .ready)
         #expect(!snapshot.groups.isEmpty)
+        #expect(snapshot.commandCount == snapshot.visibleOperationIDs.count)
         #expect(snapshot.executableCount == 0)
         #expect(snapshot.groups.flatMap(\.commands).allSatisfy { !$0.isEnabled })
+    }
+
+    @Test func actionsLayoutUsesCompactSingleColumnOnlyForSparseCommands() {
+        for commandCount in 0...2 {
+            let narrow = WorkbenchActionsLayoutDecision.resolve(
+                commandCount: commandCount,
+                availableWidth: 1_200
+            )
+            #expect(
+                narrow.maximumContentWidth
+                    == WorkbenchActionsLayoutDecision.compactMaximumWidth
+            )
+            #expect(!narrow.usesTwoColumns)
+        }
+
+        let constrainedDense = WorkbenchActionsLayoutDecision.resolve(
+            commandCount: 3,
+            availableWidth: 899
+        )
+        #expect(
+            constrainedDense.maximumContentWidth
+                == WorkbenchActionsLayoutDecision.denseMaximumWidth
+        )
+        #expect(!constrainedDense.usesTwoColumns)
+
+        let wideDense = WorkbenchActionsLayoutDecision.resolve(
+            commandCount: 3,
+            availableWidth: 900
+        )
+        #expect(
+            wideDense.maximumContentWidth
+                == WorkbenchActionsLayoutDecision.denseMaximumWidth
+        )
+        #expect(wideDense.usesTwoColumns)
     }
 
     @Test func actionsRuntimeObservationMatchesDispatcherFamilies() {
@@ -737,6 +772,48 @@ struct WorkbenchManagementProjectionTests {
                 issues: []
             ) == nil
         )
+    }
+
+    @Test func diagnosticsActionsUseSharedLiveCommandAvailability() {
+        let blocked = WorkbenchDiagnosticsActionAvailability(
+            canRefresh: false,
+            canTest: false,
+            canTogglePresentationPause: false,
+            isPresentationPaused: true,
+            hasSelectedController: true,
+            isBusy: true
+        )
+
+        #expect(!blocked.isEnabled(.refresh))
+        #expect(!blocked.isEnabled(.resumePresentation))
+        #expect(!blocked.isEnabled(.editController))
+        #expect(blocked.isEnabled(.navigate(.connections)))
+
+        let available = WorkbenchDiagnosticsActionAvailability(
+            canRefresh: false,
+            canTest: true,
+            canTogglePresentationPause: true,
+            isPresentationPaused: true,
+            hasSelectedController: true,
+            isBusy: false
+        )
+
+        #expect(available.isEnabled(.refresh))
+        #expect(available.isEnabled(.resumePresentation))
+        #expect(available.isEnabled(.editController))
+    }
+
+    @Test func diagnosticsResumeRequiresAnActuallyPausedPresentation() {
+        let availability = WorkbenchDiagnosticsActionAvailability(
+            canRefresh: true,
+            canTest: true,
+            canTogglePresentationPause: true,
+            isPresentationPaused: false,
+            hasSelectedController: true,
+            isBusy: false
+        )
+
+        #expect(!availability.isEnabled(.resumePresentation))
     }
 
     private func runtimeOperationRow(

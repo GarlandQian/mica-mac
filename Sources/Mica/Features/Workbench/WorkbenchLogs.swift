@@ -98,8 +98,8 @@ struct WorkbenchLogsView: View {
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.log(id: selection))
-            } else if case .log = workspaceStore.inspectorSelection {
-                workspaceStore.selectInspector(.none)
+            } else {
+                workspaceStore.clearInspectorSelection(ownedBy: .logs)
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in

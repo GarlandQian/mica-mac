@@ -40,13 +40,6 @@ struct WorkbenchSessionControlButton: View {
         appModel.controllerSessionPresentation
     }
 
-    private var hasSelectedLiveSession: Bool {
-        guard let selectedRouterID = appModel.selectedRouterID else {
-            return false
-        }
-        return session.controllerID == selectedRouterID
-    }
-
     private var titleKey: String {
         switch kind {
         case .test:
@@ -91,17 +84,16 @@ struct WorkbenchSessionControlButton: View {
     private var isEnabled: Bool {
         switch kind {
         case .test:
-            hasSelectedLiveSession && !appModel.isBusy
+            appModel.canTestSelectedRouter
         case .refresh:
-            hasSelectedLiveSession
-                && !appModel.isBusy
-                && !session.controls.dashboardUpdatesPaused
+            appModel.canRefreshSelectedRouter
         case .pause:
-            hasSelectedLiveSession
+            appModel.canTogglePresentationPause
         }
     }
 
     private func perform() {
+        guard isEnabled else { return }
         switch kind {
         case .test:
             appModel.testSelectedRouter()

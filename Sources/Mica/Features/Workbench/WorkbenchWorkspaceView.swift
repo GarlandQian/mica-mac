@@ -111,13 +111,15 @@ struct WorkbenchInspectorContainer: View {
     let onEditController: (RouterProfile) -> Void
 
     var body: some View {
+        let selection = workspaceStore.inspectorSelection(for: destination)
+
         Group {
-            switch workspaceStore.inspectorSelection {
+            switch selection {
             case .none:
                 emptyState
             case .proxyGroup, .proxyNode:
                 WorkbenchPolicyInspectorView(
-                    selection: workspaceStore.inspectorSelection,
+                    selection: selection,
                     destination: $destination
                 )
             case .connection(let id):
@@ -153,7 +155,7 @@ struct WorkbenchInspectorContainer: View {
             WorkbenchConnectionInspector(
                 row: row,
                 isActive: row.closedAt == nil,
-                close: { workspaceStore.selectInspector(.none) }
+                close: { workspaceStore.dismissInspector() }
             )
         } else {
             emptyState
@@ -175,7 +177,7 @@ struct WorkbenchInspectorContainer: View {
                     && appModel.supportsUnifiedAction(.setRuleDisabled),
                 isUpdating: appModel.updatingRuleID == row.rule.id,
                 failure: appModel.ruleUpdateFailures[row.rule.id],
-                close: { workspaceStore.selectInspector(.none) },
+                close: { workspaceStore.dismissInspector() },
                 disabled: Binding(
                     get: { row.rule.disabled ?? false },
                     set: { appModel.setRuleDisabled(row.rule, disabled: $0) }
@@ -194,7 +196,7 @@ struct WorkbenchInspectorContainer: View {
         if let row = workspaceStore.logEntryResolver?(id) {
             WorkbenchLogInspector(
                 row: row,
-                close: { workspaceStore.selectInspector(.none) }
+                close: { workspaceStore.dismissInspector() }
             )
         } else {
             emptyState
@@ -214,7 +216,7 @@ struct WorkbenchInspectorContainer: View {
                 row: row,
                 updateFailure: appModel.providerUpdateFailures[row.source.id],
                 healthFailure: appModel.providerHealthCheckFailures[row.source.id],
-                close: { workspaceStore.selectInspector(.none) }
+                close: { workspaceStore.dismissInspector() }
             )
         } else {
             emptyState
