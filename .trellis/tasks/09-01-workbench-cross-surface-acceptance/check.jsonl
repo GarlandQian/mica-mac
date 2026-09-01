@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/09-01-workbench-cross-surface-acceptance/research/workbench-contract-context.md","reason":"Verify every retained UX change against the curated authoritative Workbench constraints and resolve the long-chain viewport drift without contradiction."}
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Review controller switch, generation end, stale reconnect, pause/resume, and destination-demand behavior for regressions."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review shared primitive reuse, flat content, typography, accessibility labels, motion, and macOS pointer geometry."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review inspector/destination state ownership and reject parallel or persisted session-bound state."}
+{"file":".trellis/tasks/09-01-workbench-cross-surface-acceptance/research/cross-surface-audit.md","reason":"Check confirmed findings, the 14-module matrix, source anchors, and no-regression boundaries against the final diff."}

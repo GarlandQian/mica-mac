@@ -27,7 +27,9 @@
     "08-05-overview-charts-topology-polish",
     "08-06-proxies-source-decomposition",
     "08-06-workbench-remaining-source-decomposition",
-    "08-09-diagnostics-workspace-redesign"
+    "08-09-diagnostics-workspace-redesign",
+    "09-01-workbench-cross-surface-acceptance",
+    "09-01-live-command-entrypoint-hardening"
   ],
   "parent": null,
   "relatedFiles": [

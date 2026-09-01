@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Owns live-session identity, generation, command-state, pause, and capability gates."}
+{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Owns controller-family dispatch, ordering, optionality, and no-fabrication boundaries."}
+{"file":".trellis/tasks/09-01-workbench-cross-surface-acceptance/research/cross-surface-audit.md","reason":"Records F8 evidence and the exact defense-in-depth residual discovered by the UI audit."}
