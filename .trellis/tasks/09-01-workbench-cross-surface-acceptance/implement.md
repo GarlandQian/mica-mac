@@ -131,8 +131,10 @@ scripts/run-performance-benchmarks.sh after-2
 
 - [x] Run `trellis-check` against PRD/design, source, tests, localization, and performance evidence.
 - [x] Use `trellis-update-spec` only for durable changes, including the conditional long-chain topology viewport rule; remove superseded wording rather than appending a contradiction.
-- [ ] Commit product/spec work in scoped commits, then run `trellis-finish-work` for task archival and journal updates.
-- [ ] Ask the user to run real-controller light/dark page-by-page acceptance; address only reproducible screenshot findings.
+- [x] Commit product/spec work in scoped local commits (`3662209`, `aa5bbe2`); do not push without a new user request.
+- [x] Run the `trellis-finish-work` survey and defer archive/journal because AC1/AC11 still require user real-controller visual acceptance.
+- [x] Prepare the real-controller light/dark page-by-page acceptance handoff; address only reproducible screenshot findings.
+- [ ] After user visual acceptance, run `trellis-finish-work` to archive the child and record its work commits in the journal.
 - [ ] Mark parent Phase 5 complete only after user visual acceptance and final integrated validation.
 
 ## Final Planning Gate

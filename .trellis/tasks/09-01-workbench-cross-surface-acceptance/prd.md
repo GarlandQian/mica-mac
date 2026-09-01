@@ -71,15 +71,15 @@
 ## Acceptance Criteria
 
 - [ ] AC1：14 模块完成浅色/深色、四档字号、窄/中/宽窗口审计；无重叠、关键标题截断、断点抖动、不必要横向滚动或显著失衡空白。
-- [ ] AC2：点击任一 inspector 标题栏关闭按钮后，详情 selection 清空且 inspector 列收起；对应页面行选择按既定语义同步，不留下空白 inspector。
-- [ ] AC3：目的地切换不显示上一页详情；返回 Connections、Rules、Logs、Sources、Controllers 或 Proxies 时，合法的 per-destination workspace selection 可由现有恢复路径重新定位。
-- [ ] AC4：长链拓扑通过键盘、点击或跨页面定位选择节点/边/路径时，有效语义锚点自动进入横向视口；短链保持无横向滚动；Reduce Motion 行为等价。
-- [ ] AC5：Actions 在 0、1、2 和多命令场景下均保持紧凑、leading-aligned、可扫描布局；只显示真实 capability 命令和既有 related destinations。
-- [ ] AC6：no-controller、loading、unsupported、empty、filter-empty、failed-first、stale、paused 和 partial 场景在页面、command bar、inspector 与 status bar 中无矛盾，命令门控一致。
-- [ ] AC7：英文/简体中文和四档字号下，菜单、help、tooltips、按钮、Inspector 与格式参数完整；VoiceOver/键盘/Reduce Motion 合同通过源码与定向测试。
-- [ ] AC8：controller switch、generation end、stale reconnect、pause/resume 和 destination visibility 的现有生命周期测试通过，旧确认/旧选择/旧结果不能作用于新会话。
-- [ ] AC9：2,000 Connections、2,000 Logs、大规则/来源集、多展开策略组和 Diagnostics disclosure 的相关测试/benchmark 通过；没有可重复的 >10% 性能回退。
-- [ ] AC10：`swift build`、完整 `swift test`、source verifier、XCStrings JSON、对比度审计、`git diff --check` 和当前/父任务 Trellis validate 全部通过。
+- [x] AC2：点击任一 inspector 标题栏关闭按钮后，详情 selection 清空且 inspector 列收起；对应页面行选择按既定语义同步，不留下空白 inspector。
+- [x] AC3：目的地切换不显示上一页详情；返回 Connections、Rules、Logs、Sources、Controllers 或 Proxies 时，合法的 per-destination workspace selection 可由现有恢复路径重新定位。
+- [x] AC4：长链拓扑通过键盘、点击或跨页面定位选择节点/边/路径时，有效语义锚点自动进入横向视口；短链保持无横向滚动；Reduce Motion 行为等价。
+- [x] AC5：Actions 在 0、1、2 和多命令场景下均保持紧凑、leading-aligned、可扫描布局；只显示真实 capability 命令和既有 related destinations。
+- [x] AC6：no-controller、loading、unsupported、empty、filter-empty、failed-first、stale、paused 和 partial 场景在页面、command bar、inspector 与 status bar 中无矛盾，命令门控一致。
+- [x] AC7：英文/简体中文和四档字号下，菜单、help、tooltips、按钮、Inspector 与格式参数完整；VoiceOver/键盘/Reduce Motion 合同通过源码与定向测试。
+- [x] AC8：controller switch、generation end、stale reconnect、pause/resume 和 destination visibility 的现有生命周期测试通过，旧确认/旧选择/旧结果不能作用于新会话。
+- [x] AC9：2,000 Connections、2,000 Logs、大规则/来源集、多展开策略组和 Diagnostics disclosure 的相关测试/benchmark 通过；没有可重复的 >10% 性能回退。
+- [x] AC10：`swift build`、完整 `swift test`、source verifier、XCStrings JSON、对比度审计、`git diff --check` 和当前/父任务 Trellis validate 全部通过。
 - [ ] AC11：用户使用真实控制器完成浅色/深色逐页视觉验收；自动验证不连接控制器、不执行远程操作、不运行未经授权的 runtime smoke。
 
 ## Out Of Scope
