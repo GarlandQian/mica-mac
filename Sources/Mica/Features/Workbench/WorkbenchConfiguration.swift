@@ -39,10 +39,9 @@ struct WorkbenchConfigurationView: View {
             WorkbenchIconCommand(
                 titleKey: "action.refresh",
                 systemImage: "arrow.clockwise",
-                isEnabled: appModel.canRefreshSelectedRouter && !appModel.isRefreshingDashboard
-            ) {
-                appModel.refreshSelectedRouter()
-            }
+                isEnabled: appModel.canRefreshSelectedRouter,
+                action: refreshIfAvailable
+            )
         }
     }
 
@@ -78,7 +77,8 @@ struct WorkbenchConfigurationView: View {
                 detailKey: "configuration.failed_detail",
                 message: configStatus.detail(language: language),
                 actionTitleKey: "action.retry",
-                action: appModel.refreshSelectedRouter
+                isActionEnabled: appModel.canRefreshSelectedRouter,
+                action: refreshIfAvailable
             )
         } else if !hasConfigurationPresentation {
             WorkbenchStateView(
@@ -86,7 +86,8 @@ struct WorkbenchConfigurationView: View {
                 titleKey: "configuration.empty_title",
                 detailKey: "configuration.empty_detail",
                 actionTitleKey: "action.refresh",
-                action: appModel.refreshSelectedRouter
+                isActionEnabled: appModel.canRefreshSelectedRouter,
+                action: refreshIfAvailable
             )
         } else {
             VStack(spacing: 0) {
@@ -113,6 +114,11 @@ struct WorkbenchConfigurationView: View {
                 }
             }
         }
+    }
+
+    private func refreshIfAvailable() {
+        guard appModel.canRefreshSelectedRouter else { return }
+        appModel.refreshSelectedRouter()
     }
 
     private var modeSection: some View {

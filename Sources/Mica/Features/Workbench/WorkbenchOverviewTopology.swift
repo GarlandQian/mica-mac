@@ -721,6 +721,118 @@ struct OverviewTopologyLayout: Sendable {
     }
 }
 
+struct OverviewTopologyViewportTarget: Equatable, Sendable {
+    enum ID: Hashable, Sendable {
+        case node(String)
+        case edge(String)
+        case path(ConnectionTopology.ConnectionOccurrenceID)
+    }
+
+    let id: ID
+    let centerX: CGFloat
+}
+
+enum OverviewTopologyViewportTargetResolver {
+    static let acquisitionMargin: CGFloat = 28
+
+    static func target(
+        for selection: OverviewTopologySelection?,
+        index: OverviewTopologyIndex,
+        layout: OverviewTopologyLayout
+    ) -> OverviewTopologyViewportTarget? {
+        guard let selection, index.contains(selection) else { return nil }
+
+        switch selection {
+        case .node(let nodeID):
+            guard let geometry = layout.nodeGeometry(id: nodeID) else { return nil }
+            return OverviewTopologyViewportTarget(
+                id: .node(nodeID),
+                centerX: geometry.rect.midX
+            )
+        case .edge(let edgeID):
+            guard let edge = index.edge(id: edgeID),
+                  let centerX = edgeCenterX(edge, layout: layout) else {
+                return nil
+            }
+            return OverviewTopologyViewportTarget(id: .edge(edgeID), centerX: centerX)
+        case .path(let pathID):
+            guard let path = index.path(id: pathID),
+                  let centerX = pathCenterX(path, index: index, layout: layout) else {
+                return nil
+            }
+            return OverviewTopologyViewportTarget(id: .path(pathID), centerX: centerX)
+        }
+    }
+
+    /// Returns a clamped content offset only when the selected semantic anchor
+    /// is outside the current acquisition range. A nil result leaves user
+    /// scrolling untouched.
+    static func contentOffsetX(
+        for target: OverviewTopologyViewportTarget,
+        visibleRect: CGRect,
+        contentWidth: CGFloat,
+        margin: CGFloat = acquisitionMargin
+    ) -> CGFloat? {
+        guard visibleRect.width > 0,
+              contentWidth > visibleRect.width + 1 else {
+            return nil
+        }
+
+        let boundedMargin = min(
+            max(margin, 0),
+            max(visibleRect.width / 2 - 1, 0)
+        )
+        let acquisitionRange = (visibleRect.minX + boundedMargin)...(
+            visibleRect.maxX - boundedMargin
+        )
+        guard !acquisitionRange.contains(target.centerX) else { return nil }
+
+        let maximumOffset = max(contentWidth - visibleRect.width, 0)
+        let nextOffset = min(
+            max(target.centerX - visibleRect.width / 2, 0),
+            maximumOffset
+        )
+        guard abs(nextOffset - visibleRect.minX) > 0.5 else { return nil }
+        return nextOffset
+    }
+
+    private static func pathCenterX(
+        _ path: ConnectionTopology.PathRecord,
+        index: OverviewTopologyIndex,
+        layout: OverviewTopologyLayout
+    ) -> CGFloat? {
+        if let policyStage = path.stages.first(where: { stage in
+            if case .policyHop = stage.columnID { return true }
+            return false
+        }), let geometry = layout.nodeGeometry(id: policyStage.nodeID) {
+            return geometry.rect.midX
+        }
+
+        if !path.edgeIDs.isEmpty {
+            let centralEdgeID = path.edgeIDs[path.edgeIDs.count / 2]
+            if let edge = index.edge(id: centralEdgeID),
+               let centerX = edgeCenterX(edge, layout: layout) {
+                return centerX
+            }
+        }
+
+        guard !path.stages.isEmpty else { return nil }
+        let centralStage = path.stages[path.stages.count / 2]
+        return layout.nodeGeometry(id: centralStage.nodeID)?.rect.midX
+    }
+
+    private static func edgeCenterX(
+        _ edge: ConnectionTopology.Edge,
+        layout: OverviewTopologyLayout
+    ) -> CGFloat? {
+        guard let source = layout.nodeGeometry(id: edge.sourceID),
+              let target = layout.nodeGeometry(id: edge.targetID) else {
+            return nil
+        }
+        return (source.rect.midX + target.rect.midX) / 2
+    }
+}
+
 enum OverviewTopologyFlowScale {
     /// Mirrors Zashboard's Sankey projection while retaining the real count for labels.
     static func value(forConnectionCount connectionCount: Int) -> CGFloat {

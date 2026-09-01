@@ -259,13 +259,13 @@ private struct OverviewTopologyWorkspace: View {
     }
 
     private func openPathInConnections(_ path: ConnectionTopology.PathRecord) {
-        if let controllerID,
-           let connectionID = path.reportedConnectionID.overviewNonBlank {
+        if let controllerID {
             workspaceStore.stageConnectionNavigation(
                 WorkbenchConnectionNavigationSelection(
                     controllerID: controllerID,
                     generation: generation,
-                    connectionID: connectionID
+                    sourceIndex: path.sourceIndex,
+                    reportedConnectionID: path.reportedConnectionID
                 )
             )
         }
@@ -321,12 +321,7 @@ private struct OverviewTopologyWorkspace: View {
         with snapshot: OverviewTopologyInteractionSnapshot
     ) {
         guard let selection = snapshot.activeSelection else {
-            switch workspaceStore.inspectorSelection {
-            case .proxyGroup, .proxyNode:
-                workspaceStore.selectInspector(.none)
-            case .none, .connection, .rule, .log, .source, .controller:
-                break
-            }
+            workspaceStore.clearInspectorSelection(ownedBy: .overview)
             return
         }
         guard snapshot.isPinned,
@@ -345,7 +340,8 @@ private struct OverviewTopologyWorkspace: View {
                 .proxyGroup(
                     groupName: group.name,
                     groupOccurrenceID: group.occurrenceID
-                )
+                ),
+                from: .overview
             )
         case .member(let member):
             workspaceStore.selectInspector(
@@ -353,11 +349,13 @@ private struct OverviewTopologyWorkspace: View {
                     groupName: member.groupName,
                     groupOccurrenceID: member.groupOccurrenceID,
                     nodeName: member.name
-                )
+                ),
+                from: .overview
             )
         case .ambiguous, .missing:
             workspaceStore.selectInspector(
-                .proxyGroup(groupName: node.name, groupOccurrenceID: nil)
+                .proxyGroup(groupName: node.name, groupOccurrenceID: nil),
+                from: .overview
             )
         }
     }
@@ -378,6 +376,9 @@ private struct OverviewTopologyViewport: View {
     let showsPathRows: Bool
     let onOpenPath: (ConnectionTopology.PathRecord) -> Void
     let onOpenProxies: (ConnectionTopology.Node) -> Void
+
+    @State private var scrollPosition = ScrollPosition(x: 0)
+    @State private var visibleTopologyRect = CGRect.zero
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
@@ -426,7 +427,7 @@ private struct OverviewTopologyViewport: View {
         // Task 08-23 R10: when long chains widen the graph past the panel the
         // viewport scrolls horizontally; the width floor keeps the content
         // pinned to the full panel width otherwise.
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal) {
             LazyVStack(spacing: 0) {
                 ForEach(layout.renderBands) { band in
                     OverviewTopologyBandLayers(
@@ -447,6 +448,23 @@ private struct OverviewTopologyViewport: View {
                 width: max(layout.size.width, CGFloat(request.availableWidth)),
                 alignment: .center
             )
+        }
+        .scrollPosition($scrollPosition)
+        .scrollIndicators(
+            hasHorizontalOverflow ? .visible : .hidden,
+            axes: .horizontal
+        )
+        .onScrollGeometryChange(for: CGRect.self) { geometry in
+            geometry.visibleRect
+        } action: { previous, current in
+            visibleTopologyRect = current
+            if previous.width <= 0 || previous.size != current.size {
+                revealCurrentSelection(in: current)
+            }
+        }
+        .onChange(of: viewportSelection) { _, state in
+            guard state.isPinned else { return }
+            revealSelection(state.selection, in: visibleTopologyRect)
         }
         .frame(height: layout.size.height)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -585,6 +603,52 @@ private struct OverviewTopologyViewport: View {
         }
     }
 
+    private var viewportSelection: OverviewTopologyViewportSelection {
+        let snapshot = interaction.snapshot
+        return OverviewTopologyViewportSelection(
+            selection: snapshot.activeSelection,
+            isPinned: snapshot.isPinned
+        )
+    }
+
+    private var hasHorizontalOverflow: Bool {
+        let viewportWidth = visibleTopologyRect.width > 0
+            ? visibleTopologyRect.width
+            : CGFloat(request.availableWidth)
+        return layout.size.width > viewportWidth + 1
+    }
+
+    private func revealCurrentSelection(in visibleRect: CGRect) {
+        let state = viewportSelection
+        guard state.isPinned else { return }
+        revealSelection(state.selection, in: visibleRect)
+    }
+
+    private func revealSelection(
+        _ selection: OverviewTopologySelection?,
+        in visibleRect: CGRect
+    ) {
+        guard let target = OverviewTopologyViewportTargetResolver.target(
+            for: selection,
+            index: index,
+            layout: layout
+        ), let offset = OverviewTopologyViewportTargetResolver.contentOffsetX(
+            for: target,
+            visibleRect: visibleRect,
+            contentWidth: layout.size.width
+        ) else {
+            return
+        }
+
+        if reduceMotion {
+            scrollPosition.scrollTo(x: offset)
+        } else {
+            withAnimation(MicaTheme.Motion.reveal) {
+                scrollPosition.scrollTo(x: offset)
+            }
+        }
+    }
+
     private func resolvablePolicyNode(
         for selection: OverviewTopologySelection
     ) -> ConnectionTopology.Node? {
@@ -631,6 +695,11 @@ private struct OverviewTopologyViewport: View {
             catalog: appModel.policyGroupCatalog
         )
     }
+}
+
+private struct OverviewTopologyViewportSelection: Equatable {
+    let selection: OverviewTopologySelection?
+    let isPinned: Bool
 }
 
 private struct OverviewTopologyIdleSummary: View {

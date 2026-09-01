@@ -150,11 +150,29 @@ a split.
   `.rule(type:payload:)`, `.log(id:)`, `.source(id:)`, and `.controller(id:)`.
   Connections, Rules, Logs, and Sources register live row resolvers on the
   store so the inspector always shows current-generation data; controller
-  detail resolves its profile directly from the app model. Selecting an
-  inspectable item reveals the inspector and stays in two-way sync with the
-  owning page's selection; inspector selection is window-level, session-bound,
-  and never persisted. No destination attaches a page-level `.inspector`, and
-  hover presents a standard tooltip only.
+  detail resolves its profile directly from the app model. Each selection has
+  a default `owningDestination`, while the store records the actual origin so
+  Overview policy-node inspection can own the same `.proxyGroup`/`.proxyNode`
+  payloads that Proxies uses. `WorkbenchInspectorContainer` resolves business
+  detail only when that recorded owner matches the active destination.
+  Selecting an inspectable item reveals the inspector and stays in two-way sync
+  with the owning page's selection; inspector selection is window-level,
+  session-bound, and never persisted. `dismissInspector()` clears the selection
+  and recorded owner and hides the column. A destination transition hides a
+  mismatched owner without clearing it, so returning to that destination can
+  restore valid detail without erasing its workspace selection. No destination
+  attaches a page-level `.inspector`, and hover presents a standard tooltip only.
+- Inspector coordination stays in `WorkbenchWorkspaceStore` through
+  `selectInspector(_:from:)`, `clearInspectorSelection(ownedBy:)`,
+  `dismissInspector()`,
+  `prepareInspectorForDestinationChange(to:)`, and
+  `inspectorSelection(for:)`. A non-none repeat selection must reveal a column
+  that was hidden earlier; `.none` does not fabricate an owner. Page selection
+  reconciliation uses the owner-gated clear operation, which leaves column
+  visibility unchanged. It must never use a global `selectInspector(.none)`:
+  a late outgoing-page callback could otherwise erase a newer selection from
+  another destination. Only the explicit close command calls
+  `dismissInspector()` and hides the column.
 - The inline switcher observes only profiles, selected ID, and the controller
   fields it renders. Traffic/log frames must not rebuild the expanded list.
   It starts collapsed and closes while the controller editor is active.
@@ -415,6 +433,12 @@ a split.
   panel width until the column count would compress columns below a 168-point
   minimum step; longer chains widen the graph past the panel and the viewport
   scrolls horizontally instead of truncating labels (task 08-23 R10). The
+  native horizontal indicator is visible only while that overflow exists.
+  Pinned node, edge, and path selections resolve an x target from the existing
+  topology index/layout and move the native scroll position only when the
+  target lies outside the visible acquisition margin. Hover never moves the
+  viewport, user scrolling is not continuously overridden, and Reduce Motion
+  makes the same reveal immediate instead of disabling it. The
   graph uses 20-point node bars, 8-point gaps, true flow-width ribbons, and
   full-trajectory
   hover/pin highlighting. Edge strokes are tiered (tasks 08-20, 08-23): the
@@ -678,6 +702,97 @@ proxy.scrollTo(reveal.targetID, anchor: .center)
 lastScrolledRevealToken = reveal.token
 ```
 
+## Scenario: Exact Connection Reveal
+
+### 1. Scope / Trigger
+
+Apply this scenario when Overview summaries, topology paths, policy inspection,
+or another Workbench surface navigates to one controller-reported active
+connection. Raw connection IDs may be duplicate or blank and are not navigation
+identity by themselves.
+
+### 2. Signatures
+
+```swift
+struct WorkbenchConnectionNavigationSelection: Equatable, Sendable {
+    let controllerID: RouterProfile.ID
+    let generation: UUID
+    let sourceIndex: Int
+    let reportedConnectionID: String
+
+    func matches(sourceIndex: Int, reportedConnectionID: String) -> Bool
+}
+
+func stageConnectionNavigation(_ selection: WorkbenchConnectionNavigationSelection)
+func consumeConnectionNavigation(
+    controllerID: RouterProfile.ID,
+    generation: UUID
+) -> WorkbenchConnectionNavigationSelection?
+```
+
+### 3. Contracts
+
+- Every Overview summary, topology path, and policy-inspector Connections action
+  stages controller ID, generation, source occurrence index, and the exact raw
+  ID before changing destination. Blank IDs remain valid values.
+- `sourceIndex` is the occurrence in the controller-reported active connection
+  array used to build both the Overview row/path and the Connections row. The
+  raw ID is checked with it so reordered or replaced data cannot select another
+  occurrence accidentally.
+- Staging clears the old persisted row ID and retains one pending target. The
+  Connections page consumes it only in Active scope, for the selected controller
+  and current generation, after an exact row match exists; it then selects and
+  scrolls to that row's stable presentation ID.
+- A missing, changed, stale, or not-yet-published target is not first-matched and
+  is not consumed as success. Controller or generation invalidation clears the
+  session-bound target through the workspace store.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Same generation, exact index and raw ID | Consume once; select and reveal the exact active row |
+| Duplicate raw ID at another index | Keep occurrences distinct; never select the first raw-ID match |
+| Blank raw ID at the exact index | Consume and reveal normally |
+| Index matches but raw ID changed | Do not consume or select a replacement row |
+| Wrong controller or generation | Reject without selecting a row |
+| Connections is showing Closed scope | Keep Active navigation out of the closed-history table |
+
+### 5. Good/Base/Bad Cases
+
+- Good: the user clicks the second of two equal raw IDs and Connections reveals
+  that second controller-reported occurrence.
+- Base: an active connection has a blank raw ID; its occurrence still stages,
+  resolves, and scrolls normally.
+- Bad: only the raw ID is staged, an empty ID skips staging but still changes
+  destination, or `.first` silently selects another equal ID.
+
+### 6. Tests Required
+
+- `WorkbenchNavigationTests`: stale-generation rejection, duplicate raw IDs,
+  blank IDs, exact pair matching, one-shot consumption, and session clearing.
+- `WorkbenchOverviewPerformanceTests` / topology tests: every path retains its
+  controller-order `sourceIndex` and exact `reportedConnectionID`.
+- `verify-real-controller-source.mjs`: Overview summary, topology, and policy
+  inspector stage occurrence identity; Connections checks both fields before
+  consumption and selection.
+- Automated coverage remains fixture-only and never contacts a controller.
+
+### 7. Wrong vs Correct
+
+```swift
+// Wrong: duplicate and blank IDs cannot identify a reported occurrence.
+WorkbenchConnectionNavigationSelection(connectionID: connection.id)
+
+// Correct: stage the exact session-bound occurrence before navigation.
+WorkbenchConnectionNavigationSelection(
+    controllerID: controllerID,
+    generation: generation,
+    sourceIndex: connection.sourceIndex,
+    reportedConnectionID: connection.connectionID
+)
+```
+
 ## Scenario: Audited Diagnostics And Actions Projection
 
 ### 1. Scope / Trigger
@@ -691,6 +806,8 @@ Actions states, and high-frequency session data from entering management views.
 
 - `WorkbenchDiagnosticsProjection.snapshot(_ input: WorkbenchDiagnosticsInput) -> WorkbenchDiagnosticsSnapshot`
 - `WorkbenchActionsProjection.snapshot(_ input: WorkbenchActionsInput) -> WorkbenchActionsSnapshot`
+- `WorkbenchActionsLayoutDecision.resolve(commandCount:availableWidth:) -> WorkbenchActionsLayoutDecision`
+- `WorkbenchDiagnosticsActionAvailability.isEnabled(_:) -> Bool`
 - `AppModel.actionsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow]`
 - `UnifiedControllerType.hasWorkbenchRuntimeOperations: Bool`
 
@@ -706,8 +823,21 @@ Actions states, and high-frequency session data from entering management views.
 - Actions derives `rawAvailability`, groups, then `effectiveAvailability`.
   Recovery, target correction, count, related destinations, and rendering use
   only the effective value.
+- Actions counts every real projected command, including a currently disabled
+  command. Zero through two commands use a 780-point maximum, one-column canvas;
+  three or more use the 1,080-point canvas and become two columns only at 900
+  points of measured content width or more. The layout decision never adds,
+  removes, or reorders a command.
 - Runtime command rows are evidence-free and dispatcher-family-gated before
   entering Actions. Diagnostics enriches its separate rows with evidence.
+- Toolbar Test/Refresh/Pause, Configuration state actions, and Diagnostics issue
+  actions consume the shared `AppModel` availability properties. Their handlers
+  recheck the same gate before dispatch so a stale enabled frame cannot launch
+  an unavailable UI intent. This UI contract does not replace command-boundary
+  validation inside `AppModel`.
+- Actions and Controllers destructive confirmation rows handle Escape only on
+  the visible inline confirmation subtree. A page- or inspector-root exit
+  handler must not consume unrelated native Escape behavior.
 - Issue buttons expose localized severity plus title as their accessibility
   label, affected count as value, and native selected trait as selection state.
 
@@ -720,8 +850,13 @@ Actions states, and high-frequency session data from entering management views.
 | Controller access failed after success | Controller-access only, needs attention, retained freshness |
 | Free-form evidence contains assignment/API path | Localized evidence-unavailable value |
 | Ready/partial but no verified command group | Effective `.unsupported` plus unsupported recovery |
+| Zero, one, or two projected commands | 780-point maximum; one column |
+| Three or more commands below 900 points | 1,080-point maximum; one column |
+| Three or more commands at least 900 points | 1,080-point maximum; adaptive two columns |
 | More than two verified commands | No related-workspace filler |
 | Controller family has no runtime dispatcher | Empty `actionsRuntimeOperationRows` |
+| Shared Refresh/Test/Pause gate is false | Affordance disabled; stale handler call is a no-op |
+| Inline destructive confirmation is visible and Escape arrives | Clear only that pending confirmation |
 
 ### 5. Good/Base/Bad Cases
 
@@ -729,17 +864,22 @@ Actions states, and high-frequency session data from entering management views.
 - Base: a live sing-box controller shows its real Refresh command plus compact
   owning-workspace navigation, without Mihomo runtime commands.
 - Bad: checking displays an adapter failure, an API path reappears as evidence,
-  or an unsupported snapshot carries ready/partial recovery copy.
+  an unsupported snapshot carries ready/partial recovery copy, a sparse Actions
+  canvas stretches to 1,080 points, or a page-root Escape handler consumes focus
+  changes while no confirmation is visible.
 
 ### 6. Tests Required
 
 - `WorkbenchManagementProjectionTests`: checking gate, first-baseline areas,
   retained causal dedup, safe evidence, effective Actions state, compact related
-  destinations, and dispatcher-family runtime observation.
+  destinations, 0/1/2/dense layout decisions, Diagnostics action availability,
+  and dispatcher-family runtime observation.
 - `RuntimeMemoryTests`: full Diagnostics rows still expose current authoritative
   runtime evidence after Actions rows become evidence-free.
 - `verify-real-controller-source.mjs`: typed inputs exclude stream payloads;
-  Actions uses the evidence-free property; issue rows expose severity semantics.
+  Actions uses the evidence-free property; issue rows expose severity semantics;
+  shared UI gates are consumed and rechecked; Escape stays on visible
+  confirmation subtrees.
 
 ### 7. Wrong vs Correct
 
@@ -756,6 +896,16 @@ let effectiveAvailability = groups.isEmpty && rawAvailability.isCommandState
     ? .unsupported
     : rawAvailability
 let recovery = recovery(for: input, availability: effectiveAvailability)
+```
+
+```swift
+// Wrong: a copied UI condition can drift from the command availability source.
+let isEnabled = hasSelectedSession && !appModel.isBusy
+
+// Correct: rendering and stale-intent rejection share the same authority.
+let isEnabled = appModel.canRefreshSelectedRouter
+guard appModel.canRefreshSelectedRouter else { return }
+appModel.refreshSelectedRouter()
 ```
 
 ## Scenario: High-Cardinality Data Projection
@@ -945,9 +1095,11 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   a bounded index once per AppModel-published catalog revision; unchanged
   inspection selections check the scalar revision instead of comparing the complete
   catalog and performs no network access.
-  Overview is the sole scroll owner. The complete topology fits the available
-  width without a nested horizontal viewport and expands cached render bands
-  vertically.
+  Overview remains the sole vertical scroll owner. Topology expands cached
+  render bands vertically without a nested vertical scroller; only a long chain
+  whose 168-point minimum column step exceeds the panel width owns a bounded
+  horizontal viewport. Short chains fit the available width and hide its native
+  horizontal indicator.
 - Expensive presentation work may be deferred during scrolling, chart dragging,
   or filter typing, but one latest result must survive the interaction window.
   For Proxies, a deferrable catalog update remains pending while any proxy

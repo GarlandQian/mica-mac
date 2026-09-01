@@ -96,6 +96,142 @@ struct WorkbenchNavigationTests {
         #expect(WorkbenchDestination.diagnostics.shortcut == nil)
     }
 
+    @Test func inspectorSelectionsDeclareStableDefaultDestinations() {
+        let controllerID = UUID()
+
+        #expect(WorkbenchInspectorSelection.none.owningDestination == nil)
+        #expect(
+            WorkbenchInspectorSelection.proxyGroup(
+                groupName: "Group",
+                groupOccurrenceID: "group-0"
+            ).owningDestination == .proxies
+        )
+        #expect(
+            WorkbenchInspectorSelection.proxyNode(
+                groupName: "Group",
+                groupOccurrenceID: "group-0",
+                nodeName: "Node"
+            ).owningDestination == .proxies
+        )
+        #expect(WorkbenchInspectorSelection.connection(id: "connection").owningDestination == .connections)
+        #expect(
+            WorkbenchInspectorSelection.rule(type: "DOMAIN", payload: "example.com")
+                .owningDestination == .rules
+        )
+        #expect(WorkbenchInspectorSelection.log(id: "log").owningDestination == .logs)
+        #expect(WorkbenchInspectorSelection.source(id: "source").owningDestination == .sources)
+        #expect(WorkbenchInspectorSelection.controller(id: controllerID).owningDestination == .controllers)
+    }
+
+    @MainActor
+    @Test func inspectorDestinationTransitionsHideAndRestoreWithoutErasingWorkspaceSelection() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+
+        store.update(controllerID: controllerID, destination: .connections) {
+            $0.selectedItemID = "connection-1"
+        }
+        store.selectInspector(.connection(id: "connection-1"))
+
+        #expect(store.isInspectorPresented)
+        #expect(store.inspectorOwningDestination == .connections)
+        #expect(store.inspectorSelection(for: .connections) == .connection(id: "connection-1"))
+
+        store.prepareInspectorForDestinationChange(to: .logs)
+        #expect(!store.isInspectorPresented)
+        #expect(store.inspectorSelection == .connection(id: "connection-1"))
+        #expect(store.inspectorSelection(for: .logs) == .none)
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .connections)
+                .selectedItemID == "connection-1"
+        )
+
+        store.prepareInspectorForDestinationChange(to: .connections)
+        #expect(store.isInspectorPresented)
+        #expect(store.inspectorSelection(for: .connections) == .connection(id: "connection-1"))
+    }
+
+    @MainActor
+    @Test func overviewAndProxiesPolicySelectionsKeepTheirExplicitOrigins() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let selection = WorkbenchInspectorSelection.proxyNode(
+            groupName: "Group",
+            groupOccurrenceID: "group-0",
+            nodeName: "Node"
+        )
+
+        store.selectInspector(selection, from: .overview)
+        #expect(store.inspectorOwningDestination == .overview)
+        #expect(store.inspectorSelection(for: .overview) == selection)
+        #expect(store.inspectorSelection(for: .proxies) == .none)
+
+        store.prepareInspectorForDestinationChange(to: .proxies)
+        #expect(!store.isInspectorPresented)
+
+        store.selectInspector(selection, from: .proxies)
+        #expect(store.isInspectorPresented)
+        #expect(store.inspectorOwningDestination == .proxies)
+        #expect(store.inspectorSelection(for: .proxies) == selection)
+        #expect(store.inspectorSelection(for: .overview) == .none)
+    }
+
+    @MainActor
+    @Test func latePageOwnedInspectorClearCannotEraseAnotherDestinationSelection() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let overviewSelection = WorkbenchInspectorSelection.proxyNode(
+            groupName: "Overview Group",
+            groupOccurrenceID: "overview-group-0",
+            nodeName: "Overview Node"
+        )
+
+        store.selectInspector(
+            .proxyNode(
+                groupName: "Proxies Group",
+                groupOccurrenceID: "proxies-group-0",
+                nodeName: "Proxies Node"
+            ),
+            from: .proxies
+        )
+        store.selectInspector(overviewSelection, from: .overview)
+
+        #expect(!store.clearInspectorSelection(ownedBy: .proxies))
+        #expect(store.inspectorSelection(for: .overview) == overviewSelection)
+        #expect(store.isInspectorPresented)
+
+        #expect(store.clearInspectorSelection(ownedBy: .overview))
+        #expect(store.inspectorSelection == .none)
+        #expect(store.inspectorOwningDestination == nil)
+        #expect(store.isInspectorPresented)
+    }
+
+    @MainActor
+    @Test func inspectorDismissClearsOriginAndSessionEndCannotRestoreDetail() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+
+        store.selectInspector(.log(id: "log-1"))
+        store.dismissInspector()
+        store.prepareInspectorForDestinationChange(to: .logs)
+
+        #expect(store.inspectorSelection == .none)
+        #expect(store.inspectorOwningDestination == nil)
+        #expect(!store.isInspectorPresented)
+
+        store.selectInspector(.source(id: "source-1"))
+        store.clearSessionBoundState(controllerID: controllerID)
+        #expect(store.inspectorSelection == .none)
+        #expect(store.inspectorOwningDestination == nil)
+        #expect(!store.isInspectorPresented)
+    }
+
     @Test func editorPresentationsUseUniqueViewIdentityForTheSameDraft() {
         let draft = RouterDraft(displayName: "Controller")
         let first = RouterEditorPresentation(titleKey: "editor.edit_router", draft: draft)
@@ -201,7 +337,8 @@ struct WorkbenchNavigationTests {
             WorkbenchConnectionNavigationSelection(
                 controllerID: controllerID,
                 generation: generation,
-                connectionID: "connection-1"
+                sourceIndex: 7,
+                reportedConnectionID: "connection-1"
             )
         )
 
@@ -215,13 +352,58 @@ struct WorkbenchNavigationTests {
             store.consumeConnectionNavigation(
                 controllerID: controllerID,
                 generation: generation
-            )?.connectionID == "connection-1"
+            )?.matches(sourceIndex: 7, reportedConnectionID: "connection-1") == true
         )
         #expect(
             store.consumeConnectionNavigation(
                 controllerID: controllerID,
                 generation: generation
             ) == nil
+        )
+    }
+
+    @MainActor
+    @Test func connectionNavigationUsesReportedOccurrenceForDuplicateAndBlankIDs() {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+        let generation = UUID()
+        let duplicate = WorkbenchConnectionNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            sourceIndex: 3,
+            reportedConnectionID: "duplicate"
+        )
+
+        #expect(duplicate.matches(sourceIndex: 3, reportedConnectionID: "duplicate"))
+        #expect(!duplicate.matches(sourceIndex: 1, reportedConnectionID: "duplicate"))
+        #expect(!duplicate.matches(sourceIndex: 3, reportedConnectionID: "other"))
+
+        let blank = WorkbenchConnectionNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            sourceIndex: 4,
+            reportedConnectionID: ""
+        )
+        store.stageConnectionNavigation(blank)
+
+        let workspace = store.workspace(
+            controllerID: controllerID,
+            destination: .connections
+        )
+        #expect(workspace.selectedItemID == nil)
+        #expect(
+            workspace.pendingConnectionSelection?.matches(
+                sourceIndex: 4,
+                reportedConnectionID: ""
+            ) == true
+        )
+        #expect(
+            store.consumeConnectionNavigation(
+                controllerID: controllerID,
+                generation: generation
+            ) == blank
         )
     }
 

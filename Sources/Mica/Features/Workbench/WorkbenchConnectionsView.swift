@@ -160,8 +160,8 @@ struct WorkbenchConnectionsView: View {
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.connection(id: selection))
-            } else if case .connection = workspaceStore.inspectorSelection {
-                workspaceStore.selectInspector(.none)
+            } else {
+                workspaceStore.clearInspectorSelection(ownedBy: .connections)
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in
@@ -867,13 +867,21 @@ struct WorkbenchConnectionsView: View {
         )
         guard let pending = workspace.pendingConnectionSelection,
               pending.generation == generation,
-              allRows.contains(where: { $0.connection.id == pending.connectionID }),
+              allRows.contains(where: {
+                  pending.matches(
+                      sourceIndex: $0.sourceIndex,
+                      reportedConnectionID: $0.connection.id
+                  )
+              }),
               let navigation = workspaceStore.consumeConnectionNavigation(
                 controllerID: controllerID,
                 generation: generation
               ),
               let row = allRows.first(where: {
-                $0.connection.id == navigation.connectionID
+                  navigation.matches(
+                      sourceIndex: $0.sourceIndex,
+                      reportedConnectionID: $0.connection.id
+                  )
               }) else {
             return
         }

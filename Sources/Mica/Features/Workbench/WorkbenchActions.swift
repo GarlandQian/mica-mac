@@ -347,7 +347,10 @@ struct WorkbenchActionsView: View {
         GeometryReader { geometry in
             let availableWidth = geometry.size.width
                 - MicaTheme.Metrics.pagePadding(for: geometry.size.width) * 2
-            let usesTwoColumns = availableWidth >= 900
+            let layout = WorkbenchActionsLayoutDecision.resolve(
+                commandCount: snapshot.commandCount,
+                availableWidth: availableWidth
+            )
 
             ScrollView {
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
@@ -355,7 +358,10 @@ struct WorkbenchActionsView: View {
                         WorkbenchStaleNotice(message: retainedFailureMessage)
                     }
 
-                    commandWorkspace(snapshot: snapshot, usesTwoColumns: usesTwoColumns)
+                    commandWorkspace(
+                        snapshot: snapshot,
+                        usesTwoColumns: layout.usesTwoColumns
+                    )
 
                     if !snapshot.relatedDestinations.isEmpty {
                         relatedWorkspaces(snapshot.relatedDestinations)
@@ -363,7 +369,7 @@ struct WorkbenchActionsView: View {
                 }
                 .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
                 .padding(.vertical, MicaTheme.Spacing.space4)
-                .frame(maxWidth: 1_080, alignment: .topLeading)
+                .frame(maxWidth: layout.maximumContentWidth, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .micaObserveScrollPerformance()
@@ -555,6 +561,9 @@ struct WorkbenchActionsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onExitCommand {
+            pendingConfirmation = nil
+        }
     }
 
     @ViewBuilder

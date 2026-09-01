@@ -11,7 +11,15 @@ struct WorkbenchWorkspaceSort: Codable, Equatable, Sendable {
 struct WorkbenchConnectionNavigationSelection: Equatable, Sendable {
     let controllerID: RouterProfile.ID
     let generation: UUID
-    let connectionID: String
+    /// Position in the controller-reported connection array. Raw IDs are not
+    /// unique and may be blank, so the occurrence is the navigation identity.
+    let sourceIndex: Int
+    let reportedConnectionID: String
+
+    func matches(sourceIndex: Int, reportedConnectionID: String) -> Bool {
+        self.sourceIndex == sourceIndex
+            && self.reportedConnectionID == reportedConnectionID
+    }
 }
 
 struct WorkbenchRuleNavigationSelection: Equatable, Sendable {
@@ -57,6 +65,28 @@ enum WorkbenchInspectorSelection: Equatable, Sendable {
     case log(id: String)
     case source(id: String)
     case controller(id: RouterProfile.ID)
+
+    /// Default destination for selections created by their owning page.
+    /// Overview policy inspection supplies an explicit `.overview` origin;
+    /// every other call site can use this stable mapping.
+    var owningDestination: WorkbenchDestination? {
+        switch self {
+        case .none:
+            nil
+        case .proxyGroup, .proxyNode:
+            .proxies
+        case .connection:
+            .connections
+        case .rule:
+            .rules
+        case .log:
+            .logs
+        case .source:
+            .sources
+        case .controller:
+            .controllers
+        }
+    }
 }
 
 struct WorkbenchDestinationWorkspace: Equatable, Sendable {
@@ -247,6 +277,7 @@ final class WorkbenchWorkspaceStore {
     /// Current typed inspector selection; `.none` renders the inspector empty
     /// state. Populated by workbench surfaces via `selectInspector(_:)`.
     private(set) var inspectorSelection: WorkbenchInspectorSelection = .none
+    private(set) var inspectorOwningDestination: WorkbenchDestination?
 
     /// Live lookup registered by the Connections destination so the workspace
     /// inspector resolves the selected connection against that destination's
@@ -420,7 +451,7 @@ final class WorkbenchWorkspaceStore {
             controllerID: selection.controllerID,
             destination: .connections
         ) { workspace in
-            workspace.selectedItemID = selection.connectionID
+            workspace.selectedItemID = nil
             workspace.pendingConnectionSelection = selection
         }
     }
@@ -546,18 +577,82 @@ final class WorkbenchWorkspaceStore {
     /// Records a typed inspector selection from a workbench surface and reveals
     /// the inspector. Selection plumbing lives in this store only - AppModel and
     /// the live session stay untouched (task 08-17 Phase 2).
-    func selectInspector(_ selection: WorkbenchInspectorSelection) {
-        guard inspectorSelection != selection else { return }
-        inspectorSelection = selection
-        if selection != .none {
+    func selectInspector(
+        _ selection: WorkbenchInspectorSelection,
+        from destination: WorkbenchDestination? = nil
+    ) {
+        let owner = selection == .none
+            ? nil
+            : destination ?? selection.owningDestination
+        if inspectorSelection != selection {
+            inspectorSelection = selection
+        }
+        if inspectorOwningDestination != owner {
+            inspectorOwningDestination = owner
+        }
+        if selection != .none, !isInspectorPresented {
             isInspectorPresented = true
         }
+    }
+
+    /// Clears a page-owned detail only while that page still owns it. This is
+    /// intentionally visibility-neutral: row/filter reconciliation may clear
+    /// detail without acting like the inspector's explicit close command.
+    @discardableResult
+    func clearInspectorSelection(ownedBy destination: WorkbenchDestination) -> Bool {
+        guard inspectorOwningDestination == destination else { return false }
+        if inspectorSelection != .none {
+            inspectorSelection = .none
+        }
+        inspectorOwningDestination = nil
+        return true
+    }
+
+    /// Closes the inspector as a user command, clearing both the typed detail
+    /// and its origin so a later destination transition cannot restore it.
+    func dismissInspector() {
+        if inspectorSelection != .none {
+            inspectorSelection = .none
+        }
+        if inspectorOwningDestination != nil {
+            inspectorOwningDestination = nil
+        }
+        if isInspectorPresented {
+            isInspectorPresented = false
+        }
+    }
+
+    /// Keeps a destination's valid workspace selection intact while hiding a
+    /// detail owned by another page. Returning to the recorded owner restores
+    /// the column; an explicit dismiss has already removed that owner.
+    func prepareInspectorForDestinationChange(to destination: WorkbenchDestination) {
+        guard inspectorSelection != .none,
+              let inspectorOwningDestination else {
+            return
+        }
+        let shouldPresent = inspectorOwningDestination == destination
+        if isInspectorPresented != shouldPresent {
+            isInspectorPresented = shouldPresent
+        }
+    }
+
+    func inspectorSelection(
+        for destination: WorkbenchDestination
+    ) -> WorkbenchInspectorSelection {
+        guard inspectorOwningDestination == destination else { return .none }
+        return inspectorSelection
     }
 
     func clearSessionBoundState(controllerID: RouterProfile.ID) {
         activeSessionGenerations.removeValue(forKey: controllerID)
         if inspectorSelection != .none {
             inspectorSelection = .none
+        }
+        if inspectorOwningDestination != nil {
+            inspectorOwningDestination = nil
+        }
+        if isInspectorPresented {
+            isInspectorPresented = false
         }
         let keys = states.keys.filter { $0.controllerID == controllerID }
         for key in keys {

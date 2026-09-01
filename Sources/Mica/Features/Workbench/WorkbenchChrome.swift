@@ -259,6 +259,7 @@ private struct WorkbenchRootLifecycleObserver: View {
             }
             .onChange(of: destination) { _, destination in
                 workspaceStore.flushPendingPersistence()
+                workspaceStore.prepareInspectorForDestinationChange(to: destination)
                 appModel.updateLiveSessionWindowDemand(
                     overviewRuntime.liveSessionWindowDemandID,
                     destination: destination.liveSessionVisibleDestination

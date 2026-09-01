@@ -115,8 +115,8 @@ struct WorkbenchRulesView: View {
                 workspaceStore.selectInspector(
                     .rule(type: row.rule.type, payload: row.rule.payload)
                 )
-            } else if case .rule = workspaceStore.inspectorSelection {
-                workspaceStore.selectInspector(.none)
+            } else {
+                workspaceStore.clearInspectorSelection(ownedBy: .rules)
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in

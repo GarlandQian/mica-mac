@@ -223,6 +223,7 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
     let issues: [WorkbenchDiagnosticsIssue]
     let usesSplitLayout: Bool
     @Binding var selectedIssueID: String?
+    let isActionEnabled: (WorkbenchDiagnosticsAction) -> Bool
     let onAction: (WorkbenchDiagnosticsAction) -> Void
 
     var body: some View {
@@ -245,6 +246,7 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
                     if let selectedIssue {
                         WorkbenchDiagnosticsIssueDetail(
                             issue: selectedIssue,
+                            isActionEnabled: isActionEnabled,
                             onAction: onAction
                         )
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -276,6 +278,7 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
                 if compact, selectedIssueID == issue.id {
                     WorkbenchDiagnosticsIssueDetail(
                         issue: issue,
+                        isActionEnabled: isActionEnabled,
                         onAction: onAction
                     )
                     .padding(.leading, MicaTheme.Spacing.space4)
@@ -371,6 +374,7 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
     @Environment(\.micaAppLanguage) private var language
 
     let issue: WorkbenchDiagnosticsIssue
+    let isActionEnabled: (WorkbenchDiagnosticsAction) -> Bool
     let onAction: (WorkbenchDiagnosticsAction) -> Void
 
     var body: some View {
@@ -420,6 +424,7 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!isActionEnabled(action))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

@@ -48,6 +48,28 @@ enum WorkbenchDiagnosticsAction: Equatable, Sendable {
     }
 }
 
+struct WorkbenchDiagnosticsActionAvailability: Equatable, Sendable {
+    let canRefresh: Bool
+    let canTest: Bool
+    let canTogglePresentationPause: Bool
+    let isPresentationPaused: Bool
+    let hasSelectedController: Bool
+    let isBusy: Bool
+
+    func isEnabled(_ action: WorkbenchDiagnosticsAction) -> Bool {
+        switch action {
+        case .refresh:
+            canRefresh || canTest
+        case .resumePresentation:
+            canTogglePresentationPause && isPresentationPaused
+        case .editController:
+            hasSelectedController && !isBusy
+        case .navigate:
+            true
+        }
+    }
+}
+
 struct WorkbenchDiagnosticsEvidence: Identifiable, Equatable, Sendable {
     let id: String
     let titleKey: String

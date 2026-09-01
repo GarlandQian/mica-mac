@@ -245,8 +245,8 @@ struct WorkbenchControllersView: View {
         }
         if let id {
             workspaceStore.selectInspector(.controller(id: id))
-        } else if case .controller = workspaceStore.inspectorSelection {
-            workspaceStore.selectInspector(.none)
+        } else {
+            workspaceStore.clearInspectorSelection(ownedBy: .controllers)
         }
     }
 
@@ -590,6 +590,9 @@ struct WorkbenchControllerInspector: View {
         }
         .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onExitCommand {
+            pendingDelete = nil
+        }
     }
 
     @ViewBuilder

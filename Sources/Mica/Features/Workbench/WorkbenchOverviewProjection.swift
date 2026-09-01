@@ -544,6 +544,7 @@ struct OverviewRuleHitSummary: Identifiable, Equatable {
 
 struct OverviewActiveConnection: Identifiable, Equatable {
     let id: String
+    let sourceIndex: Int
     let connectionID: String
     let label: String
     let totalTraffic: Int?
@@ -662,6 +663,7 @@ enum OverviewProjection {
             return (
                 OverviewActiveConnection(
                     id: "\(baseID.utf8.count):\(baseID):\(occurrence)",
+                    sourceIndex: sourceIndex,
                     connectionID: connection.id,
                     label: label,
                     totalTraffic: total
