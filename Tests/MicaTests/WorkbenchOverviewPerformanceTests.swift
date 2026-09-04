@@ -1073,20 +1073,36 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(
             OverviewTopologyHeightReservation.minimumHeight(
                 visibleTopologyIsEmpty: nil,
-                requestedMinimum: 920
-            ) == 920
+                requestedMinimum: 680
+            ) == 680
         )
         #expect(
             OverviewTopologyHeightReservation.minimumHeight(
                 visibleTopologyIsEmpty: false,
-                requestedMinimum: 920
-            ) == 920
+                requestedMinimum: 680
+            ) == 680
         )
         #expect(
             OverviewTopologyHeightReservation.minimumHeight(
                 visibleTopologyIsEmpty: true,
-                requestedMinimum: 920
+                requestedMinimum: 680
             ) == nil
+        )
+
+        #expect(
+            OverviewTopologyResponsiveHeight.minimumFlowHeight(
+                forAvailableWidth: 640
+            ) == 480
+        )
+        #expect(
+            OverviewTopologyResponsiveHeight.minimumFlowHeight(
+                forAvailableWidth: 1_600
+            ) == 576
+        )
+        #expect(
+            OverviewTopologyResponsiveHeight.minimumFlowHeight(
+                forAvailableWidth: 2_400
+            ) == 680
         )
     }
 
@@ -1122,7 +1138,7 @@ struct WorkbenchOverviewPerformanceTests {
             topology: fanTopology,
             availableWidth: 520
         )
-        #expect(fanLayout.size.width == 520)
+        #expect(fanLayout.size.width == 372)
         #expect(fanLayout.size.height > 320)
         #expect(
             fanLayout.nodes.allSatisfy {
@@ -1250,7 +1266,7 @@ struct WorkbenchOverviewPerformanceTests {
         )
     }
 
-    @Test func topologyLayoutUsesZashboardSankeyScaleOrderingAndBands() async throws {
+    @Test func topologyLayoutUsesBoundedWeightedRouteScaleOrderingAndBands() async throws {
         let connections = (0..<9).map { index in
             ConnectionSnapshot(
                 id: "source-b-\(index)",
@@ -1274,7 +1290,7 @@ struct WorkbenchOverviewPerformanceTests {
             $0.node.columnID == .source
         }
         #expect(sourceNodes.map(\.node.name) == ["Source A", "Source B"])
-        #expect(sourceNodes.allSatisfy { $0.rect.width == 20 })
+        #expect(sourceNodes.allSatisfy { $0.rect.width == 12 })
         #expect(OverviewTopologyLayout.columnHeaderHeight == 40)
         #expect(
             layout.nodes.allSatisfy {
@@ -1312,24 +1328,54 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(abs(nineConnectionValue - 10) < 0.000_001)
         #expect(abs(ninetyNineConnectionValue - 20) < 0.000_001)
         #expect(
+            sourceA.rect.height
+                == OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 1)
+        )
+        #expect(
+            sourceB.rect.height
+                == OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 9)
+        )
+        #expect(
+            edgeA.width
+                == OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 1)
+        )
+        #expect(
+            edgeB.width
+                == OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 9)
+        )
+        #expect(OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 0) == 20)
+        #expect(OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 1_000_000) == 30)
+        #expect(OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 0) == 1.5)
+        #expect(OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 1_000_000) == 7)
+
+        for edge in [edgeA, edgeB] {
+            let source = try #require(layout.nodeGeometry(id: edge.edge.sourceID))
+            let target = try #require(layout.nodeGeometry(id: edge.edge.targetID))
+            #expect(edge.source.y >= source.rect.minY + edge.width / 2)
+            #expect(edge.source.y <= source.rect.maxY - edge.width / 2)
+            #expect(edge.target.y >= target.rect.minY + edge.width / 2)
+            #expect(edge.target.y <= target.rect.maxY - edge.width / 2)
+            #expect(edge.drawingPath.boundingRect.minX == edge.source.x)
+            #expect(edge.drawingPath.boundingRect.maxX == edge.target.x)
+        }
+        let sharedTarget = try #require(
+            layout.nodeGeometry(id: edgeA.edge.targetID)
+        )
+        #expect(edgeA.edge.targetID == edgeB.edge.targetID)
+        #expect(
             abs(
-                sourceB.rect.height / sourceA.rect.height
-                    - nineConnectionValue / oneConnectionValue
-            ) < 0.000_1
+                (edgeA.target.y - sharedTarget.rect.minY)
+                    / sharedTarget.rect.height - 0.05
+            ) < 0.000_001
         )
         #expect(
             abs(
-                edgeB.width / edgeA.width
-                    - nineConnectionValue / oneConnectionValue
-            ) < 0.000_1
+                (edgeB.target.y - sharedTarget.rect.minY)
+                    / sharedTarget.rect.height - 0.55
+            ) < 0.000_001
         )
-        #expect(
-            abs(edgeA.target.y - edgeB.target.y)
-                >= (edgeA.width + edgeB.width) / 2 - 0.001
-        )
-        #expect(edgeA.drawingPath.boundingRect.height >= edgeA.width)
-        #expect(edgeB.drawingPath.boundingRect.height >= edgeB.width)
-        #expect(layout.size.width == 520)
+        #expect(edgeA.target.y < edgeB.target.y)
+        #expect(layout.size.width == 372)
 
         let expanded = try await OverviewTopologyLayoutBuilder.buildCancellable(
             topology: topology,
@@ -1337,6 +1383,34 @@ struct WorkbenchOverviewPerformanceTests {
             minimumFlowHeight: 640
         )
         #expect(expanded.size.height >= 724)
+    }
+
+    @Test func topologyColumnStepHasReadableFloorAndCoherentWideCeiling() async throws {
+        let topology = ConnectionTopologyBuilder.build(
+            from: MicaPerformanceFixtures.connections(count: 8, topology: .shared)
+        )
+        #expect(topology.columns.count == 5)
+
+        let narrow = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 640
+        )
+        let regular = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 1_000
+        )
+        let wide = try await OverviewTopologyLayoutBuilder.buildCancellable(
+            topology: topology,
+            availableWidth: 2_400
+        )
+
+        #expect(narrow.size.width == 724)
+        #expect(regular.size.width == 1_000)
+        #expect(wide.size.width == 1_332)
+        #expect(narrow.columns[1].centerX - narrow.columns[0].centerX == 168)
+        #expect(wide.columns[1].centerX - wide.columns[0].centerX == 320)
+        #expect(wide.nodes.count == topology.nodes.count)
+        #expect(wide.edges.count == topology.edges.count)
     }
 
     @Test func topologyRenderBandsAndAccessibilityCoverCompleteTopology() async throws {
@@ -1598,6 +1672,7 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(topologyViewport.contains("if reduceMotion"))
         #expect(topologyViewport.contains("MicaTheme.surface"))
         #expect(topologyViewport.contains(".help(hoverTooltip"))
+        #expect(topologyViewport.contains("OverviewTopologyProjection.selectionDescription("))
         #expect(topologyViewport.contains(".onMoveCommand(perform: movePathSelection)"))
         #expect(topologyViewport.contains(".onExitCommand"))
         #expect(topologyViewport.contains(".contextMenu"))
@@ -1630,12 +1705,32 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(baseBand.contains("colorMode: .linear"))
         #expect(baseBand.contains("allowsMotion ? MicaTheme.Motion.stateChange : nil"))
         #expect(baseBand.contains("value: snapshot.activeSelection"))
+        let topologyDrawing = try sourceSuffix(
+            topologyViewSource,
+            from: "private enum OverviewTopologyDrawing"
+        )
+        let topologyEdgeDrawing = try sourceSection(
+            topologyViewSource,
+            from: "static func drawEdge(",
+            to: "/// A narrow route rail"
+        )
+        #expect(topologyDrawing.contains("context.stroke("))
+        #expect(topologyDrawing.contains("MicaTheme.accent.opacity(0.88)"))
+        #expect(topologyDrawing.contains("status.color.opacity(0.52)"))
+        #expect(topologyDrawing.contains("sourceTint.opacity(0.28)"))
+        #expect(!topologyEdgeDrawing.contains("closeSubpath"))
+        #expect(!topologyEdgeDrawing.contains("context.fill("))
         #expect(!topologyViewSource.contains("OverviewTopologyHighlightBand"))
         #expect(!topologyViewSource.contains("TimelineView"))
 
         #expect(topologySource.contains("private let nodeGeometryByID"))
         #expect(topologySource.contains("func nodeGeometry(id: String)"))
         #expect(topologySource.contains("OverviewTopologyLayout.columnHeaderHeight + 12"))
+        #expect(topologySource.contains("private static let routeNodeWidth: CGFloat = 12"))
+        #expect(topologySource.contains("private static let preferredMaximumColumnStep: CGFloat = 320"))
+        #expect(topologySource.contains("static func edgeWidth(forConnectionCount"))
+        #expect(topologySource.contains("static func nodeHeight(forConnectionCount"))
+        #expect(!topologySource.contains("sankeyRibbonPath"))
         #expect(!source.contains("TimelineView"))
         #expect(!source.contains(".glassEffect"))
         #expect(!source.contains("GlassEffectContainer"))

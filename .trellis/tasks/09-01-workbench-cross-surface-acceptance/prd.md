@@ -11,7 +11,11 @@
 - `WorkbenchWorkspaceView` 是 10 个目的地的唯一分发点（`Sources/Mica/Features/Workbench/WorkbenchWorkspaceView.swift:38`），详情统一由根级 inspector 承担，页面不得新增自己的 `.inspector`。
 - 数据浏览器已经共享同一 scaffold 与原生 Table 约束（`Sources/Mica/Features/Workbench/WorkbenchDataShared.swift:44`）；本轮不得把它们重新做成卡片、并行数据源或页面级滚动系统。
 - Mica 是高密度 macOS 专业工具。内容层保持不透明、平面和可扫描；Liquid Glass 只由系统导航/控制层提供，不在内容区增加自定义 glass、辉光、装饰渐变或悬浮卡片。
-- 当前 `overview-flow-ribbons` 任务已实现长链横向视口，但仍待浅色/深色用户目验；本任务在其验收后处理跨页面联动和可访问性，不重新设计拓扑视觉。
+- `overview-flow-ribbons` 实现了长链横向视口和真 Sankey 彩带，但用户在
+  2026-09-04 的真实数据深色截图中明确拒绝当前视觉：大流量节点与 45%
+  实心彩带膨胀成整屏灰块，文字压在线路上，交叉关系和当前路径均难以
+  扫描。本任务接管其未通过的视觉验收并替换该渲染决策；长链视口、完整
+  路径、交互和数据语义继续保留。
 - 自动验证不得启动 Mica、读取用户控制器配置、连接真实控制器或执行远程操作。运行时逐页视觉验收由用户完成，除非用户另行明确授权 visual-only smoke。
 
 ## Requirements
@@ -64,9 +68,26 @@
 
 ### R7. Scope and dependency discipline
 
-- 先完成或明确接管 `08-23-overview-flow-ribbons` 的用户视觉验收，再修改其拓扑交互；不得同时维护两个冲突的 Overview 视觉方案。
+- 当前任务明确接管 `08-23-overview-flow-ribbons` 未通过的用户视觉验收；
+  只保留一套 Overview 拓扑实现，不并存旧真 Sankey 与新路线图模式。
 - 使用现有 `MicaTheme`、Workbench primitives、workspace store 和 AppModel 操作，不新增第三方包或兼容层。
 - 每一处产品代码修改必须映射到本 PRD 的缺陷/验收项，并配套测试或 verifier 断言；纯格式化和无证据重构不进入本任务。
+
+### R8. Dense topology visual correction
+
+- 保留每个活动连接、每个真实 chain hop、控制器顺序语义、列身份、状态、
+  命中、键盘、VoiceOver、悬浮、固定选择、Inspector 和跨页面定位；不得为
+  美观隐藏、合并或伪造业务路径。
+- 默认图改为安静的加权路线图：流量只在有上下限的窄节点轨道与连接线宽
+  中表达，不再把聚合流量直接绘制成占满可用高度的实心面块。
+- 无选择时所有路径退到内容背景层；悬浮或固定选择时，唯一相关轨迹使用
+  accent 清晰突出，其余线路和标签同步退后。状态色继续只表达控制器上报
+  状态，列色只表达列身份。
+- 标签使用系统文字并留在确定的列槽内。线路不得形成遮住整段文字的填充
+  带；选择层级必须让当前路径标签高于背景标签。长名称继续通过合法布局
+  截断与原生 tooltip/Inspector 获取全文，不做固定字符改写。
+- 内容层保持不透明、平面；不增加 glass、辉光、阴影、装饰渐变、悬浮卡
+  片、第二种拓扑模式或新偏好。
 
 ## Acceptance Criteria
 
@@ -81,6 +102,9 @@
 - [x] AC9：2,000 Connections、2,000 Logs、大规则/来源集、多展开策略组和 Diagnostics disclosure 的相关测试/benchmark 通过；没有可重复的 >10% 性能回退。
 - [x] AC10：`swift build`、完整 `swift test`、source verifier、XCStrings JSON、对比度审计、`git diff --check` 和当前/父任务 Trellis validate 全部通过。
 - [ ] AC11：用户使用真实控制器完成浅色/深色逐页视觉验收；自动验证不连接控制器、不执行远程操作、不运行未经授权的 runtime smoke。
+- [ ] AC12：真实数据密集拓扑不再出现整屏实心灰带/色块；节点与连接线宽
+  均有确定上限，所有路径仍被布局、命中和无障碍索引完整接纳，悬浮/固定
+  路径在深浅色下形成唯一清晰前景。
 
 ## Out Of Scope
 
@@ -95,7 +119,8 @@
 - 采用“跨页面连续性 + 可复现缺陷”验收，不做新一轮换皮。
 - Inspector 选择继续是 window-level、session-bound；目的地切换隐藏不属于新页面的详情，页面自己的 selection 仍由现有 per-destination workspace 保存。
 - Actions 少命令场景通过自适应内容宽度和既有相关工作区补足信息密度，不制造更多操作。
-- Overview 只补交互定位和跨页面一致性，沿用 `overview-flow-ribbons` 已批准的固定核心构图与长链方案。
+- Overview 保留固定核心构图、长链横向视口和完整数据，但用户实测否决的
+  真 Sankey 面积编码由单一的有界加权路线图替代。
 - 没有阻塞规划的产品问题；实施仍需用户在本规划总结之后单独明确批准。
 
 ## Risks And Deferred Items
@@ -104,3 +129,6 @@
 - 拓扑自动定位若直接触发全树 animation 可能造成滚动卡顿；只允许 scroll-position 状态变化，并受 Reduce Motion 门控。
 - 当前 Workbench UI 合同仍含“拓扑不使用横向视口”的旧句，与已批准的长链实现存在 spec drift；在 Overview 用户验收后通过 `trellis-update-spec` 收敛为短链无横滚、长链条件横滚。
 - 真实控制器、不同数据规模和实际窗口截图无法由自动测试代替，最终视觉目验保留给用户。
+- 有界线宽弱化了面积比例的精确视觉比较；控制器原始计数仍完整保留在
+  topology model、无障碍值、tooltip/Inspector 和连接页面，路线图只负责
+  首页的结构扫描与当前路径定位。

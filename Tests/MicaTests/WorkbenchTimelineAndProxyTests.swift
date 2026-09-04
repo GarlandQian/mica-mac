@@ -1164,7 +1164,7 @@ struct WorkbenchTimelineAndProxyTests {
         )
         let edge = try #require(layout.edges.first)
 
-        #expect(source.rect.width == 20)
+        #expect(source.rect.width == 12)
         #expect(source.rect.height > 0)
         #expect(source.hitRect.height >= 28)
         #expect(edge.hitTolerance >= 10)
