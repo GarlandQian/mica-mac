@@ -291,7 +291,7 @@ post-fix authorized runtime AX repeat remains the open acceptance item.
 - [x] Commit product/spec work in scoped local commits (`3662209`, `aa5bbe2`); do not push without a new user request.
 - [x] Run the `trellis-finish-work` survey and defer archive/journal because AC1/AC11 still require user real-controller visual acceptance.
 - [x] Prepare the real-controller light/dark page-by-page acceptance handoff; address only reproducible screenshot findings.
-- [ ] Commit the reopened accessibility fix, tests, verifier, task evidence, and any durable spec correction in scoped local commits.
+- [x] Commit the reopened accessibility fix, tests, verifier, task evidence, and durable spec correction (`ab240ae`).
 - [ ] After user visual acceptance, run `trellis-finish-work` to archive the child and record its work commits in the journal.
 - [ ] Mark parent Phase 5 complete only after user visual acceptance and final integrated validation.
 
