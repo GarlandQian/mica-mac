@@ -1840,14 +1840,16 @@ for (const proxyContract of [
 }
 for (const rootContract of [
   "struct WorkbenchPolicyGroupsView",
-  "ProxyPolicyGroupPanel(",
+  "ProxyPolicyGroupSectionHeader(",
+  "ProxyPolicyNodeTile(",
   "@State private var projectionCache",
   "@State private var expandedProjections",
 ]) {
   assertIncludes(proxyRoot, rootContract, `Proxy root must own ${rootContract}`);
 }
 for (const displacedRootContract of [
-  "struct ProxyPolicyGroupPanel",
+  "struct ProxyPolicyGroupSectionHeader",
+  "struct ProxyPolicyNodeTile",
   "final class ProxyCatalogPresentationCoordinator",
   "struct ProxyCatalogProjectionCache",
   "enum ProxyProjection",
@@ -1855,7 +1857,8 @@ for (const displacedRootContract of [
   assertExcludes(proxyRoot, displacedRootContract, `Proxy root must not own ${displacedRootContract}`);
 }
 for (const panelContract of [
-  "struct ProxyPolicyGroupPanel",
+  "struct ProxyPolicyGroupSectionHeader",
+  "struct ProxyPolicyNodeTile",
   "ProxyLatencyDistributionView",
   "private extension ProxyLatencyDistributionBucket",
 ]) {
@@ -1935,7 +1938,12 @@ for (const mihomoConfigurationOrderContract of [
   assertIncludes(dashboardSessionModels, mihomoConfigurationOrderContract, `Mihomo policy groups must retain ${mihomoConfigurationOrderContract}`);
 }
 const proxyRootContent = sourceSection(proxyRoot, "private var content:", "private var emptyState:");
-assertIncludes(proxyRootContent, "LazyVStack", "Policy groups must render as one source-ordered vertical workspace");
+assert(count(proxyRootContent, "LazyVGrid(") === 1, "Policy groups must use exactly one root lazy visual grid");
+assertIncludes(proxyRootContent, "Section {", "Policy groups must render as source-ordered root grid sections");
+assertIncludes(proxyRootContent, "ProxyPolicyGroupSectionHeader(", "Each root grid section must retain its group summary and filter header");
+assertIncludes(proxyRootContent, "ProxyPolicyNodeTile(", "Expanded node tiles must be direct root grid section content");
+assertIncludes(proxyRootContent, ".adaptive(minimum: 340, maximum: 460)", "The root node grid must keep readable three/two/one-column cells");
+assertExcludes(proxyRootContent, "LazyVStack", "Policy groups must not wrap root grid sections in a same-axis lazy stack");
 assertExcludes(proxyRootContent, "ScrollView(.horizontal)", "Policy groups must not force a horizontal canvas");
 assertOrdered(
   proxyRootContent,
@@ -1955,7 +1963,7 @@ assertIncludes(proxyAccessibilityIndex, "func selectedElementID(", "Proxy access
 const proxyAccessibilityCatalog = sourceSection(
   proxyPanels,
   "struct ProxyBoundedAccessibilityCatalog",
-  "struct ProxyPolicyGroupPanel",
+  "struct ProxyPolicyGroupSectionHeader",
 );
 assertIncludes(proxyAccessibilityCatalog, "WorkbenchAccessibilityPageControls(", "Proxy accessibility must expose complete Previous/Next traversal");
 assertIncludes(proxyAccessibilityCatalog, "ForEach(index.elements(in: window.range))", "Proxy accessibility must create only the active global 32-item slice");
@@ -1969,12 +1977,28 @@ assertExcludes(code(proxyAccessibilityCatalog), "LazyVStack", "A lazy stack must
 assertExcludes(code(proxyAccessibilityCatalog), "LazyVGrid", "Proxy accessibility must not instantiate the visual member grid");
 assertExcludes(code(proxyAccessibilityCatalog), "Table(", "Proxy accessibility replacement must not nest a Table");
 assertExcludes(code(proxyAccessibilityCatalog), "List(", "Proxy accessibility replacement must not nest a List");
-assertIncludes(proxyPanels, "struct ProxyPolicyGroupPanel", "Policy groups must use the redesigned expandable panel");
+const proxySectionHeader = sourceSection(
+  proxyPanels,
+  "struct ProxyPolicyGroupSectionHeader",
+  "private struct ProxyLatencyDistributionView",
+);
+assertIncludes(proxyPanels, "struct ProxyPolicyGroupSectionHeader", "Policy groups must use a root-grid section header");
 assertIncludes(proxyPanels, "ProxyLatencyDistributionView", "Collapsed groups must retain a real latency distribution preview");
-assertIncludes(proxyPanels, ".adaptive(minimum: 340, maximum: 460)", "Expanded groups must keep node cells readable in a three/two/one-column grid");
+assertExcludes(proxySectionHeader, "LazyVGrid", "A policy section header must not own a nested same-axis lazy grid");
+assertExcludes(proxySectionHeader, "ProxyPolicyNodeTile(", "A policy section header must not materialize member tiles");
+assertIncludes(proxySectionHeader, "private var groupFilter", "Expanded policy section headers must retain independent filters");
 assertIncludes(proxyPanels, "Button(action: onSelect)", "The full node tile body must switch or inspect the selected node");
-assertIncludes(proxyPanels, "workspaceStore.selectInspector(", "Node inspection must route to the workspace inspector");
-assertIncludes(proxyPanels, ".proxyNode(", "Node tiles must select the proxy-node inspector destination");
+const proxyMemberSelection = sourceSection(
+  proxyRoot,
+  "private func selectMember",
+  "private func testMember",
+);
+assertOrdered(
+  proxyMemberSelection,
+  ["appModel.matchesCurrentCommandScope(scope)", "index.recordsByID[memberID]?.row", "workspaceStore.update(", "workspaceStore.selectInspector(", "ProxyProjection.currentMemberMutationTarget("],
+  "Visual and AX member selection must validate retained scope and exact current identity before synchronizing workspace/Inspector, then gate the remote mutation",
+);
+assertIncludes(proxyMemberSelection, ".proxyNode(", "Visual and AX node selection must open the proxy-node inspector");
 assertExcludes(proxyPanels, "ProxyPolicyNodeInlineDetails", "Node details must render in the workspace inspector, not an inline shelf");
 assertIncludes(proxyPanels, "@State private var isHovered", "Node cells must provide a restrained pointer-hover treatment");
 assertExcludes(proxyPanels, "ProxyNodeFactGrid", "Selected node details must not regress to the old field grid");
@@ -2008,7 +2032,7 @@ assertIncludes(proxyRootContent, "proxy.scrollTo(reveal.targetID, anchor: .cente
 assertIncludes(proxyRootContent, "lastScrolledRevealToken", "Proxy reveal must deduplicate scrolling by request token");
 assertExcludes(proxyRootContent, ".scrollPosition(", "Proxy reveal must not keep an out-of-scope scroll-position target");
 assertExcludes(proxyPanels, ".scrollTargetLayout()", "Nested proxy grids must not declare a competing scroll target scope");
-assertIncludes(proxyPanels, "ProxyProjection.revealTargetID(", "Each proxy node tile must expose its exact reveal target ID");
+assertIncludes(proxyRootContent, "ProxyProjection.revealTargetID(", "Each proxy node tile must expose its exact reveal target ID");
 assertIncludes(proxyPanels, ".accessibilityLabel(", "Proxy icon commands must expose localized accessibility labels");
 assertIncludes(proxyPanels, '"routing.test_node \\(member.name)"', "The node-test icon must name its reported node");
 for (const proxyAccessibilityRegression of [
@@ -2027,6 +2051,31 @@ assertIncludes(proxyRoot, "searchText = \"\"", "Clear-and-locate must clear glob
 assertIncludes(proxyRoot, "!groupProjection.arrangedGroups.isEmpty", "Proxy no-match state must not override groups hidden by preference");
 assertIncludes(proxyRoot, "workspace.pendingProxySelection", "Same-page proxy navigation must consume newly staged targets");
 assertIncludes(proxyInteraction, "routing.show_global_and_locate", "Hidden GLOBAL must expose a dedicated explicit recovery action");
+const proxyVisualRoot = sourceSection(
+  proxyRoot,
+  "struct WorkbenchPolicyGroupsView",
+  "private struct ProxyPolicyCatalogObserver",
+);
+const proxyCatalogObserver = sourceSection(
+  proxyRoot,
+  "private struct ProxyPolicyCatalogObserver",
+  "private struct WorkbenchProxyRevealObstructionNotice",
+);
+assertExcludes(proxyVisualRoot, "appModel.policyGroupCatalog", "The large Proxy visual root must not directly observe or compare the complete policy catalog");
+assertIncludes(proxyCatalogObserver, "appModel.policyGroupCatalogRevision", "The nonvisual Proxy catalog intake leaf must observe the scalar catalog revision");
+assertIncludes(proxyCatalogObserver, "let current = currentObservation", "Initial catalog intake must bind the live snapshot to its controller/generation request");
+assertIncludes(proxyCatalogObserver, "onCatalog(appModel.policyGroupCatalog, current, true)", "The catalog intake leaf must force the initial session snapshot");
+assertIncludes(proxyCatalogObserver, "onSessionBoundary(current)", "Session-boundary reset must receive the new controller/generation identity");
+assertIncludes(proxyCatalogObserver, ".frame(width: 0, height: 0)", "The catalog intake leaf must remain zero-size");
+assertIncludes(proxyCatalogObserver, ".allowsHitTesting(false)", "The catalog intake leaf must not intercept pointer input");
+assertIncludes(proxyCatalogObserver, ".accessibilityHidden(true)", "The catalog intake leaf must not enter the semantic tree");
+const proxyCatalogReset = sourceSection(
+  proxyRoot,
+  "private func resetCatalogPresentationForSessionBoundary",
+  "private func applyCatalogUpdate",
+);
+assertIncludes(proxyCatalogReset, "retainedPendingNavigation", "A new-generation navigation intent consumed before the catalog observer must survive boundary reset");
+assertIncludes(proxyCatalogReset, "retainedReveal", "A new-generation reveal resolved before the catalog observer must survive boundary reset");
 const proxyCatalogApply = sourceSection(
   proxyRoot,
   "private func applyCatalogUpdate",

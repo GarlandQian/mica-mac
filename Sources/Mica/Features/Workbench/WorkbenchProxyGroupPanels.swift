@@ -294,24 +294,14 @@ struct ProxyBoundedAccessibilityCatalog: View {
     }
 }
 
-struct ProxyPolicyGroupPanel: View {
-    @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
+struct ProxyPolicyGroupSectionHeader: View {
     @Environment(\.micaAppLanguage) private var language
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let presentation: ProxyExpandedGroupPresentation
-    let scrollInteractionTracker: ProxyScrollInteractionTracker
-    let highlightedGroupID: String?
-    let highlightedMemberID: String?
     let commandsEnabled: Bool
-    let canSelect: Bool
     let canTestGroup: Bool
-    let canTestNode: Bool
-    let measuringNode: PolicyNodeLatencyTestTarget?
     let onToggle: () -> Void
     let onFilterChange: (String) -> Void
-    let onSelectMember: (String) -> Void
-    let onTestMember: (String) -> Void
     let onTestGroup: () -> Void
     let onClearFixed: () -> Void
     let onLocateCurrent: () -> Void
@@ -321,14 +311,10 @@ struct ProxyPolicyGroupPanel: View {
             groupHeader
 
             if presentation.isExpanded {
-                expandedContent
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                groupFilter
             }
         }
-        .animation(
-            reduceMotion ? nil : MicaTheme.Motion.reveal,
-            value: presentation.isExpanded
-        )
+        .padding(.top, MicaTheme.Spacing.space2)
     }
 
     private var groupHeader: some View {
@@ -531,7 +517,7 @@ struct ProxyPolicyGroupPanel: View {
         }
     }
 
-    private var expandedContent: some View {
+    private var groupFilter: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             HStack(spacing: MicaTheme.Spacing.space3) {
                 TextField(
@@ -576,54 +562,6 @@ struct ProxyPolicyGroupPanel: View {
                             ? "routing.members_filtered_empty"
                             : "routing.health_filter_empty"
                 )
-            } else {
-                LazyVGrid(
-                    columns: [
-                        GridItem(
-                            .adaptive(minimum: 340, maximum: 460),
-                            spacing: MicaTheme.Spacing.space2,
-                            alignment: .top
-                        ),
-                    ],
-                    alignment: .leading,
-                    spacing: MicaTheme.Spacing.space2
-                ) {
-                    ForEach(presentation.members) { member in
-                        ProxyPolicyNodeTile(
-                            member: member,
-                            scrollInteractionTracker: scrollInteractionTracker,
-                            isInspected: presentation.inspectedMemberID
-                                == member.id,
-                            isHighlighted: highlightedGroupID == presentation.id
-                                && highlightedMemberID == member.id,
-                            commandsEnabled: commandsEnabled,
-                            canSelect: canSelect
-                                && presentation.occurrence.group.selectable,
-                            canTest: canTestNode,
-                            isSwitching: presentation.isSwitching,
-                            isMeasuring: measuringNode?.groupID
-                                == presentation.occurrence.group.id
-                                && measuringNode?.nodeName == member.name,
-                            onSelect: {
-                                workspaceStore.selectInspector(
-                                    .proxyNode(
-                                        groupName: presentation.occurrence.group.id,
-                                        groupOccurrenceID: presentation.id,
-                                        nodeName: member.name
-                                    )
-                                )
-                                onSelectMember(member.id)
-                            },
-                            onTest: { onTestMember(member.id) }
-                        )
-                        .id(
-                            ProxyProjection.revealTargetID(
-                                groupID: presentation.id,
-                                memberID: member.id
-                            )
-                        )
-                    }
-                }
             }
         }
     }
@@ -703,7 +641,7 @@ private struct ProxyLatencyDistributionView: View {
     }
 }
 
-private struct ProxyPolicyNodeTile: View {
+struct ProxyPolicyNodeTile: View {
     @Environment(\.micaAppLanguage) private var language
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
