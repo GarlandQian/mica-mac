@@ -70,7 +70,11 @@ Focused tests cover:
 
 ## 3. Long-Chain Topology Viewport
 
-Keep the `08-23` geometry, ribbons, hit index, and horizontal-overflow rule. Add a pure `OverviewTopologyViewportTarget` resolver that accepts current `OverviewTopologySelection`, layout/index, and viewport width, then returns a stable target identity/x anchor:
+Keep the `08-23` topology/index architecture, barycenter ordering, hit index, and
+horizontal-overflow rule. Its rejected filled-ribbon drawing grammar is
+superseded by section 3.1 below. Add a pure `OverviewTopologyViewportTarget`
+resolver that accepts current `OverviewTopologySelection`, layout/index, and
+viewport width, then returns a stable target identity/x anchor:
 
 - node selection -> selected node center;
 - edge selection -> edge midpoint;
@@ -85,6 +89,48 @@ The horizontal ScrollView uses native position/reader support with stable invisi
 - Target resolution must not rebuild topology layout, scan SwiftUI views, or introduce a timer.
 
 Unit tests cover node/edge/path target choice, stale selection, short-chain no-scroll, overflow scroll, and deterministic output.
+
+### 3.1 Dense topology visual correction
+
+The 2026-09-04 real-data screenshot invalidates the prior true-Sankey rendering
+decision. Preserve `ConnectionTopology`, the complete index, render bands,
+single opaque/linear Canvas, label layer, hit layer, accessibility windows, and
+interaction state. Replace only layout's unbounded area encoding and the base
+drawing grammar:
+
+- Introduce a pure visual scale. Node height is
+  `clamp(18 + log10(count + 1) * 4, 20, 30)` points; edge width is
+  `clamp(1 + log10(count + 1) * 1.75, 1.5, 7)` points. Reported counts remain
+  unchanged and continue to weight barycenter ordering.
+- Use a 12-point node rail, 8-point inter-node gap, and a 168-point minimum
+  column step. Cap the preferred column step at 320 points so ordinary graphs
+  stay coherent in an ultrawide window while long chains still overflow through
+  the existing horizontal viewport. A column's required height is the sum of
+  its bounded node heights plus gaps, not the sum of unconstrained flow areas.
+  Request `availableWidth * 0.36`, clamped to 480-to-680 points, so topology
+  remains a primary Overview canvas without sparse data being inflated to fill
+  an arbitrary 920-point area.
+- Place incoming/outgoing edge centers by normalized cumulative real flow
+  within each node rail. This preserves truthful relative attachment and
+  deterministic ordering while allowing visual stroke width to stay bounded.
+- Render each edge as one cubic centerline stroke, not a closed filled band.
+  Default column-gradient strokes use 28% opacity; reported-status strokes use
+  52%; a highlighted trajectory uses accent at 88% with at most 1.5 points of
+  additional width; non-highlighted strokes under a selection use the existing
+  explicit neutral mist. Overlap may reveal density but cannot create an opaque
+  screen-sized block.
+- Neutral nodes use a restrained column-tint fill plus outline; reported status
+  and accent retain priority. Node labels render as system caption text. With
+  an active trajectory, its node labels use accent/medium emphasis and all
+  unrelated labels move to tertiary emphasis. Do not add label cards, glass,
+  glow, shadow, or a second rendering mode.
+
+Pure tests pin both scale boundaries, dense-column height, edge attachment
+bounds, complete node/edge admission, deterministic output, and long-chain
+width. Source verification rejects the old closed-ribbon fill and checks the
+single-Canvas/label/hit/accessibility architecture. Because layout geometry is
+a measured hot path, compare two offline Release reports against the existing
+matching baseline before retention.
 
 ## 4. Sparse Actions Layout
 
@@ -144,7 +190,10 @@ AppModel remote-command method hardening remains outside this presentation task.
 - No persisted schema or compatibility migration is needed. Inspector visibility/selection remains ephemeral and session-bound.
 - Existing per-destination persisted search/filter/sort/selection formats remain unchanged.
 - Each implementation phase should be independently revertible: shared inspector semantics, topology viewport, sparse Actions, then evidence-led page fixes.
-- `08-23-overview-flow-ribbons` visual acceptance is a prerequisite for topology edits. Its durable contract drift is corrected during the final `trellis-update-spec` pass.
+- The current task now owns the failed `08-23-overview-flow-ribbons` visual
+  acceptance. The old true-Sankey fill is removed rather than kept as a mode or
+  compatibility path; durable contract wording is replaced in the final
+  `trellis-update-spec` pass.
 
 ## 9. Validation Boundary
 

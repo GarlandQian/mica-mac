@@ -238,8 +238,11 @@ private struct OverviewTopologyWorkspace: View {
     }
 
     private func minimumFlowHeight(for availableWidth: Int) -> Int {
-        let scaledHeight = CGFloat(max(availableWidth, 1)) * 0.56
-        return Int(min(max(scaledHeight, 680), 920).rounded())
+        Int(
+            OverviewTopologyResponsiveHeight.minimumFlowHeight(
+                forAvailableWidth: CGFloat(availableWidth)
+            ).rounded()
+        )
     }
 
     @ViewBuilder
@@ -480,18 +483,24 @@ private struct OverviewTopologyViewport: View {
         }
     }
 
-    /// Standard hover tooltip carrying the truthful route label of the hovered
-    /// element (Phase 3.3 replaced the node-anchored hover HUD with this).
+    /// Standard hover tooltip carrying the exact label and factual route detail.
+    /// Pinned policy fields continue to live in the workspace inspector.
     private var hoverTooltip: String? {
         let snapshot = interaction.snapshot
         guard snapshot.isHovering, let selection = snapshot.activeSelection else {
             return nil
         }
-        return OverviewTopologyProjection.selectionLabel(
+        let label = OverviewTopologyProjection.selectionLabel(
             selection,
             in: index,
             language: language
         )
+        let description = OverviewTopologyProjection.selectionDescription(
+            selection,
+            in: index,
+            language: language
+        )
+        return "\(label)\n\(description)"
     }
 
     private var topologyGraph: some View {
@@ -970,7 +979,8 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
 
             OverviewTopologyLabelBand(
                 band: band,
-                language: language
+                language: language,
+                interaction: interaction
             )
 
             OverviewTopologyHitBand(
@@ -1148,18 +1158,28 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
 /// the layer never intercepts hits and stays hidden from accessibility (the
 /// graph's accessibility representation owns that contract).
 private struct OverviewTopologyLabelBand: View {
-    @Environment(\.micaAppFontScale) private var fontScale
-
     let band: OverviewTopologyLayout.RenderBand
     let language: AppLanguage
+    let interaction: OverviewTopologyInteractionState
 
     var body: some View {
+        let snapshot = interaction.snapshot
+        let hasSelection = snapshot.activeSelection != nil
+        let highlightedNodeIDs = snapshot.highlight.nodeIDs
+
         ZStack(alignment: .topLeading) {
             ForEach(band.columns, id: \.id) { column in
                 columnTitle(column)
             }
             ForEach(band.nodes, id: \.node.id) { node in
-                nodeLabel(node)
+                let emphasis: LabelEmphasis = if !hasSelection {
+                    .standard
+                } else if highlightedNodeIDs.contains(node.node.id) {
+                    .highlighted
+                } else {
+                    .dimmed
+                }
+                nodeLabel(node, emphasis: emphasis)
             }
         }
         .allowsHitTesting(false)
@@ -1193,12 +1213,22 @@ private struct OverviewTopologyLabelBand: View {
         )
     }
 
+    private enum LabelEmphasis: Equatable {
+        case standard
+        case dimmed
+        case highlighted
+    }
+
     private func nodeLabel(
-        _ node: OverviewTopologyLayout.NodeGeometry
+        _ node: OverviewTopologyLayout.NodeGeometry,
+        emphasis: LabelEmphasis
     ) -> some View {
         Text(verbatim: node.node.name)
-            .micaThemeFont(.label)
-            .foregroundStyle(MicaTheme.textPrimary)
+            .micaThemeFont(
+                .caption,
+                weight: emphasis == .highlighted ? .medium : nil
+            )
+            .foregroundStyle(labelColor(for: emphasis))
             .lineLimit(1)
             .frame(
                 width: max(node.labelRect.width, 1),
@@ -1208,6 +1238,17 @@ private struct OverviewTopologyLabelBand: View {
                 x: node.labelRect.midX - band.bounds.minX,
                 y: node.labelRect.midY - band.bounds.minY
             )
+    }
+
+    private func labelColor(for emphasis: LabelEmphasis) -> Color {
+        switch emphasis {
+        case .standard:
+            MicaTheme.textSecondary
+        case .dimmed:
+            MicaTheme.textTertiary
+        case .highlighted:
+            MicaTheme.accent
+        }
     }
 }
 
@@ -1533,14 +1574,9 @@ private struct OverviewTopologyAccessibilityGroup: View {
 }
 
 private enum OverviewTopologyDrawing {
-    /// Edge rendering (task 08-23 R9): true sankey ribbons. The geometry
-    /// engine already packs flow-proportional widths into the node rects
-    /// (edge.width = flow * valueScale, y centers stacked per node), so the
-    /// band traces the true width between the packed endpoints - d3-sankey's
-    /// closed ribbon construction. Fill priority: selection accent 85% >
-    /// dimmed mist > controller-reported status 70% > default
-    /// source-to-target column-tint gradient at 45% (the community-consensus
-    /// 0.4-0.6 band keeps overlapping flows readable).
+    /// Bounded weighted-route rendering. Counts determine a narrow 1.5...7pt
+    /// stroke, while selection, reported status, and column identity determine
+    /// presentation priority. No edge produces a closed area fill.
     static func drawEdge(
         _ edge: OverviewTopologyLayout.EdgeGeometry,
         status: MicaTheme.Status = .neutral,
@@ -1550,51 +1586,53 @@ private enum OverviewTopologyDrawing {
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
     ) {
-        let half = max(edge.width, 1.5) / 2
-        var ribbon = Path()
-        ribbon.move(to: CGPoint(x: edge.source.x, y: edge.source.y - half))
-        ribbon.addCurve(
-            to: CGPoint(x: edge.target.x, y: edge.target.y - half),
-            control1: CGPoint(x: edge.control1.x, y: edge.control1.y - half),
-            control2: CGPoint(x: edge.control2.x, y: edge.control2.y - half)
+        let lineWidth = edge.width + (isHighlighted ? 1.5 : 0)
+        let style = StrokeStyle(
+            lineWidth: lineWidth,
+            lineCap: .round,
+            lineJoin: .round
         )
-        ribbon.addLine(to: CGPoint(x: edge.target.x, y: edge.target.y + half))
-        ribbon.addCurve(
-            to: CGPoint(x: edge.source.x, y: edge.source.y + half),
-            control1: CGPoint(x: edge.control2.x, y: edge.control2.y + half),
-            control2: CGPoint(x: edge.control1.x, y: edge.control1.y + half)
-        )
-        ribbon.closeSubpath()
 
         if isHighlighted {
-            context.fill(ribbon, with: .color(MicaTheme.accent.opacity(0.85)))
+            context.stroke(
+                edge.drawingPath,
+                with: .color(MicaTheme.accent.opacity(0.88)),
+                style: style
+            )
             return
         }
         if isDimmed {
-            context.fill(ribbon, with: .color(MicaTheme.edgeDimmed))
+            context.stroke(
+                edge.drawingPath,
+                with: .color(MicaTheme.edgeDimmed),
+                style: style
+            )
             return
         }
         if status != .neutral {
-            context.fill(ribbon, with: .color(status.color.opacity(0.7)))
+            context.stroke(
+                edge.drawingPath,
+                with: .color(status.color.opacity(0.52)),
+                style: style
+            )
             return
         }
-        context.fill(
-            ribbon,
+        context.stroke(
+            edge.drawingPath,
             with: .linearGradient(
                 Gradient(colors: [
-                    sourceTint.opacity(0.45),
-                    targetTint.opacity(0.45),
+                    sourceTint.opacity(0.28),
+                    targetTint.opacity(0.28),
                 ]),
                 startPoint: edge.source,
                 endPoint: edge.target
-            )
+            ),
+            style: style
         )
     }
 
-    /// Node bar (tasks 08-20 R2, 08-23 R9): controller-reported status fill
-    /// when the policy catalog reports one; neutral nodes are solid
-    /// column-tint anchor bars (sankey standard); the active trajectory
-    /// redraws in accent. Labels render in `OverviewTopologyLabelBand`.
+    /// A narrow route rail with restrained fill and a crisp outline. Accent and
+    /// reported status remain higher priority than the column identity tint.
     static func drawNode(
         _ node: OverviewTopologyLayout.NodeGeometry,
         status: MicaTheme.Status,
@@ -1604,22 +1642,37 @@ private enum OverviewTopologyDrawing {
         in context: inout GraphicsContext
     ) {
         if isHighlighted {
-            context.fill(node.drawingPath, with: .color(MicaTheme.accent))
+            context.fill(
+                node.drawingPath,
+                with: .color(MicaTheme.accent.opacity(0.88))
+            )
+            context.stroke(
+                node.drawingPath,
+                with: .color(MicaTheme.accent),
+                lineWidth: 1
+            )
             return
         }
         if status != .neutral {
             context.fill(
                 node.drawingPath,
-                with: .color(status.color.opacity(isDimmed ? 0.4 : 1))
+                with: .color(status.color.opacity(isDimmed ? 0.20 : 0.52))
+            )
+            context.stroke(
+                node.drawingPath,
+                with: .color(status.color.opacity(isDimmed ? 0.35 : 0.82)),
+                lineWidth: 1
             )
             return
         }
-        // Neutral anchor bar (task 08-23 R9): solid column-tint block, the
-        // sankey community standard - ribbons visually anchor on solid
-        // endpoints. Dimmed nodes recede so the active path owns the scene.
         context.fill(
             node.drawingPath,
-            with: .color(tint.opacity(isDimmed ? 0.35 : 1))
+            with: .color(tint.opacity(isDimmed ? 0.14 : 0.28))
+        )
+        context.stroke(
+            node.drawingPath,
+            with: .color(tint.opacity(isDimmed ? 0.28 : 0.68)),
+            lineWidth: 1
         )
     }
 }

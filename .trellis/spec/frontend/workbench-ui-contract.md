@@ -428,52 +428,59 @@ a split.
   column sorts by reported name, and every later column sorts by the
   flow-weighted barycenter of its upstream neighbors with name-order tiebreaks
   (task 08-23) so parallel flows become near-parallel edges instead of maximal
-  crossings. Aggregated edges retain their real count
-  while layout band width uses `log10(count + 1) * 10`. The Sankey fits the
-  panel width until the column count would compress columns below a 168-point
-  minimum step; longer chains widen the graph past the panel and the viewport
-  scrolls horizontally instead of truncating labels (task 08-23 R10). The
-  native horizontal indicator is visible only while that overflow exists.
+  crossings. Aggregated edges retain their real count. The logarithmic
+  `log10(count + 1) * 10` projection weights ordering only; it must not expand
+  nodes or routes to consume the available canvas. Visible node height is
+  `clamp(18 + log10(count + 1) * 4, 20, 30)` points and visible edge width is
+  `clamp(1 + log10(count + 1) * 1.75, 1.5, 7)` points. A 12-point node rail and
+  8-point vertical gap keep dense columns readable, while incoming and outgoing
+  edge centers use normalized cumulative real connection counts within each
+  node rail. Thus the Overview remains structurally truthful without rendering
+  large traffic aggregates as screen-sized areas.
+- Topology column steps have a 168-point readable minimum and a 320-point
+  preferred maximum. The graph width is the smaller of the preferred-width
+  ceiling and the larger of available width or the long-chain minimum-width
+  floor. Ordinary graphs therefore stay centered and coherent in ultrawide
+  windows; longer chains widen past the panel and the viewport scrolls
+  horizontally instead of truncating labels (task 08-23 R10). The native
+  horizontal indicator is visible only while that overflow exists.
   Pinned node, edge, and path selections resolve an x target from the existing
   topology index/layout and move the native scroll position only when the
   target lies outside the visible acquisition margin. Hover never moves the
   viewport, user scrolling is not continuously overridden, and Reduce Motion
-  makes the same reveal immediate instead of disabling it. The
-  graph uses 20-point node bars, 8-point gaps, true flow-width ribbons, and
-  full-trajectory
-  hover/pin highlighting. Edge strokes are tiered (tasks 08-20, 08-23): the
-  single active, hovered, or pinned trajectory redraws as a solid accent
-  ribbon at 85% opacity; while a selection exists every other edge fades to
-  an explicit
-  alpha-baked neutral mist (`MicaTheme.edgeDimmed`); an edge touching a policy
-  hop with a controller-reported status carries that status color; every
-  remaining edge renders as a true sankey ribbon (task 08-23 R9): a closed
-  band tracing its flow-proportional geometry width (flow * valueScale, the
-  same width the layout packs into node rects) filled with a
-  source-to-target column-tint gradient at 45% opacity, so route families
-  stay traceable by hue and converging flows brighten naturally through
-  translucency. Column identity tints (`MicaTheme.ColumnTint`: muted slate
+  makes the same reveal immediate instead of disabling it.
+- Every edge renders as one round-capped cubic centerline stroke. The single
+  active hovered or pinned trajectory uses the signal accent at 88% opacity and
+  adds exactly 1.5 points to its bounded base width. While a selection exists,
+  every other edge fades to the explicit alpha-baked neutral mist
+  (`MicaTheme.edgeDimmed`). An edge touching a policy hop with a
+  controller-reported status uses that status color at 52%; every remaining
+  edge uses a source-to-target column-tint gradient at 28%. Closed or filled
+  Sankey ribbons are prohibited: overlapping aggregate routes must never become
+  opaque screen-sized blocks. Column identity tints (`MicaTheme.ColumnTint`:
+  muted slate
   blue sources, warm sand rules, violet chain hops, dusty rose exits, both
   appearances) encode column identity only - status colors and the accent
-  always win. Node bars fill with the controller-reported status color when
-  one exists, a solid column-tint anchor bar (dimmed to 35%) otherwise, and
-  the accent when the path is active. A 22x2.5-point column-tinted tick sits under
-  each column title, and title slices are capped by band edges and neighbor
-  distances so titles never overlap or clip. Each band renders through
+  always win. Neutral node rails use restrained column-tint fill plus a crisp
+  outline; controller status and active accent retain priority. A 22x2.5-point
+  column-tinted tick sits under each column title, and title slices are capped
+  by band edges and neighbor distances so titles never overlap or clip.
+- Each band renders through
   exactly one opaque, linear-composited Canvas (base and highlight passes
   merged) plus a dedicated system-text label layer; band equality gates on the
-  structure/policy revisions so telemetry ticks never redraw the graph. Hover and explicit pause freeze only the presented
-  snapshot; ingestion continues and resume catches up to the latest real frame.
-  Inline expansion, complete accessible path rows, and navigation to Connections
-  stay in the same window. The graph grows vertically with its densest
-  column (no nested vertical scroll axis); horizontal scrolling appears only
-  when long chains exceed the panel width (task 08-23 R10). Visible node bars win hit testing first,
-  ribbons win over overlapping invisible node padding, and bounded label-adjacent
-  node targets use a local 28-point acquisition size while ribbons use a
-  10-point baseline tolerance. The layout builds `nodeGeometryByID` once so hit
-  testing and policy inspection stay constant-time and never change node/ribbon
-  or scroll geometry.
-  Policy-node hover presents a standard tooltip with the truthful route label;
+  structure/policy revisions so telemetry ticks never redraw the graph. Hover
+  and explicit pause freeze only the presented snapshot; ingestion continues
+  and resume catches up to the latest real frame. Inline expansion, complete
+  accessible path rows, and navigation to Connections stay in the same window.
+  The graph grows vertically with its densest bounded-node column and has no
+  nested vertical scroll axis. Visible node rails win hit testing first, routes
+  win over overlapping invisible node padding, and bounded label-adjacent node
+  targets retain a local 28-point acquisition size while routes use a 10-point
+  baseline tolerance. The layout builds `nodeGeometryByID` once so hit testing
+  and policy inspection stay constant-time and never change node/route or scroll
+  geometry.
+  Policy-node hover presents a standard tooltip with the exact selection label
+  and factual role/count or route description;
   clicking a policy node pins the canvas selection and opens the workspace
   inspector with the complete field composition, and Escape or blank-canvas
   activation clears selection. Policy inspection resolves names through
@@ -494,12 +501,14 @@ a split.
   state, factual inspection values, and direct navigation. Ordered path IDs and their
   index map keep path stepping constant-time. Node labels and column titles
   render in the label layer through the system text pipeline at the active
-  Mica font scale, positioned exactly on the geometry engine's label
-  rectangles, truncating to the fitted slice; column title centers clamp so
-  even the trailing column title stays fully inside the band. Never rewrite
-  reported names with fixed character-count
-  truncation or extend a label target to the next column. Sparse topology keeps
-  a width-responsive 680-to-920-point minimum flow area; dense columns may grow
+  Mica font scale, positioned exactly on the geometry engine's label rectangles.
+  Node labels use caption size: idle labels are secondary, labels on the active
+  trajectory use accent with medium emphasis, and unrelated labels recede to
+  tertiary. Labels truncate to their fitted slice; column title centers clamp
+  so even the trailing title stays fully inside the band. Never rewrite reported
+  names with fixed character-count truncation or extend a label target to the
+  next column. Sparse topology requests `availableWidth * 0.36`, clamped to a
+  480-to-680-point minimum route area; dense bounded-node columns may grow
   beyond it.
 - Actions availability is the intersection of current controller identity and
   generation, session readiness, controller capability, operation readiness,
@@ -1291,7 +1300,8 @@ cursor.applyPrefixDelta(
   Overview remains the sole vertical scroll owner. Topology expands cached
   render bands vertically without a nested vertical scroller; only a long chain
   whose 168-point minimum column step exceeds the panel width owns a bounded
-  horizontal viewport. Short chains fit the available width and hide its native
+  horizontal viewport. Ordinary short chains stay within the panel, center at
+  no more than the 320-point preferred column step, and hide the native
   horizontal indicator.
 - Expensive presentation work may be deferred during scrolling, chart dragging,
   or filter typing, but one latest result must survive the interaction window.

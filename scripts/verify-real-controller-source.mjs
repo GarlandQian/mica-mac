@@ -908,13 +908,8 @@ assertExcludes(
   "Font.Design",
   "WorkbenchDataText must express monospaced text through MicaTheme data roles",
 );
-// Task 08-20: topology text moved to the system-pipeline label band, which
-// reads the font scale from the environment via micaThemeFont.
-assertIncludes(
-  workbenchSource,
-  "@Environment(\\.micaAppFontScale) private var fontScale",
-  "Topology label band must read the active font scale from the environment",
-);
+// Topology text stays in the system pipeline; micaThemeFont owns the resolved
+// application font-scale environment rather than duplicating scale math here.
 assertIncludes(
   workbenchSource,
   ".micaThemeFont(.label, weight: .semibold)",
@@ -922,8 +917,8 @@ assertIncludes(
 );
 assertIncludes(
   workbenchSource,
-  ".micaThemeFont(.label)",
-  "Topology node labels must use the scaled label role",
+  ".caption,\n                weight: emphasis == .highlighted ? .medium : nil",
+  "Topology node labels must use the scaled caption role with focus emphasis",
 );
 const appearanceRows = sourceSection(
   workbenchSource,
@@ -1469,36 +1464,51 @@ assertIncludes(overviewTopologyBaseBandSection, "colorMode: .linear", "Topology 
 assertIncludes(overviewTopologyBaseBandSection, "allowsMotion ? MicaTheme.Motion.stateChange : nil", "Topology highlight motion must be finite and gated on the resolved motion state");
 assertIncludes(overviewTopologyBaseBandSection, "value: snapshot.activeSelection", "Topology highlight must react to explicit interaction");
 assertExcludes(overviewTopologyView, "OverviewTopologyHighlightBand", "Topology selection highlight must render inside the single base canvas (task 08-20 R6)");
-// Task 08-23: flow ribbons carry muted column identity tints; controller-
-// reported status colors and the accent still win over the flow encoding.
-assertIncludes(overviewTopologyView, "OverviewTopologyProjection.columnTint(for:", "Topology edges, pills, and column ticks must resolve column identity tints (task 08-23 R1)");
+// Dense route-map correction: narrow centerlines retain muted column identity
+// tints; controller-reported status colors and the accent still win.
+const overviewTopologyEdgeDrawingSection = sourceSection(
+  overviewTopologyView,
+  "static func drawEdge(",
+  "/// A narrow route rail",
+);
+assertIncludes(overviewTopologyView, "OverviewTopologyProjection.columnTint(for:", "Topology edges, rails, and column ticks must resolve column identity tints");
 assertIncludes(overviewTopologyView, "uniqueKeysWithValues: layout.nodes.map", "Topology tint lookup must cover the FULL layout, never a band-local node slice - cross-band edges share bands without sharing nodes (task 08-23 F1)");
-assertIncludes(overviewTopologyView, "with: .linearGradient(", "Topology flow edges must render as source-to-target tint gradients (task 08-23 R2)");
-assertIncludes(overviewTopologyView, "ribbon.closeSubpath()", "Topology flow edges must render as closed sankey ribbons at their true flow width (task 08-23 R9)");
+assertIncludes(overviewTopologyEdgeDrawingSection, "with: .linearGradient(", "Topology flow edges must render as source-to-target tint gradients (task 08-23 R2)");
+assertIncludes(overviewTopologyEdgeDrawingSection, "context.stroke(", "Topology flow edges must render as bounded centerline strokes");
+assertIncludes(overviewTopology, "private static func routeCenterlinePath(", "Topology geometry must retain one cubic centerline path per edge");
+assertExcludes(overviewTopologyEdgeDrawingSection, "closeSubpath", "Topology edges must not restore rejected closed ribbon geometry");
+assertExcludes(overviewTopologyEdgeDrawingSection, "context.fill(", "Topology edges must not restore rejected filled flow bands");
 assertIncludes(overviewTopology, "minimumColumnStep: CGFloat = 168", "Topology must enforce a minimum column step so long chains never crush labels (task 08-23 R10)");
+assertIncludes(overviewTopology, "preferredMaximumColumnStep: CGFloat = 320", "Topology must cap ordinary wide-window column spacing");
 assertIncludes(overviewTopology, "enum OverviewTopologyViewportTargetResolver", "Topology selection reveal must resolve targets from existing geometry");
-assertExcludes(overviewTopologyView, "min(max(edge.width, 0.75), 2.5)", "Topology ribbons must not clamp edges to hairline stroke widths (task 08-23 R9)");
 assertIncludes(overviewTopologyView, "MicaTheme.edgeDimmed", "Topology dimmed edges must use the explicit alpha-baked mist token, never bare tertiary label alpha (task 08-23 R5)");
+assertIncludes(overviewTopologyView, "MicaTheme.accent.opacity(0.88)", "Topology active routes must own the foreground through the approved accent opacity");
+assertIncludes(overviewTopologyView, "status.color.opacity(0.52)", "Topology reported-status routes must remain below the active trajectory");
+assertIncludes(overviewTopologyView, "sourceTint.opacity(0.28)", "Topology background routes must stay in the content background layer");
 assertIncludes(overviewTopologyView, "columnHeaderHeight - 6", "Topology column identity ticks must sit directly under the titles (task 08-23 R4)");
 assertIncludes(designSystem, "enum ColumnTint", "MicaTheme must define the muted column identity tints (task 08-23 R1)");
 assertIncludes(overviewTopology, "barycenterKey(", "Topology columns after the first must sort by flow barycenter (task 08-23 R8)");
 assertIncludes(overviewTopology, "2 * max(centerX, 0)", "Topology title slices must cap at twice the distance to the band edges (task 08-23 R4)");
 assertExcludes(overviewTopologyView, "TimelineView", "Topology must not keep an idle clock alive");
 assertIncludes(overviewTopologyView, "private func minimumFlowHeight(for availableWidth: Int)", "Topology must scale its sparse-flow viewport with the available width");
-assertIncludes(overviewTopologyView, "return Int(min(max(scaledHeight, 680), 920).rounded())", "Topology must remain a primary 680-920 point surface when sparse");
-for (const sankeyScaleContract of [
+assertIncludes(overviewTopologyView, "OverviewTopologyResponsiveHeight.minimumFlowHeight(", "Topology must use its pure responsive-height projection");
+assertIncludes(overviewTopology, "max(availableWidth, 1) * 0.36, 480), 680", "Topology must remain a primary 480-680 point surface without sparse-flow inflation");
+for (const routeScaleContract of [
   "log10(Double(connectionCount) + 1) * 10",
-  "private static func sankeyRibbonPath(",
+  "static func nodeHeight(forConnectionCount",
+  "static func edgeWidth(forConnectionCount",
+  "return min(max(projected, 20), 30)",
+  "return min(max(projected, 1.5), 7)",
 ]) {
-  assertIncludes(overviewTopology, sankeyScaleContract, `Topology must retain count-faithful Sankey behavior through ${sankeyScaleContract}`);
+  assertIncludes(overviewTopology, routeScaleContract, `Topology must retain bounded count weighting through ${routeScaleContract}`);
 }
-for (const sankeyGeometryContract of [
-  "private static let sankeyNodeWidth: CGFloat = 20",
-  "private static let sankeyNodeGap: CGFloat = 8",
+for (const routeGeometryContract of [
+  "private static let routeNodeWidth: CGFloat = 12",
+  "private static let routeNodeGap: CGFloat = 8",
   "private static let nodeLabelGap: CGFloat = 8",
-  "private static let minimumReadableNodeHeight: CGFloat = 20",
+  "edgeAttachmentWeightByID[edge.id] = CGFloat(max(edge.connectionCount, 1))",
 ]) {
-  assertIncludes(overviewTopology, sankeyGeometryContract, `Topology must retain large-format geometry through ${sankeyGeometryContract}`);
+  assertIncludes(overviewTopology, routeGeometryContract, `Topology must retain bounded route geometry through ${routeGeometryContract}`);
 }
 assertExcludes(overviewTopologyView, "ScrollView([.horizontal, .vertical])", "Topology must not compete with Overview for vertical scrolling");
 assertIncludes(overviewTopologyView, "ForEach(layout.renderBands)", "Complete topology must render through stable vertical bands");
@@ -1515,6 +1525,10 @@ assertIncludes(overviewTopology, "func clearSelection()", "Topology interaction 
 assertIncludes(overviewTopology, "func movePathSelection(", "Topology interaction must support bounded path stepping");
 assertIncludes(overviewTopologyView, ".accessibilityAddTraits(isPinned ? .isSelected : [])", "Topology paths must expose pinned state to accessibility");
 assertIncludes(overviewTopologyView, "Text(verbatim: node.node.name)", "Topology labels must consume the complete reported node name");
+assertIncludes(overviewTopologyView, "case .standard:\n            MicaTheme.textSecondary", "Topology idle labels must use the secondary hierarchy");
+assertIncludes(overviewTopologyView, "case .dimmed:\n            MicaTheme.textTertiary", "Topology unrelated labels must recede under selection");
+assertIncludes(overviewTopologyView, "case .highlighted:\n            MicaTheme.accent", "Topology selected-path labels must use the accent hierarchy");
+assertIncludes(overviewTopologyView, "OverviewTopologyProjection.selectionDescription(", "Topology native hover help must include factual selection detail");
 assertIncludes(overviewTopologyView, "OverviewTopologyHeaderGeometry.clampedCenter(", "Topology column titles must clamp inside the band at any width (task 08-20 R4)");
 assertIncludes(overviewTopologyView, "OverviewTopologyHeaderGeometry.sliceWidth(", "Topology column titles must not overlap neighbor titles (task 08-20 R4)");
 assertIncludes(overviewTopologyView, "node.labelRect.midY - band.bounds.minY", "Topology labels must keep the geometry engine's fitted positions");

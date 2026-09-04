@@ -10,7 +10,9 @@
 
 ## Phase 0. Dependency And Baseline
 
-- [x] Resolve `08-23-overview-flow-ribbons` user light/dark visual acceptance or explicitly record that only its already-approved interaction follow-up is being inherited.
+- [x] Explicitly take over `08-23-overview-flow-ribbons` after its true-Sankey
+  visual failed real-data acceptance; inherit only its complete topology,
+  ordering, interaction, index, and long-chain viewport foundations.
 - [x] Confirm clean/understood git status and record the implementation rollback point.
 - [x] Run focused baseline tests for Workbench navigation/preferences/proxy workspace/overview performance/data projections.
 - [x] Capture an offline Release benchmark baseline only if the implementation will touch topology or high-cardinality projection hot paths.
@@ -294,6 +296,58 @@ post-fix authorized runtime AX repeat remains the open acceptance item.
 - [x] Commit the reopened accessibility fix, tests, verifier, task evidence, and durable spec correction (`ab240ae`).
 - [ ] After user visual acceptance, run `trellis-finish-work` to archive the child and record its work commits in the journal.
 - [ ] Mark parent Phase 5 complete only after user visual acceptance and final integrated validation.
+
+### Reopened Dense Topology Visual Correction (2026-09-04)
+
+- [x] Record the user-provided real-data screenshot and supersede the rejected
+  true-Sankey area-fill decision in PRD/design.
+- [x] Add bounded node/edge visual scales and dense-column layout that preserves
+  every real node, edge, path, count, order rule, and interaction identity.
+- [x] Replace closed filled bands with restrained weighted centerline strokes;
+  add selection-aware label hierarchy without glass, glow, cards, or a parallel
+  display mode.
+- [x] Add scale/layout/rendering/source-verifier regressions and run focused
+  topology/navigation/accessibility tests.
+- [x] Capture and assess two comparable offline Release reports with matching
+  fixtures/checksums/work units and record every repeated >10% movement.
+- [x] Dispatch an independent `trellis-check`, synchronize the durable Workbench
+  contract, and run the complete offline gate.
+- [ ] Commit the accepted correction in a scoped local commit; do not push
+  without a new user request.
+- [ ] Obtain the user's light/dark real-controller visual acceptance before
+  archiving this task or its `08-23` visual predecessor.
+
+Implementation evidence:
+
+- The layout now uses 20-to-30-point node rails, 1.5-to-7-point weighted
+  centerlines, 12-point visible rails with the retained 28-point acquisition
+  target, 8-point gaps, and 168-to-320-point column spacing. The requested flow
+  height is `availableWidth * 0.36`, clamped to 480-to-680 points; dense columns
+  may grow vertically to preserve every real node.
+- Edge attachment centers use normalized cumulative real connection counts
+  inside each bounded node. Existing barycenter ordering, complete topology
+  admission, render bands, hit/index/keyboard/accessibility/hover/pin/Inspector
+  behavior, and one opaque asynchronous Canvas remain intact. Closed ribbon
+  fill is rejected by focused tests and the source verifier.
+- Offline validation passed Debug Swift build, 31 focused Overview performance
+  tests, 15 Connection topology tests, 28 timeline/proxy regression tests, the
+  Workbench source verifier, localization JSON validation, `git diff --check`,
+  and the complete suite: 109 XCTest tests plus 414 Swift Testing tests with
+  zero failures. No Mica process was launched and no controller was contacted.
+- Independent `trellis-check` removed one dead layout projection and strengthened
+  the source verifier so its closed-ribbon rejection is scoped to `drawEdge`;
+  focused and full tests passed after the correction.
+- Comparable Release reports are
+  `tmp/codex/performance/topology-route-final-{1,2}/mica-performance.json`.
+  All 30 fixtures, checksums, and reported work units match the existing
+  `workbench-final-{1,2}` baselines, and no topology case regressed by more than
+  10% in both paired runs. The existing topology benchmark measures
+  `ConnectionTopologyBuilder.build`, not layout or Canvas rendering; layout
+  complexity remains guarded by focused 2,000-path operation-count,
+  cancellation, and render-band tests. Three unrelated benchmark cases
+  (rule search projection, Mihomo unchanged change-plan, and runtime connection
+  frame) exceeded 10% in both noisy paired runs; no out-of-scope source was
+  changed to tune those results.
 
 ## Final Planning Gate
 

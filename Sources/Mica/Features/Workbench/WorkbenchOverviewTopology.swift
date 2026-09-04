@@ -40,6 +40,12 @@ enum OverviewTopologyHeightReservation {
     }
 }
 
+enum OverviewTopologyResponsiveHeight {
+    static func minimumFlowHeight(forAvailableWidth availableWidth: CGFloat) -> CGFloat {
+        min(max(max(availableWidth, 1) * 0.36, 480), 680)
+    }
+}
+
 struct OverviewTopologyPresentation {
     let request: OverviewTopologyRequest
     let topology: ConnectionTopology
@@ -560,7 +566,6 @@ struct OverviewTopologyLayout: Sendable {
         let rect: CGRect
         let labelRect: CGRect
         let labelSide: LabelSide
-        let flowValue: CGFloat
         let hitRect: CGRect
         let drawingPath: Path
     }
@@ -864,27 +869,37 @@ enum OverviewTopologyViewportTargetResolver {
 }
 
 enum OverviewTopologyFlowScale {
-    /// Mirrors Zashboard's Sankey projection while retaining the real count for labels.
+    /// A logarithmic weight used only for deterministic flow ordering. Visible
+    /// geometry uses the independently bounded node and edge scales below.
     static func value(forConnectionCount connectionCount: Int) -> CGFloat {
         guard connectionCount > 0 else { return 0 }
         return CGFloat(log10(Double(connectionCount) + 1) * 10)
+    }
+
+    static func nodeHeight(forConnectionCount connectionCount: Int) -> CGFloat {
+        let projected = 18 + CGFloat(log10(Double(max(connectionCount, 0)) + 1) * 4)
+        return min(max(projected, 20), 30)
+    }
+
+    static func edgeWidth(forConnectionCount connectionCount: Int) -> CGFloat {
+        let projected = 1 + CGFloat(log10(Double(max(connectionCount, 0)) + 1) * 1.75)
+        return min(max(projected, 1.5), 7)
     }
 }
 
 enum OverviewTopologyLayoutBuilder {
     private static let edgeHitTolerance: CGFloat = 10
     private static let minimumNodeAcquisitionSize: CGFloat = 28
-    private static let sankeyNodeWidth: CGFloat = 20
+    private static let routeNodeWidth: CGFloat = 12
     /// Task 08-23 R10: long chains widen the graph past the panel instead of
     /// crushing labels into truncation; the viewport scrolls horizontally.
-    /// 168 leaves 132pt of label width (step - node width - 2x label gap).
+    /// A preferred ceiling prevents ordinary graphs from stretching across an
+    /// ultrawide window while the 168pt floor still protects long chains.
     private static let minimumColumnStep: CGFloat = 168
-    private static let sankeyNodeGap: CGFloat = 8
+    private static let preferredMaximumColumnStep: CGFloat = 320
+    private static let routeNodeGap: CGFloat = 8
     private static let nodeLabelGap: CGFloat = 8
-    private static let sankeyCurveness: CGFloat = 0.5
-    private static let minimumFlowPixelsPerUnit: CGFloat = 2.4
-    private static let minimumReadableNodeHeight: CGFloat = 20
-    private static let minimumFlowAreaHeight: CGFloat = 352
+    private static let routeCurveness: CGFloat = 0.5
     /// The graph always connects adjacent columns. Eight subdivisions keep the
     /// polyline approximation comfortably inside the pointer hit corridor and
     /// bound segment generation while avoiding one broad curve rectangle.
@@ -953,11 +968,11 @@ enum OverviewTopologyLayoutBuilder {
 
         var workCount = 0
         var edgeFlowByID: [String: CGFloat] = [:]
-        var incomingFlowByNodeID: [String: CGFloat] = [:]
-        var outgoingFlowByNodeID: [String: CGFloat] = [:]
+        var edgeAttachmentWeightByID: [String: CGFloat] = [:]
         var incomingEdgesByNodeID: [String: [ConnectionTopology.Edge]] = [:]
         var outgoingEdgesByNodeID: [String: [ConnectionTopology.Edge]] = [:]
         edgeFlowByID.reserveCapacity(topology.edges.count)
+        edgeAttachmentWeightByID.reserveCapacity(topology.edges.count)
         incomingEdgesByNodeID.reserveCapacity(topology.nodes.count)
         outgoingEdgesByNodeID.reserveCapacity(topology.nodes.count)
 
@@ -967,25 +982,9 @@ enum OverviewTopologyLayoutBuilder {
                 forConnectionCount: edge.connectionCount
             )
             edgeFlowByID[edge.id] = flow
-            incomingFlowByNodeID[edge.targetID, default: 0] += flow
-            outgoingFlowByNodeID[edge.sourceID, default: 0] += flow
+            edgeAttachmentWeightByID[edge.id] = CGFloat(max(edge.connectionCount, 1))
             incomingEdgesByNodeID[edge.targetID, default: []].append(edge)
             outgoingEdgesByNodeID[edge.sourceID, default: []].append(edge)
-        }
-
-        var nodeFlowByID: [String: CGFloat] = [:]
-        nodeFlowByID.reserveCapacity(topology.nodes.count)
-        for node in topology.nodes {
-            try await checkpoint(&workCount)
-            nodeFlowByID[node.id] = max(
-                max(
-                    incomingFlowByNodeID[node.id, default: 0],
-                    outgoingFlowByNodeID[node.id, default: 0]
-                ),
-                OverviewTopologyFlowScale.value(
-                    forConnectionCount: node.connectionCount
-                )
-            )
         }
 
         // Flow-following node order (task 08-23 R8): the first column keeps
@@ -999,7 +998,7 @@ enum OverviewTopologyLayoutBuilder {
         for (columnIndex, column) in topology.columns.enumerated() {
             let ordered: [ConnectionTopology.Node]
             if columnIndex == 0 {
-                ordered = column.nodes.sorted(by: sankeyNodeOrder)
+                ordered = column.nodes.sorted(by: routeNodeOrder)
             } else {
                 let barycenterKeys = Dictionary(
                     uniqueKeysWithValues: column.nodes.map { node in
@@ -1020,7 +1019,7 @@ enum OverviewTopologyLayoutBuilder {
                     if leftKey != rightKey {
                         return leftKey < rightKey
                     }
-                    return sankeyNodeOrder(left, right)
+                    return routeNodeOrder(left, right)
                 }
             }
             for (slot, node) in ordered.enumerated() {
@@ -1031,42 +1030,34 @@ enum OverviewTopologyLayoutBuilder {
 
         let columnPlans = topology.columns.enumerated().map { columnIndex, column in
             let orderedNodes = orderedColumns[columnIndex]
-            let totalFlow = orderedNodes.reduce(CGFloat.zero) { partial, node in
-                partial + max(
-                    nodeFlowByID[node.id, default: 0],
-                    OverviewTopologyFlowScale.value(forConnectionCount: 1)
+            let nodeHeight = orderedNodes.reduce(CGFloat.zero) { partial, node in
+                partial + OverviewTopologyFlowScale.nodeHeight(
+                    forConnectionCount: node.connectionCount
                 )
             }
-            let gaps = sankeyNodeGap * CGFloat(max(orderedNodes.count - 1, 0))
-            let minimumReadableScale = minimumReadableNodeHeight
-                / OverviewTopologyFlowScale.value(forConnectionCount: 1)
+            let gaps = routeNodeGap * CGFloat(max(orderedNodes.count - 1, 0))
             return ColumnPlan(
                 column: column,
                 nodes: orderedNodes,
-                totalFlow: totalFlow,
-                minimumHeight: totalFlow
-                    * max(minimumFlowPixelsPerUnit, minimumReadableScale)
-                    + gaps
+                requiredHeight: nodeHeight + gaps
             )
         }
         let flowAreaHeight = max(
-            max(minimumFlowAreaHeight, minimumFlowHeight),
-            columnPlans.map(\.minimumHeight).max() ?? 0
+            max(minimumFlowHeight, 0),
+            columnPlans.map(\.requiredHeight).max() ?? 0
         )
-        let valueScale = columnPlans.compactMap { plan -> CGFloat? in
-            guard plan.totalFlow > 0 else { return nil }
-            let gaps = sankeyNodeGap * CGFloat(max(plan.nodes.count - 1, 0))
-            return max(flowAreaHeight - gaps, 0) / plan.totalFlow
-        }.min() ?? minimumFlowPixelsPerUnit
         let graphHeight = topInset + flowAreaHeight + bottomInset
         let columnCount = max(columnPlans.count, 1)
-        let graphWidth = max(
-            fittedWidth,
-            sideInset * 2 + sankeyNodeWidth
-                + minimumColumnStep * CGFloat(max(columnCount - 1, 0))
-        )
+        let columnIntervalCount = CGFloat(max(columnCount - 1, 0))
+        let minimumGraphWidth = sideInset * 2 + routeNodeWidth
+            + minimumColumnStep * columnIntervalCount
+        let preferredGraphWidth = sideInset * 2 + routeNodeWidth
+            + preferredMaximumColumnStep * columnIntervalCount
+        let graphWidth = columnCount > 1
+            ? min(max(fittedWidth, minimumGraphWidth), preferredGraphWidth)
+            : fittedWidth
         let usableColumnSpan = max(
-            graphWidth - sideInset * 2 - sankeyNodeWidth,
+            graphWidth - sideInset * 2 - routeNodeWidth,
             0
         )
         let columnStep = columnCount > 1
@@ -1081,9 +1072,8 @@ enum OverviewTopologyLayoutBuilder {
         for (columnIndex, plan) in columnPlans.enumerated() {
             try await checkpoint(&workCount)
             let barX = sideInset + CGFloat(columnIndex) * columnStep
-            let centerX = barX + sankeyNodeWidth / 2
-            let columnHeight = plan.totalFlow * valueScale
-                + sankeyNodeGap * CGFloat(max(plan.nodes.count - 1, 0))
+            let centerX = barX + routeNodeWidth / 2
+            let columnHeight = plan.requiredHeight
             var nextY = topInset + max((flowAreaHeight - columnHeight) / 2, 0)
             columns.append(
                 OverviewTopologyLayout.ColumnGeometry(
@@ -1093,22 +1083,20 @@ enum OverviewTopologyLayoutBuilder {
             )
             for node in plan.nodes {
                 try await checkpoint(&workCount)
-                let flowValue = max(
-                    nodeFlowByID[node.id, default: 0],
-                    OverviewTopologyFlowScale.value(forConnectionCount: 1)
+                let nodeHeight = OverviewTopologyFlowScale.nodeHeight(
+                    forConnectionCount: node.connectionCount
                 )
-                let nodeHeight = max(flowValue * valueScale, 1)
                 let rect = CGRect(
                     x: barX,
                     y: nextY,
-                    width: sankeyNodeWidth,
+                    width: routeNodeWidth,
                     height: nodeHeight
                 )
                 let isTerminalColumn = columnIndex == columnPlans.count - 1
                 let labelWidth = columnPlans.count > 1
-                    ? max(columnStep - sankeyNodeWidth - nodeLabelGap * 2, 12)
+                    ? max(columnStep - routeNodeWidth - nodeLabelGap * 2, 12)
                     : max(
-                        graphWidth - sideInset * 2 - sankeyNodeWidth - nodeLabelGap,
+                        graphWidth - sideInset * 2 - routeNodeWidth - nodeLabelGap,
                         12
                     )
                 let labelHeight = max(min(nodeHeight, 28), 18)
@@ -1123,7 +1111,7 @@ enum OverviewTopologyLayoutBuilder {
                 let labelHitWidth = min(
                     labelWidth,
                     max(
-                        minimumNodeAcquisitionSize - sankeyNodeWidth,
+                        minimumNodeAcquisitionSize - routeNodeWidth,
                         min(CGFloat(node.name.count) * 7 + 10, 160)
                     )
                 )
@@ -1153,7 +1141,6 @@ enum OverviewTopologyLayoutBuilder {
                         rect: rect,
                         labelRect: labelRect,
                         labelSide: isTerminalColumn ? .trailing : .leading,
-                        flowValue: flowValue,
                         hitRect: hitRect,
                         drawingPath: Path(
                             roundedRect: rect,
@@ -1161,7 +1148,7 @@ enum OverviewTopologyLayoutBuilder {
                         )
                     )
                 )
-                nextY += nodeHeight + sankeyNodeGap
+                nextY += nodeHeight + routeNodeGap
             }
         }
 
@@ -1172,7 +1159,7 @@ enum OverviewTopologyLayoutBuilder {
         for node in nodes {
             try await checkpoint(&workCount)
             let outgoing = outgoingEdgesByNodeID[node.node.id, default: []].sorted {
-                sankeyEdgeOrder(
+                routeEdgeOrder(
                     $0,
                     $1,
                     counterpart: \.targetID,
@@ -1180,7 +1167,7 @@ enum OverviewTopologyLayoutBuilder {
                 )
             }
             let incoming = incomingEdgesByNodeID[node.node.id, default: []].sorted {
-                sankeyEdgeOrder(
+                routeEdgeOrder(
                     $0,
                     $1,
                     counterpart: \.sourceID,
@@ -1190,15 +1177,13 @@ enum OverviewTopologyLayoutBuilder {
             assignEdgeCenters(
                 outgoing,
                 in: node.rect,
-                edgeFlowByID: edgeFlowByID,
-                valueScale: valueScale,
+                edgeAttachmentWeightByID: edgeAttachmentWeightByID,
                 result: &sourceYByEdgeID
             )
             assignEdgeCenters(
                 incoming,
                 in: node.rect,
-                edgeFlowByID: edgeFlowByID,
-                valueScale: valueScale,
+                edgeAttachmentWeightByID: edgeAttachmentWeightByID,
                 result: &targetYByEdgeID
             )
         }
@@ -1211,7 +1196,9 @@ enum OverviewTopologyLayoutBuilder {
                   let targetRect = nodeRects[edge.targetID] else {
                 continue
             }
-            let width = max(edgeFlowByID[edge.id, default: 0] * valueScale, 1)
+            let width = OverviewTopologyFlowScale.edgeWidth(
+                forConnectionCount: edge.connectionCount
+            )
             let source = CGPoint(
                 x: sourceRect.maxX,
                 y: sourceYByEdgeID[edge.id, default: sourceRect.midY]
@@ -1221,15 +1208,14 @@ enum OverviewTopologyLayoutBuilder {
                 y: targetYByEdgeID[edge.id, default: targetRect.midY]
             )
             let edgeDistance = max(target.x - source.x, 0)
-            let controlOffset = edgeDistance * sankeyCurveness
+            let controlOffset = edgeDistance * routeCurveness
             let control1 = CGPoint(x: source.x + controlOffset, y: source.y)
             let control2 = CGPoint(x: target.x - controlOffset, y: target.y)
-            let drawingPath = sankeyRibbonPath(
+            let drawingPath = routeCenterlinePath(
                 source: source,
                 target: target,
                 control1: control1,
-                control2: control2,
-                width: width
+                control2: control2
             )
             let hitTolerance = max(edgeHitTolerance, width / 2 + 2)
             let hitSegments = edgeHitSegments(
@@ -1263,8 +1249,8 @@ enum OverviewTopologyLayoutBuilder {
         ] = [:]
         var hitIndexEntryCount = 0
         var edgeHitSegmentCount = 0
-        // Expanded node targets remain easy to acquire, but ribbons must win
-        // wherever invisible pointer padding overlaps the visible flow.
+        // Expanded node targets remain easy to acquire, but visible routes must
+        // win wherever invisible pointer padding overlaps a centerline.
         for node in nodes {
             try await checkpoint(&workCount)
             hitIndexEntryCount += index(
@@ -1331,11 +1317,10 @@ enum OverviewTopologyLayoutBuilder {
     private struct ColumnPlan {
         let column: ConnectionTopology.Column
         let nodes: [ConnectionTopology.Node]
-        let totalFlow: CGFloat
-        let minimumHeight: CGFloat
+        let requiredHeight: CGFloat
     }
 
-    private static func sankeyNodeOrder(
+    private static func routeNodeOrder(
         _ left: ConnectionTopology.Node,
         _ right: ConnectionTopology.Node
     ) -> Bool {
@@ -1366,7 +1351,7 @@ enum OverviewTopologyLayoutBuilder {
         return totalWeight > 0 ? weightedSum / totalWeight : .greatestFiniteMagnitude
     }
 
-    private static func sankeyEdgeOrder(
+    private static func routeEdgeOrder(
         _ left: ConnectionTopology.Edge,
         _ right: ConnectionTopology.Edge,
         counterpart: KeyPath<ConnectionTopology.Edge, String>,
@@ -1385,47 +1370,43 @@ enum OverviewTopologyLayoutBuilder {
     private static func assignEdgeCenters(
         _ edges: [ConnectionTopology.Edge],
         in nodeRect: CGRect,
-        edgeFlowByID: [String: CGFloat],
-        valueScale: CGFloat,
+        edgeAttachmentWeightByID: [String: CGFloat],
         result: inout [String: CGFloat]
     ) {
-        let totalWidth = edges.reduce(CGFloat.zero) { partial, edge in
-            partial + edgeFlowByID[edge.id, default: 0] * valueScale
+        let totalWeight = edges.reduce(CGFloat.zero) { partial, edge in
+            partial + edgeAttachmentWeightByID[edge.id, default: 0]
         }
-        var nextY = nodeRect.minY + max((nodeRect.height - totalWidth) / 2, 0)
+        guard totalWeight > 0 else { return }
+
+        var consumedWeight: CGFloat = 0
         for edge in edges {
-            let width = max(edgeFlowByID[edge.id, default: 0] * valueScale, 1)
-            result[edge.id] = nextY + width / 2
-            nextY += width
+            let weight = edgeAttachmentWeightByID[edge.id, default: 0]
+            let normalizedCenter = (consumedWeight + weight / 2) / totalWeight
+            let projectedCenter = nodeRect.minY + normalizedCenter * nodeRect.height
+            let halfWidth = OverviewTopologyFlowScale.edgeWidth(
+                forConnectionCount: edge.connectionCount
+            ) / 2
+            result[edge.id] = min(
+                max(projectedCenter, nodeRect.minY + halfWidth),
+                nodeRect.maxY - halfWidth
+            )
+            consumedWeight += weight
         }
     }
 
-    private static func sankeyRibbonPath(
+    private static func routeCenterlinePath(
         source: CGPoint,
         target: CGPoint,
         control1: CGPoint,
-        control2: CGPoint,
-        width: CGFloat
+        control2: CGPoint
     ) -> Path {
-        let halfWidth = width / 2
-        let sourceTop = CGPoint(x: source.x, y: source.y - halfWidth)
-        let targetTop = CGPoint(x: target.x, y: target.y - halfWidth)
-        let sourceBottom = CGPoint(x: source.x, y: source.y + halfWidth)
-        let targetBottom = CGPoint(x: target.x, y: target.y + halfWidth)
         var path = Path()
-        path.move(to: sourceTop)
+        path.move(to: source)
         path.addCurve(
-            to: targetTop,
-            control1: CGPoint(x: control1.x, y: control1.y - halfWidth),
-            control2: CGPoint(x: control2.x, y: control2.y - halfWidth)
+            to: target,
+            control1: control1,
+            control2: control2
         )
-        path.addLine(to: targetBottom)
-        path.addCurve(
-            to: sourceBottom,
-            control1: CGPoint(x: control2.x, y: control2.y + halfWidth),
-            control2: CGPoint(x: control1.x, y: control1.y + halfWidth)
-        )
-        path.closeSubpath()
         return path
     }
 
@@ -1467,7 +1448,7 @@ enum OverviewTopologyLayoutBuilder {
         }
 
         for edge in edges {
-            let drawingBounds = edge.drawingPath.boundingRect.insetBy(dx: -3, dy: -3)
+            let drawingBounds = edge.drawingPath.boundingRect.insetBy(dx: -5, dy: -5)
             for bandIndex in bandIndices(
                 intersecting: drawingBounds,
                 bandCount: bandCount

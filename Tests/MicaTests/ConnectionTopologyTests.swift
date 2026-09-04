@@ -548,12 +548,12 @@ struct ConnectionTopologyTests {
             availableWidth: 800
         )
         // 7 columns (source, rule, four hops, final) x minimum step 168:
-        // 20*2 insets + 20 node width + 168*6 = 1068 > 800 panel.
+        // 20*2 insets + 12 node width + 168*6 = 1060 > 800 panel.
         #expect(layout.columns.count == 7)
-        #expect(layout.size.width == 1068)
-        // Labels keep the full 168 - 20 node - 2x8 gap = 132pt slot.
+        #expect(layout.size.width == 1060)
+        // Labels keep the full 168 - 12 node - 2x8 gap = 140pt slot.
         for node in layout.nodes {
-            #expect(node.labelRect.width == 132)
+            #expect(node.labelRect.width == 140)
         }
         // A short chain still fits the panel exactly (no gratuitous scroll).
         let short = try await OverviewTopologyLayoutBuilder.buildCancellable(
