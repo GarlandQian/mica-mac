@@ -179,6 +179,141 @@ struct LiveSessionRuntimeTests {
         #expect(structuralConnections.closedRecords.map(\.snapshot.id) == [firstRows[1].id])
     }
 
+    @Test func decodedMetricOnlyFrameUsesIncrementalConnectionProjection() async throws {
+        let frames = try DecodedConnectionFrameFixture.make()
+        let runtime = makeRuntime(identity: makeIdentity())
+        let receivedAt = Date(timeIntervalSince1970: 1_700_310_000)
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: 10,
+                downloadTotal: 20,
+                memory: 30,
+                connections: frames.initial
+            ),
+            receivedAt: receivedAt
+        )
+        let first = try #require(
+            await runtime.publication(for: .connections, force: true)
+        )
+        guard case .connections(let firstConnections) = first.payload,
+              case .mihomo(let firstResponse) = firstConnections.source else {
+            Issue.record("Expected initial Mihomo connection publication")
+            return
+        }
+
+        var cache = WorkbenchConnectionProjectionCache()
+        cache.project(
+            activeConnections: firstResponse.connections,
+            closedConnections: [],
+            scope: .active,
+            structureRevision: firstConnections.revisions.structure,
+            metricsRevision: firstConnections.revisions.metrics,
+            closedRevision: 0,
+            query: "",
+            sortOrder: [],
+            language: .english,
+            change: .replacement
+        )
+        let initialStaticRows = cache.staticRowProjectionCount
+        let initialMetricCandidates = cache.metricsCandidateProjectionCount
+        let initialMetricRows = cache.metricsRowProjectionCount
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: 10,
+                downloadTotal: 20,
+                memory: 30,
+                connections: frames.metricUpdated
+            ),
+            receivedAt: receivedAt.addingTimeInterval(1)
+        )
+        let second = try #require(
+            await runtime.publication(for: .connections, force: true)
+        )
+        guard case .connections(let secondConnections) = second.payload,
+              case .mihomo(let secondResponse) = secondConnections.source else {
+            Issue.record("Expected updated Mihomo connection publication")
+            return
+        }
+
+        #expect(secondConnections.revisions.structure == firstConnections.revisions.structure)
+        #expect(secondConnections.revisions.metrics == firstConnections.revisions.metrics &+ 1)
+        #expect(secondConnections.revisions.traffic == firstConnections.revisions.traffic)
+        #expect(secondConnections.changedMetricIndices == [frames.changedIndex])
+
+        cache.project(
+            activeConnections: secondResponse.connections,
+            closedConnections: [],
+            scope: .active,
+            structureRevision: secondConnections.revisions.structure,
+            metricsRevision: secondConnections.revisions.metrics,
+            closedRevision: 0,
+            query: "",
+            sortOrder: [],
+            language: .english,
+            change: ConnectionsCatalogChange(
+                structureChanged: false,
+                metricsChanged: true,
+                changedMetricIndices: secondConnections.changedMetricIndices,
+                trafficChanged: false
+            )
+        )
+
+        #expect(cache.staticRowProjectionCount == initialStaticRows)
+        #expect(cache.metricsCandidateProjectionCount == initialMetricCandidates + 1)
+        #expect(cache.metricsRowProjectionCount == initialMetricRows + 1)
+        #expect(
+            cache.allRows[frames.changedIndex].connection.upload
+                == frames.metricUpdated[frames.changedIndex].upload
+        )
+    }
+
+    @Test func decodedAdditionalConnectionFieldChangeAdvancesRuntimeStructureRevision() async throws {
+        let frames = try DecodedConnectionFrameFixture.make()
+        let runtime = makeRuntime(identity: makeIdentity())
+        let receivedAt = Date(timeIntervalSince1970: 1_700_320_000)
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: 10,
+                downloadTotal: 20,
+                memory: 30,
+                connections: frames.initial
+            ),
+            receivedAt: receivedAt
+        )
+        let first = try #require(
+            await runtime.publication(for: .connections, force: true)
+        )
+        guard case .connections(let firstConnections) = first.payload else {
+            Issue.record("Expected initial connection publication")
+            return
+        }
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: 10,
+                downloadTotal: 20,
+                memory: 30,
+                connections: frames.additionalFieldUpdated
+            ),
+            receivedAt: receivedAt.addingTimeInterval(1)
+        )
+        let second = try #require(
+            await runtime.publication(for: .connections, force: true)
+        )
+        guard case .connections(let secondConnections) = second.payload else {
+            Issue.record("Expected updated connection publication")
+            return
+        }
+
+        #expect(secondConnections.revisions.structure == firstConnections.revisions.structure &+ 1)
+        #expect(secondConnections.revisions.metrics == firstConnections.revisions.metrics &+ 1)
+        #expect(secondConnections.revisions.traffic == firstConnections.revisions.traffic)
+        #expect(secondConnections.changedMetricIndices == nil)
+    }
+
     @Test func invalidationRejectsPendingAndFuturePublications() async {
         let runtime = makeRuntime(identity: makeIdentity())
         #expect(

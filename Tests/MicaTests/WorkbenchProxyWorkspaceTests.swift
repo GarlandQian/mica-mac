@@ -1034,6 +1034,181 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(result.inspectedMemberCount == 100)
     }
 
+    @Test func proxyAccessibilityIndexKeepsEveryPageGloballyBounded() {
+        for count in [0, 1, 32, 33, 2_000] {
+            let projection = ProxyGroupCatalogProjection(
+                catalog: PolicyGroupCatalogSnapshot(
+                    mode: "Rule",
+                    groups: (0..<count).map { index in
+                        Self.group(
+                            id: "Group \(index)",
+                            selected: "Node \(index)",
+                            options: ["Node \(index)"]
+                        )
+                    }
+                ),
+                visibility: .alwaysShow,
+                query: ""
+            )
+            let accessibilityIndex = ProxyAccessibilityIndex(
+                groups: projection.visibleGroups,
+                directoryItems: projection.visibleDirectoryItems,
+                openGroupIDs: [],
+                expandedGroups: [:]
+            )
+            var lowerBound = 0
+            var traversedIDs: [String] = []
+
+            while true {
+                let window = WorkbenchAccessibilityWindow.resolve(
+                    totalCount: accessibilityIndex.totalCount,
+                    preferredLowerBound: lowerBound
+                )
+                let elements = accessibilityIndex.elements(in: window.range)
+                #expect(elements.count <= WorkbenchAccessibilityWindow.capacity)
+                traversedIDs.append(contentsOf: elements.map(\.id))
+                guard let nextLowerBound = window.nextLowerBound else { break }
+                lowerBound = nextLowerBound
+            }
+
+            #expect(accessibilityIndex.totalCount == count)
+            #expect(traversedIDs == accessibilityIndex.orderedIDs)
+            #expect(Set(traversedIDs).count == count)
+        }
+    }
+
+    @Test func proxyAccessibilityIndexFlattensExpandedMembersIntoOneGlobalWindow() throws {
+        let projection = ProxyGroupCatalogProjection(
+            catalog: PolicyGroupCatalogSnapshot(
+                mode: "Rule",
+                groups: (0..<2).map { groupIndex in
+                    Self.group(
+                        id: "Group \(groupIndex)",
+                        selected: "Node \(groupIndex)-0",
+                        options: (0..<80).map { "Node \(groupIndex)-\($0)" }
+                    )
+                }
+            ),
+            visibility: .alwaysShow,
+            query: ""
+        )
+        let expandedGroups = Dictionary(
+            uniqueKeysWithValues: projection.visibleGroups.map { occurrence in
+                let index = ProxyProjection.activeGroupIndex(
+                    in: projection.arrangedGroups,
+                    groupID: occurrence.id
+                )
+                return (
+                    occurrence.id,
+                    ProxyActiveGroupProjection(index: index, query: "")
+                )
+            }
+        )
+        let openGroupIDs = projection.visibleGroups.map(\.id)
+        let accessibilityIndex = ProxyAccessibilityIndex(
+            groups: projection.visibleGroups,
+            directoryItems: projection.visibleDirectoryItems,
+            openGroupIDs: openGroupIDs,
+            expandedGroups: expandedGroups
+        )
+
+        #expect(accessibilityIndex.totalCount == 162)
+        #expect(
+            accessibilityIndex.orderedIDs.first
+                == ProxyAccessibilityIndex.groupElementID(openGroupIDs[0])
+        )
+        #expect(
+            accessibilityIndex.orderedIDs[81]
+                == ProxyAccessibilityIndex.groupElementID(openGroupIDs[1])
+        )
+
+        var lowerBound = 0
+        var traversedIDs: [String] = []
+        while true {
+            let window = WorkbenchAccessibilityWindow.resolve(
+                totalCount: accessibilityIndex.totalCount,
+                preferredLowerBound: lowerBound
+            )
+            let page = accessibilityIndex.elements(in: window.range)
+            #expect(page.count <= WorkbenchAccessibilityWindow.capacity)
+            traversedIDs.append(contentsOf: page.map(\.id))
+            guard let nextLowerBound = window.nextLowerBound else { break }
+            lowerBound = nextLowerBound
+        }
+
+        #expect(traversedIDs == accessibilityIndex.orderedIDs)
+        #expect(Set(traversedIDs).count == accessibilityIndex.totalCount)
+        #expect(try #require(accessibilityIndex.element(at: 0)).id == traversedIDs[0])
+        #expect(try #require(accessibilityIndex.element(at: 161)).id == traversedIDs[161])
+    }
+
+    @Test func proxyAccessibilityIndexRevealsSelectionAndClampsAfterCollapse() throws {
+        let projection = ProxyGroupCatalogProjection(
+            catalog: PolicyGroupCatalogSnapshot(
+                mode: "Rule",
+                groups: [
+                    Self.group(
+                        id: "Large",
+                        selected: "Node 0",
+                        options: (0..<70).map { "Node \($0)" }
+                    ),
+                ]
+            ),
+            visibility: .alwaysShow,
+            query: ""
+        )
+        let group = try #require(projection.visibleGroups.first)
+        let activeIndex = ProxyProjection.activeGroupIndex(
+            in: projection.arrangedGroups,
+            groupID: group.id
+        )
+        let expanded = ProxyActiveGroupProjection(index: activeIndex, query: "")
+        let selectedMemberID = try #require(expanded.members.last?.id)
+        let accessibilityIndex = ProxyAccessibilityIndex(
+            groups: projection.visibleGroups,
+            directoryItems: projection.visibleDirectoryItems,
+            openGroupIDs: [group.id],
+            expandedGroups: [group.id: expanded]
+        )
+        let selectedElementID = try #require(
+            accessibilityIndex.selectedElementID(
+                activeGroupID: group.id,
+                selectedMemberID: selectedMemberID
+            )
+        )
+        let selectedIndex = try #require(
+            accessibilityIndex.index(of: selectedElementID)
+        )
+        let selectedWindow = WorkbenchAccessibilityWindow.resolve(
+            totalCount: accessibilityIndex.totalCount,
+            revealing: selectedIndex
+        )
+
+        #expect(selectedIndex == 70)
+        #expect(selectedWindow.range.contains(selectedIndex))
+        #expect(selectedWindow.range.count <= WorkbenchAccessibilityWindow.capacity)
+
+        let collapsed = ProxyAccessibilityIndex(
+            groups: projection.visibleGroups,
+            directoryItems: projection.visibleDirectoryItems,
+            openGroupIDs: [],
+            expandedGroups: [group.id: expanded]
+        )
+        let clampedWindow = WorkbenchAccessibilityWindow.resolve(
+            totalCount: collapsed.totalCount,
+            preferredLowerBound: selectedWindow.lowerBound
+        )
+
+        #expect(collapsed.totalCount == 1)
+        #expect(clampedWindow.range == 0..<1)
+        #expect(
+            collapsed.selectedElementID(
+                activeGroupID: group.id,
+                selectedMemberID: selectedMemberID
+            ) == ProxyAccessibilityIndex.groupElementID(group.id)
+        )
+    }
+
     @Test func catalogUpdateClassifierDefersOnlyDisplayChanges() {
         let base = PolicyGroupCatalogSnapshot(
             mode: "Rule",

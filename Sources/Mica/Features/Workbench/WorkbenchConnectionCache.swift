@@ -395,6 +395,13 @@ struct WorkbenchConnectionProjectionCache {
         return allRows[index]
     }
 
+    func visibleIndex(id: String) -> Int? {
+        guard let rowIndex = rowIndexByID[id], allRows.indices.contains(rowIndex) else {
+            return nil
+        }
+        return visibleIndexBySourceIndex[allRows[rowIndex].sourceIndex]
+    }
+
     mutating func reset() {
         self = WorkbenchConnectionProjectionCache()
     }

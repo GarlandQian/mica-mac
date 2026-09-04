@@ -22,6 +22,7 @@ struct WorkbenchConnectionsView: View {
     @State private var metricSortCadence = WorkbenchConnectionMetricSortCadence()
     @State private var navigationDirectory = WorkbenchConnectionNavigationDirectory()
     @State private var isProjectionActive = false
+    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 1_080,
@@ -94,6 +95,7 @@ struct WorkbenchConnectionsView: View {
             isProjectionActive = true
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
             rebuildNavigationDirectory()
             consumeConnectionNavigation()
         }
@@ -107,8 +109,10 @@ struct WorkbenchConnectionsView: View {
             projectionCache.reset()
             metricSortCadence.cancel()
             scrollRequest = nil
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
             rebuildNavigationDirectory()
             consumeConnectionNavigation()
         }
@@ -117,17 +121,22 @@ struct WorkbenchConnectionsView: View {
             projectionCache.reset()
             metricSortCadence.cancel()
             scrollRequest = nil
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
             rebuildNavigationDirectory()
             consumeConnectionNavigation()
         }
         .onChange(of: appModel.connectionsCatalog.metricsRevision) {
             guard scope == .active else { return }
             rebuildRows(reconcileSelection: true)
+            if usesMetricAccessibilitySort {
+                reconcileAccessibilityWindow()
+            }
             consumeConnectionNavigation()
         }
-        .onChange(of: appModel.routingCatalog.rules) {
+        .onChange(of: appModel.rulesCatalog.rules) {
             rebuildNavigationDirectory()
         }
         .onChange(of: appModel.policyGroupCatalog) {
@@ -144,19 +153,24 @@ struct WorkbenchConnectionsView: View {
             closeIntent = nil
             persistScope()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
             consumeConnectionNavigation()
         }
         .onChange(of: searchText) {
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onChange(of: sortOrder) {
             persistSortOrder()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onChange(of: language) {
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onChange(of: selectedRowID) { _, selection in
+            reconcileAccessibilityWindow(revealing: selection)
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.connection(id: selection))
@@ -281,6 +295,24 @@ struct WorkbenchConnectionsView: View {
     private var connectionTable: some View {
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
+        let accessibilityWindow = WorkbenchAccessibilityWindow.resolve(
+            totalCount: rows.count,
+            preferredLowerBound: accessibilityCursor.lowerBound
+        )
+        let localization = MicaStrings.localizationContext(for: language)
+        let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
+            scope: WorkbenchTableAccessibilityScope(
+                controllerID: controllerID,
+                generation: generation
+            ),
+            title: localization.localizedKey("dashboard.tab_connections"),
+            sourceRows: rows,
+            window: accessibilityWindow,
+            selectedRowID: selectedRowID,
+            localization: localization,
+            sortOptions: accessibilitySortOptions,
+            summary: WorkbenchConnectionProjection.accessibilitySummary
+        )
         return WorkbenchDataTableViewport(
             generation: generation,
             restorationID: restoredScrollAnchorID,
@@ -315,7 +347,7 @@ struct WorkbenchConnectionsView: View {
                                 WorkbenchDataText(value: row.process)
                                 WorkbenchDataText(
                                     value: row.network,
-                                    style: .caption, design: .monospaced,
+                                    role: .dataCaption,
                                     tone: .secondary
                                 )
                             }
@@ -332,7 +364,7 @@ struct WorkbenchConnectionsView: View {
                                 WorkbenchDataText(value: row.rulePayloadText)
                                 WorkbenchDataText(
                                     value: row.route,
-                                    style: .caption,
+                                    role: .caption,
                                     tone: .secondary
                                 )
                             }
@@ -374,7 +406,7 @@ struct WorkbenchConnectionsView: View {
                         ) { row in
                             WorkbenchDataText(
                                 value: row.timestampText,
-                                style: .caption, design: .monospaced,
+                                role: .dataCaption,
                                 tone: .secondary
                             )
                         }
@@ -396,7 +428,7 @@ struct WorkbenchConnectionsView: View {
                                 WorkbenchDataText(value: row.processNetworkText)
                                 WorkbenchDataText(
                                     value: row.ruleRouteText,
-                                    style: .caption,
+                                    role: .caption,
                                     tone: .secondary
                                 )
                             }
@@ -466,6 +498,14 @@ struct WorkbenchConnectionsView: View {
                         language: language
                     )
                 )
+                .accessibilityHidden(true)
+                .overlay {
+                    WorkbenchTableAccessibilityHost(
+                        payload: accessibilityPayload,
+                        dispatch: dispatchAccessibilityIntent
+                    )
+                    .equatable()
+                }
             }
         }
         .task(id: metricSortCadence.pendingDeadline) {
@@ -514,7 +554,7 @@ struct WorkbenchConnectionsView: View {
             visibility: preferences.globalGroupVisibility
         )
         navigationDirectory = WorkbenchConnectionNavigationDirectory(
-            rules: appModel.routingCatalog.rules,
+            rules: appModel.rulesCatalog.rules,
             groups: visibleGroups
         )
     }
@@ -523,7 +563,10 @@ struct WorkbenchConnectionsView: View {
         guard let controllerID = appModel.selectedRouterID,
               let type = row.connection.rule?.dataNonEmpty,
               let payload = row.connection.rulePayload?.dataNonEmpty,
-              navigationDirectory.ruleTarget(type: type, payload: payload) != nil else {
+              let target = navigationDirectory.ruleTarget(
+                  type: type,
+                  payload: payload
+              ) else {
             return
         }
 
@@ -531,8 +574,10 @@ struct WorkbenchConnectionsView: View {
             WorkbenchRuleNavigationSelection(
                 controllerID: controllerID,
                 generation: appModel.controllerSessionPresentation.generation,
-                type: type,
-                payload: payload
+                sourceIndex: target.sourceIndex,
+                reportedRuleID: target.reportedRuleID,
+                type: target.type,
+                payload: target.payload
             )
         )
         destination = .rules
@@ -557,6 +602,7 @@ struct WorkbenchConnectionsView: View {
         guard isProjectionActive else { return }
         let previousRows = allRows
         let previousSelection = selectedRowID
+        let previousStaticProjectionCount = projectionCache.staticProjectionCount
         projectionCache.project(
             activeConnections: appModel.connectionsCatalog.connections,
             closedConnections: appModel.dashboardSessionControls.closedConnectionRecords,
@@ -584,6 +630,9 @@ struct WorkbenchConnectionsView: View {
                 nextVisibleRows: rows,
                 identityFamily: \.identityFamily
             )
+        }
+        if projectionCache.staticProjectionCount != previousStaticProjectionCount {
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
 
         closeIntent = closeIntent?.reconciled(
@@ -892,7 +941,16 @@ struct WorkbenchConnectionsView: View {
 
     private func finishDeferredMetricSort() {
         metricSortCadence.cancel()
-        projectionCache.commitDeferredMetricSort()
+        if projectionCache.commitDeferredMetricSort() {
+            reconcileAccessibilityWindow()
+        }
+    }
+
+    private var usesMetricAccessibilitySort: Bool {
+        sortOrder.contains {
+            $0.keyPath == \WorkbenchConnectionRow.upload
+                || $0.keyPath == \WorkbenchConnectionRow.download
+        }
     }
 
     private static func connectionSortOrder(
@@ -908,6 +966,75 @@ struct WorkbenchConnectionsView: View {
             default: return nil
             }
         }
+    }
+
+    private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
+        [
+            accessibilitySortOption("host", titleKey: "traffic.connection_host"),
+            accessibilitySortOption("process", titleKey: "traffic.connection_process"),
+            accessibilitySortOption("upload", titleKey: "dashboard.col_upload"),
+            accessibilitySortOption("download", titleKey: "dashboard.col_download"),
+        ]
+    }
+
+    private func accessibilitySortOption(
+        _ field: String,
+        titleKey: String
+    ) -> WorkbenchAccessibilitySortOption {
+        let stored = sortOrder
+            .compactMap(Self.connectionWorkspaceSort)
+            .first { $0.field == field }
+        return WorkbenchAccessibilitySortOption(
+            id: field,
+            title: MicaStrings.localizedKey(titleKey, language: language),
+            direction: stored.map { $0.ascending ? .ascending : .descending }
+        )
+    }
+
+    private func activateAccessibilitySort(_ field: String, ascending: Bool) {
+        sortOrder = Self.connectionSortOrder(from: [
+            WorkbenchWorkspaceSort(
+                field: field,
+                ascending: ascending
+            ),
+        ])
+    }
+
+    private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
+        let currentScope = WorkbenchTableAccessibilityScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        guard intent.scope == currentScope else { return }
+
+        switch intent {
+        case .selectRow(let id, _):
+            guard projectionCache.visibleIndex(id: id) != nil else { return }
+            selectedRowID = id
+        case .movePage(let lowerBound, _):
+            moveAccessibilityWindow(to: lowerBound)
+        case .setSort(let id, let ascending, _):
+            activateAccessibilitySort(id, ascending: ascending)
+        case .performNamedAction:
+            break
+        }
+    }
+
+    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
+        accessibilityCursor.reconcile(
+            totalCount: rows.count,
+            revealing: selectionID,
+            indexOf: projectionCache.visibleIndex(id:),
+            idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
+        )
+    }
+
+    private func moveAccessibilityWindow(to lowerBound: Int) {
+        accessibilityCursor.move(
+            to: lowerBound,
+            totalCount: rows.count,
+            idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
+        )
     }
 
     private static func connectionWorkspaceSort(

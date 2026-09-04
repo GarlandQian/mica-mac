@@ -32302,13 +32302,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Page %lld of %lld / %lld rows"
+            "value": "Page %lld of %lld / %lld items"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "第 %lld / %lld 页，共 %lld 行"
+            "value": "第 %lld / %lld 页，共 %lld 项"
           }
         }
       }
@@ -32326,6 +32326,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "上一页"
+          }
+        }
+      }
+    },
+    "traffic.range_label %lld %lld %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Items %lld-%lld of %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld-%lld 项，共 %lld 项"
           }
         }
       }

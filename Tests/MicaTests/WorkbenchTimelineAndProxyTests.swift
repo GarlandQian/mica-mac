@@ -892,7 +892,11 @@ struct WorkbenchTimelineAndProxyTests {
 
         #expect(anomalies.map(\.delay) == [1_200, 260])
         #expect(anomalies.map(\.nodeName) == ["Node C", "Node B"])
-        #expect(Set(anomalies.map(\.id)).count == anomalies.count)
+        #expect(anomalies.map(\.groupOccurrenceID) == [
+            ProxyGroupKey(groupID: "Slow", occurrence: 1).rawValue,
+            ProxyGroupKey(groupID: "Slow", occurrence: 0).rawValue,
+        ])
+        #expect(anomalies.map(\.id) == anomalies.map(\.groupOccurrenceID))
         #expect(groups.map(\.id) == ["Fast", "Slow", "Slow"])
 
         let rules = [
@@ -933,6 +937,12 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(summaries.map(\.label) == ["b.example", "a.example", "d.example"])
         #expect(summaries.map(\.hits) == [9, 2, 4] as [Int?])
         #expect(summaries.map(\.misses) == [3, 8, nil])
+        #expect(summaries.map(\.sourceIndex) == [1, 0, 3])
+        #expect(summaries.map(\.reportedRuleID) == ["b", "a", "d"])
+        #expect(summaries.map(\.type) == ["DOMAIN", "DOMAIN", "DOMAIN"])
+        #expect(summaries.map(\.payload) == [
+            "b.example", "a.example", "d.example",
+        ])
         #expect(rules.map(\.id) == ["a", "b", "c", "d"])
     }
 
@@ -1013,6 +1023,128 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(rendered.first == 0)
         #expect(rendered.last == 299)
         #expect(Set(rendered).isSubset(of: Set(samples)))
+    }
+
+    @Test func proxyNodePresentationEqualityKeepsReportedMetadataAndFallbackSemantics() {
+        let metadata: [String: MihomoJSONValue] = [
+            "controller-meta": .object([
+                "nested": .object([
+                    "enabled": .bool(true),
+                    "values": .array([.string("alpha"), .number(42), .null]),
+                ]),
+            ]),
+        ]
+        let first = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Node",
+                type: "VLESS",
+                alive: true,
+                history: [ProxyDelayHistorySnapshot(time: "one", delay: 20)],
+                fixed: "Node",
+                udp: true,
+                metadata: metadata
+            )
+        )
+        let equal = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Node",
+                type: "VLESS",
+                alive: true,
+                history: [ProxyDelayHistorySnapshot(time: "one", delay: 20)],
+                fixed: "Node",
+                udp: true,
+                metadata: metadata
+            )
+        )
+        let changedMetadata = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Node",
+                type: "VLESS",
+                alive: true,
+                history: [ProxyDelayHistorySnapshot(time: "one", delay: 20)],
+                fixed: "Node",
+                udp: true,
+                metadata: [
+                    "controller-meta": .object([
+                        "nested": .object([
+                            "enabled": .bool(false),
+                            "values": .array([.string("alpha"), .number(42), .null]),
+                        ]),
+                    ]),
+                ]
+            )
+        )
+        let changedKnownField = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Node",
+                type: "VLESS",
+                alive: nil,
+                history: [ProxyDelayHistorySnapshot(time: "one", delay: 20)],
+                fixed: "Node",
+                udp: true,
+                metadata: metadata
+            )
+        )
+        let changedHistory = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Node",
+                type: "VLESS",
+                alive: true,
+                history: [ProxyDelayHistorySnapshot(time: "two", delay: 21)],
+                fixed: "Node",
+                udp: true,
+                metadata: metadata
+            )
+        )
+        let changedTransport = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Node",
+                type: "VLESS",
+                alive: true,
+                history: [ProxyDelayHistorySnapshot(time: "one", delay: 20)],
+                fixed: "Node",
+                udp: false,
+                metadata: metadata
+            )
+        )
+
+        #expect(first == equal)
+        #expect(first != changedMetadata)
+        #expect(first != changedKnownField)
+        #expect(first != changedHistory)
+        #expect(first != changedTransport)
+
+        let positiveZero = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Zero",
+                type: "Direct",
+                metadata: ["value": .number(0)]
+            )
+        )
+        let negativeZero = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Zero",
+                type: "Direct",
+                metadata: ["value": .number(-0.0)]
+            )
+        )
+        let nonFinite = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "NaN",
+                type: "Direct",
+                metadata: ["value": .number(.nan)]
+            )
+        )
+        let sameNonFinite = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "NaN",
+                type: "Direct",
+                metadata: ["value": .number(.nan)]
+            )
+        )
+
+        #expect(positiveZero == negativeZero)
+        #expect(nonFinite != sameNonFinite)
     }
 
     @Test func overviewTopologyHitIndexUsesPointerSizedTargets() async throws {

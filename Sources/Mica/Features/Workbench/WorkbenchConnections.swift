@@ -269,6 +269,9 @@ enum WorkbenchConnectionProjection {
                     metadataFields, connectionFields,
                 ]
             )
+            let timestampText = item.closedAt.map {
+                WorkbenchDataFormat.receivedDateTime($0, language: language)
+            } ?? startedAt ?? unavailableText
 
             return WorkbenchConnectionRow(
                 id: identity.id,
@@ -289,9 +292,7 @@ enum WorkbenchConnectionProjection {
                 rulePayloadText: "\(rule) · \(payload)",
                 ruleRouteText: "\(rule) · \(route)",
                 stackedDetailText: "\(destination) · \(rule) · \(route)",
-                timestampText: item.closedAt.map {
-                    WorkbenchDataFormat.receivedDateTime($0, language: language)
-                } ?? startedAt ?? unavailableText,
+                timestampText: timestampText,
                 searchText: searchText,
                 metadataAdditionalFields: metadataAdditionalFields,
                 connectionAdditionalFields: connectionAdditionalFields,
@@ -347,6 +348,12 @@ enum WorkbenchConnectionProjection {
         )
         let reportedUpload = uploadText ?? unavailableText
         let reportedDownload = downloadText ?? unavailableText
+        let timestampText = row.closedAt.map {
+            WorkbenchDataFormat.receivedDateTime(
+                $0,
+                language: formatter.language
+            )
+        } ?? row.startedAt ?? unavailableText
 
         return WorkbenchConnectionRow(
             id: row.id,
@@ -367,12 +374,7 @@ enum WorkbenchConnectionProjection {
             rulePayloadText: row.rulePayloadText,
             ruleRouteText: row.ruleRouteText,
             stackedDetailText: row.stackedDetailText,
-            timestampText: row.closedAt.map {
-                WorkbenchDataFormat.receivedDateTime(
-                    $0,
-                    language: formatter.language
-                )
-            } ?? row.startedAt ?? unavailableText,
+            timestampText: timestampText,
             searchText: row.searchText,
             metadataAdditionalFields: row.metadataAdditionalFields,
             connectionAdditionalFields: row.connectionAdditionalFields,
@@ -387,6 +389,45 @@ enum WorkbenchConnectionProjection {
             uploadSummaryText: "↑ \(reportedUpload)",
             downloadSummaryText: "↓ \(reportedDownload)"
         )
+    }
+
+    static func accessibilitySummary(
+        for row: WorkbenchConnectionRow,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        let timestampTitleKey = row.closedAt == nil
+            ? "traffic.start_time"
+            : "traffic.log_received_time"
+        let uploadTitle = localization.localizedKey("dashboard.col_upload")
+        let downloadTitle = localization.localizedKey("dashboard.col_download")
+        return [
+            WorkbenchAccessibilitySummary.field(
+                "traffic.connection_host", value: row.host, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.connection_destination", value: row.destination, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.connection_process", value: row.process, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.connection_network", value: row.network, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_rule", value: row.rule, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_payload", value: row.payload, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_chain", value: row.route, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                timestampTitleKey, value: row.timestampText, localization: localization
+            ),
+            "\(uploadTitle): \(row.uploadDisplayText), \(row.uploadRateDisplayText)",
+            "\(downloadTitle): \(row.downloadDisplayText), \(row.downloadRateDisplayText)",
+        ].joined(separator: ", ")
     }
 
     static func visibleRows(
@@ -514,13 +555,20 @@ struct WorkbenchConnectionDecisionPathProjection: Equatable {
     }
 }
 
+struct WorkbenchConnectionRuleNavigationTarget: Equatable {
+    let sourceIndex: Int
+    let reportedRuleID: String
+    let type: String
+    let payload: String
+}
+
 struct WorkbenchConnectionNavigationDirectory: Equatable {
     private struct RuleKey: Hashable {
         let type: String
         let payload: String
     }
 
-    private var uniqueRules: [RuleKey: RuleViewState] = [:]
+    private var uniqueRules: [RuleKey: WorkbenchConnectionRuleNavigationTarget] = [:]
     private var visiblePolicyTargets: [String: ProxyGroupOccurrence] = [:]
     private(set) var visiblePolicyGroups: [ProxyGroupOccurrence] = []
 
@@ -530,7 +578,7 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
     ) {
         visiblePolicyGroups = groups
         var ambiguousRuleKeys: Set<RuleKey> = []
-        for rule in rules {
+        for (sourceIndex, rule) in rules.enumerated() {
             guard rule.type.dataNonEmpty != nil,
                   rule.payload.dataNonEmpty != nil else {
                 continue
@@ -540,7 +588,12 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
                 uniqueRules.removeValue(forKey: key)
                 ambiguousRuleKeys.insert(key)
             } else if !ambiguousRuleKeys.contains(key) {
-                uniqueRules[key] = rule
+                uniqueRules[key] = WorkbenchConnectionRuleNavigationTarget(
+                    sourceIndex: sourceIndex,
+                    reportedRuleID: rule.id,
+                    type: rule.type,
+                    payload: rule.payload
+                )
             }
         }
 
@@ -560,7 +613,10 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
         }
     }
 
-    func ruleTarget(type: String, payload: String) -> RuleViewState? {
+    func ruleTarget(
+        type: String,
+        payload: String
+    ) -> WorkbenchConnectionRuleNavigationTarget? {
         guard type.dataNonEmpty != nil, payload.dataNonEmpty != nil else {
             return nil
         }

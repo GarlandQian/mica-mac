@@ -12,6 +12,7 @@ and interaction boundaries.
 | [Component Guidelines](./component-guidelines.md) | Mica Ops primitives, projection boundaries, inspectors, and accessibility | Active |
 | [State Management](./state-management.md) | AppModel, window stores, session presentation, and publication ownership | Active |
 | [Live Session And Controller Transaction Contract](./live-session-controller-contract.md) | Session generation, refresh, stale data, capabilities, and editor transaction safety | Active |
+| [Live Command Scope Contract](./live-command-scope-contract.md) | Retained handler identity, stale-generation rejection, command ownership, and exact-target safety | Active |
 | [Workbench UI Contract](./workbench-ui-contract.md) | Navigation, design system, topology, data surfaces, preferences, and verification | Active |
 
 Read the contract that owns the change before editing a feature. Cross-cutting

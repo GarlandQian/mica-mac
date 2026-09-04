@@ -437,6 +437,7 @@ private struct OverviewSummaryColumn<Content: View>: View {
 
 private struct OverviewLatencyHighlightsSection: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
 
     let maximumCount: Int
     @Binding var destination: WorkbenchDestination
@@ -459,7 +460,7 @@ private struct OverviewLatencyHighlightsSection: View {
             } else {
                 ForEach(rows) { row in
                     Button {
-                        destination = .proxies
+                        openProxy(row)
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
@@ -486,10 +487,24 @@ private struct OverviewLatencyHighlightsSection: View {
             }
         }
     }
+
+    private func openProxy(_ row: OverviewLatencyAnomaly) {
+        guard let controllerID = appModel.selectedRouterID else { return }
+        workspaceStore.stageProxyNavigation(
+            WorkbenchProxyNavigationSelection(
+                controllerID: controllerID,
+                generation: appModel.controllerSessionPresentation.generation,
+                groupOccurrenceID: row.groupOccurrenceID,
+                nodeName: row.nodeName
+            )
+        )
+        destination = .proxies
+    }
 }
 
 private struct OverviewRuleHighlightsSection: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
 
     let maximumCount: Int
@@ -497,7 +512,7 @@ private struct OverviewRuleHighlightsSection: View {
 
     var body: some View {
         let rows = OverviewProjection.ruleHitSummary(
-            from: appModel.routingCatalog.rules,
+            from: appModel.rulesCatalog.rules,
             maximumCount: maximumCount
         )
 
@@ -507,7 +522,7 @@ private struct OverviewRuleHighlightsSection: View {
             } else {
                 ForEach(rows) { row in
                     Button {
-                        destination = .rules
+                        openRule(row)
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
@@ -547,35 +562,49 @@ private struct OverviewRuleHighlightsSection: View {
         let misses = row.misses?.formatted() ?? unavailableText
         return "\(hits) / \(misses)"
     }
+
+    private func openRule(_ row: OverviewRuleHitSummary) {
+        guard let controllerID = appModel.selectedRouterID else { return }
+        workspaceStore.stageRuleNavigation(
+            WorkbenchRuleNavigationSelection(
+                controllerID: controllerID,
+                generation: appModel.controllerSessionPresentation.generation,
+                sourceIndex: row.sourceIndex,
+                reportedRuleID: row.reportedRuleID,
+                type: row.type,
+                payload: row.payload
+            )
+        )
+        destination = .rules
+    }
 }
 
 private struct OverviewConnectionHighlightsSection: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
+    @State private var presentation: OverviewConnectionHighlightsPresentation?
 
     let maximumCount: Int
     @Binding var destination: WorkbenchDestination
 
     var body: some View {
-        let rows = OverviewProjection.topActiveConnections(
-            from: appModel.connectionsCatalog.connections,
-            maximumCount: maximumCount
-        )
+        let scope = OverviewConnectionHighlightsScope.observing(appModel)
+        let visiblePresentation = presentation?.visible(for: scope)
 
         OverviewSummaryColumn(
             titleKey: "overview.top_connections",
             systemImage: "arrow.up.right.circle"
         ) {
-            if rows.isEmpty {
+            if let visiblePresentation, visiblePresentation.rows.isEmpty {
                 OverviewInlineState(
                     titleKey: "overview.top_connections_empty",
                     detailKey: "overview.connections_unavailable_detail"
                 )
-            } else {
-                ForEach(rows) { row in
+            } else if let visiblePresentation {
+                ForEach(visiblePresentation.rows) { row in
                     Button {
-                        openConnection(row)
+                        openConnection(row, scope: visiblePresentation.scope)
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                             VStack(alignment: .leading, spacing: 1) {
@@ -602,7 +631,21 @@ private struct OverviewConnectionHighlightsSection: View {
                     .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
                     .accessibilityLabel("\(row.label.overviewNonBlank ?? unavailableText), \(row.totalTraffic.map(OverviewFormat.bytes) ?? unavailableText)")
                 }
+            } else {
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    ProgressView().controlSize(.small)
+                    Text(MicaStrings.localizedKey("overview.current_data", language: language))
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
             }
+        }
+        .background {
+            OverviewConnectionHighlightsLoader(
+                maximumCount: maximumCount,
+                presentation: $presentation
+            )
         }
     }
 
@@ -610,18 +653,130 @@ private struct OverviewConnectionHighlightsSection: View {
         MicaStrings.localizedKey("overview.config_not_reported", language: language)
     }
 
-    private func openConnection(_ connection: OverviewActiveConnection) {
-        if let controllerID = appModel.selectedRouterID {
-            workspaceStore.stageConnectionNavigation(
-                WorkbenchConnectionNavigationSelection(
-                    controllerID: controllerID,
-                    generation: appModel.controllerSessionPresentation.generation,
-                    sourceIndex: connection.sourceIndex,
-                    reportedConnectionID: connection.connectionID
-                )
-            )
+    private func openConnection(
+        _ connection: OverviewActiveConnection,
+        scope: OverviewConnectionHighlightsScope
+    ) {
+        guard let selection = scope.navigationSelection(
+            for: connection,
+            currentScope: OverviewConnectionHighlightsScope.observing(appModel)
+        ) else {
+            return
         }
+        workspaceStore.stageConnectionNavigation(selection)
         destination = .connections
+    }
+}
+
+private struct OverviewConnectionHighlightsLoader: View {
+    @Environment(AppModel.self) private var appModel
+
+    let maximumCount: Int
+    @Binding var presentation: OverviewConnectionHighlightsPresentation?
+
+    var body: some View {
+        let request = OverviewConnectionHighlightsRequest.observing(
+            appModel,
+            maximumCount: maximumCount
+        )
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .task(id: request) {
+                await rebuildPresentation(for: request)
+            }
+    }
+
+    @MainActor
+    private func rebuildPresentation(
+        for request: OverviewConnectionHighlightsRequest
+    ) async {
+        await Task.yield()
+        guard !Task.isCancelled,
+              OverviewConnectionHighlightsRequest.observing(
+                  appModel,
+                  maximumCount: maximumCount
+              ) == request else {
+            return
+        }
+        let connections = appModel.connectionsCatalog.connections
+        let rows: [OverviewActiveConnection]
+        do {
+            rows = try await OverviewProjection.topActiveConnectionsCancellable(
+                from: connections,
+                maximumCount: request.maximumCount
+            )
+        } catch {
+            return
+        }
+        guard !Task.isCancelled,
+              OverviewConnectionHighlightsRequest.observing(
+                  appModel,
+                  maximumCount: maximumCount
+              ) == request else {
+            return
+        }
+        let nextPresentation = OverviewConnectionHighlightsPresentation(
+            scope: request.scope,
+            rows: rows
+        )
+        guard presentation != nextPresentation else { return }
+        presentation = nextPresentation
+    }
+}
+
+struct OverviewConnectionHighlightsScope: Equatable, Sendable {
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+
+    @MainActor
+    static func observing(_ appModel: AppModel) -> Self {
+        Self(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+    }
+
+    func navigationSelection(
+        for connection: OverviewActiveConnection,
+        currentScope: Self
+    ) -> WorkbenchConnectionNavigationSelection? {
+        guard self == currentScope, let controllerID else { return nil }
+        return WorkbenchConnectionNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            sourceIndex: connection.sourceIndex,
+            reportedConnectionID: connection.connectionID
+        )
+    }
+}
+
+struct OverviewConnectionHighlightsRequest: Equatable, Sendable {
+    let scope: OverviewConnectionHighlightsScope
+    let metricsRevision: UInt64
+    let maximumCount: Int
+
+    @MainActor
+    static func observing(
+        _ appModel: AppModel,
+        maximumCount: Int
+    ) -> Self {
+        Self(
+            scope: OverviewConnectionHighlightsScope.observing(appModel),
+            metricsRevision: appModel.connectionsMetricsRevision,
+            maximumCount: maximumCount
+        )
+    }
+}
+
+struct OverviewConnectionHighlightsPresentation: Equatable, Sendable {
+    let scope: OverviewConnectionHighlightsScope
+    let rows: [OverviewActiveConnection]
+
+    func visible(
+        for currentScope: OverviewConnectionHighlightsScope
+    ) -> Self? {
+        scope == currentScope ? self : nil
     }
 }
 

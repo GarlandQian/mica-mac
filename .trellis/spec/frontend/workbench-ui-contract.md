@@ -992,6 +992,191 @@ row.searchText.localizedCaseInsensitiveContains(query)
 WorkbenchDataSearch.contains(query, in: row.searchText)
 ```
 
+## Scenario: Bounded Accessibility For High-Cardinality Surfaces
+
+### 1. Scope / Trigger
+
+Apply this scenario when Connections, Logs, Rules, Sources, Proxies, or
+Overview topology exposes controller-reported collections through macOS
+accessibility. The complete collection remains reachable, but a single
+accessibility subtree must not cause AppKit to materialize every native
+`Table` row, proxy member, or topology path at once.
+
+### 2. Signatures
+
+- `WorkbenchAccessibilityWindow.capacity == 32`
+- `WorkbenchAccessibilityWindow.resolve(totalCount:preferredLowerBound:revealing:)`
+- `WorkbenchAccessibilityWindowCursor.reconcile(totalCount:revealing:followsNewest:indexOf:idAt:)`
+- `WorkbenchAccessibilityWindowCursor.applyPrefixDelta(totalCount:droppedCount:followsNewest:idAt:)`
+- `WorkbenchTableAccessibilityScope(controllerID:generation:)`
+- `WorkbenchTableAccessibilityPayload.materialize(scope:title:sourceRows:window:selectedRowID:localization:sortOptions:summary:namedAction:)`
+- `WorkbenchTableAccessibilityHost(payload:dispatch:)`
+- `ProxyBoundedAccessibilityCatalog`
+- `MicaStrings.LocalizationContext`
+- `MicaStrings.localizationContext(for:)`
+- `OverviewTopologyIndex.accessibilityWindow(preferredLowerBound:revealing:)`
+- `OverviewTopologyIndex.accessibilityPolicyNodeWindow(preferredLowerBound:revealing:)`
+
+### 3. Contracts
+
+- Connections, Logs, Rules, and Sources retain exactly one visual native
+  `Table` containing the complete filtered/sorted rows. Hide only that native
+  AppKit accessibility subtree, then place one detached
+  `WorkbenchTableAccessibilityHost` in a non-hit-testing overlay. The host owns
+  the `.accessibilityRepresentation`; do not attach a replacement directly to
+  the native `Table`, because AppKit may still walk and materialize offscreen
+  hosted cells before SwiftUI substitutes the representation.
+- Before constructing the detached host, materialize one pure,
+  `Equatable`/`Sendable` `WorkbenchTableAccessibilityPayload` from only
+  `sourceRows[window.range]`. It contains resolved strings, sort controls,
+  optional named actions, and a controller/generation scope; it contains no
+  business row models, `@Environment`, `AppModel`, lazy container, or callback.
+  Host equality uses only this payload, never dispatcher closure identity.
+- Each window exposes at most 32 rows plus localized page/range metadata and
+  Previous/Next commands. Repeated traversal reaches every filtered row exactly
+  once in current presentation order. Shrink, filter, controller, and generation
+  changes clamp or reset the window without creating mock rows.
+- Row summaries and named-action availability are resolved only while
+  materializing the bounded payload. The accessibility `ForEach` consumes the
+  resulting pure values. A high-cardinality row model must not cache a complete
+  localized accessibility summary, because Connections publishes metrics at
+  2 Hz and Logs publishes deltas at 5 Hz.
+- The bounded Table resolves one immutable, `Sendable`
+  `MicaStrings.LocalizationContext` per body evaluation and passes it to only
+  the active row summaries. Do not resolve `AppLanguage.systemLocale` per field
+  and do not add a global system-language cache. An explicit language change or
+  later `.system` body evaluation creates a fresh context through the existing
+  localization authority.
+- Selection remains the row's default action and opens the existing inspector.
+  Connections, Rules, and Sources mirror their native sortable fields and
+  directions. Rules exposes its existing capability/busy-gated mutation only as
+  a named action; it is never the default action. Sources keeps update and
+  health commands on their existing command surfaces.
+- Connections uses the projection cache's ID-to-visible-index lookup when a
+  metric sort can reorder rows. Metric frames that cannot change order do not
+  scan or copy the complete ID list. Deferred metric sorting reconciles once
+  after the sorted presentation commits.
+- Logs keeps Follow Newest on the final window. Moving to an older window turns
+  Follow Newest off. Append/drop publications adjust a retained anchor through
+  prefix-delta counts; they do not copy or scan the complete visible ID order.
+  A non-prefix replacement falls back to exact reconciliation.
+- Overview pre-indexes policy nodes and path IDs with the topology structure.
+  Policy nodes and paths each expose one independent 32-item window. Only a
+  pinned node/path reveals another window; transient hover never pages the
+  accessibility tree. Expanded visual path rows are accessibility-hidden so the
+  bounded representation is the only path subtree.
+- Proxies flattens source-ordered groups plus expanded members into one indexed
+  global window and instantiates only the active slice. Selection, group
+  toggle, Locate Current, group test, fixed-selection clear, member selection,
+  and member test callbacks carry the AX tree's captured controller/generation.
+  The page validates that scope before any workspace mutation or remote command.
+- Visual rows, controller order, optionality, complete inspector fields,
+  navigation identity, and remote-action gates remain unchanged. Accessibility
+  pagination is presentation state only and never contacts a controller.
+
+### 4. Validation & Error Matrix
+
+| Input or change | Required result |
+| --- | --- |
+| 0, 1, 31, or 32 items | One bounded window; no unavailable index |
+| 33 or 2,000 items | Every item reachable through Previous/Next; no window exceeds 32 |
+| Selected row outside current window | Reveal its exact stable presentation ID |
+| Duplicate or blank reported ID | Reveal the occurrence-specific stable ID, never first-match raw ID |
+| Collection shrinks below current page | Clamp to the last valid window |
+| Controller/generation changes | Reset cursor and discard the old anchor |
+| Connection metric frame without metric sorting | No complete ID copy/scan and no page movement |
+| Connection metric sort commits | Resolve the retained anchor through the indexed visible position |
+| Log prefix drops and appends | Shift the retained anchor by visible dropped count in constant time |
+| User pages to older logs | Disable Follow Newest and keep that page across later deltas |
+| Rule mutation is unsupported or busy | Omit the named mutation action; selection remains available |
+| Table or Proxy AX intent has an old controller/generation | Reject before selection, workspace, operation marker, task, or transport mutation |
+| Overview hover changes | No accessibility page movement |
+| Overview pinned node/path changes | Reveal the indexed node/path window |
+| App language changes | Rebuild with one new resolved context; row values remain controller-reported |
+
+### 5. Good/Base/Bad Cases
+
+- Good: an AX query on 2,000 live Connections creates at most 32 row summaries,
+  keeps native visual sorting/selection, and traverses the remaining rows by
+  page commands without raising steady CPU.
+- Base: 30 policy nodes and 2,000 topology paths expose one node window and one
+  path window; a pinned path reveals its page while metrics-only frames keep the
+  page stable.
+- Base: expanded Proxies expose one source-ordered 32-item global window; local
+  navigation and remote actions remain available only to its captured session.
+- Bad: relying on native `Table` AX virtualization, wrapping all rows in a
+  `LazyVStack`, passing business rows or environment state into the detached
+  host, precomputing localized summaries for every row, scanning all IDs on each
+  publication, accepting an old AX callback, or paging Overview on hover.
+
+### 6. Tests Required
+
+- `WorkbenchDataProjectionTests`: 0/1/31/32/33/2,000 bounds, complete forward
+  and backward traversal, shrink/reset, selection reveal, duplicate/blank stable
+  identity, indexed connection reorder, Follow Newest exit, prefix-delta anchor,
+  filtered visible-drop counts, and replacement fallback.
+- `WorkbenchOverviewPerformanceTests`: 2,000-path traversal, metrics-only page
+  stability, at least 96 unique policy nodes, complete node traversal, and pinned
+  node/path reveal.
+- `WorkbenchProxyWorkspaceTests`: globally bounded group/member traversal,
+  source-order flattening, selection reveal, collapse clamping, and stale
+  controller/generation rejection before workspace effects.
+- `XCStringsResolverTests`: resolved-context lookup equivalence, English and
+  Simplified Chinese switching, and missing-key fallback.
+- `verify-real-controller-source.mjs`: one native Table per data browser,
+  hidden native AX, one detached/equatable payload host, bounded pure-value
+  materialization, localized controls, sort and named-action preservation, no
+  cached full-row AX summaries, no nested Table/List, scoped Proxy callbacks,
+  and no unbounded Overview accessibility groups.
+- Run the full offline Swift suite. Framework-level confirmation that
+  the detached host prevents AppKit from walking the hidden native Table AX
+  subtree requires an explicitly authorized read-only runtime AX smoke; it must
+  not invoke Test, Refresh, Update, Close, or another controller command.
+
+### 7. Wrong vs Correct
+
+```swift
+// Wrong: replacement on the Table can still trigger native offscreen cells.
+Table(rows) { /* visual columns */ }
+    .accessibilityRepresentation {
+        LegacyBoundedReplacement(rows: rows[window.range])
+    }
+
+// Correct: complete visual Table plus a detached pure-value AX host.
+let payload = WorkbenchTableAccessibilityPayload.materialize(
+    scope: scope,
+    title: title,
+    sourceRows: rows,
+    window: window,
+    selectedRowID: selectedRowID,
+    localization: localization,
+    summary: accessibilitySummary
+)
+
+Table(rows) { /* visual columns */ }
+    .accessibilityHidden(true)
+    .overlay {
+        WorkbenchTableAccessibilityHost(
+            payload: payload,
+            dispatch: dispatchAccessibilityIntent
+        )
+        .equatable()
+    }
+```
+
+```swift
+// Wrong: a 5 Hz log delta scans/copies every visible identity.
+cursor.reconcile(orderedIDs: rows.map(\.id))
+
+// Correct: an append/prefix-drop delta shifts the retained anchor directly.
+cursor.applyPrefixDelta(
+    totalCount: rows.count,
+    droppedCount: droppedVisibleCount,
+    followsNewest: followNewest,
+    idAt: visibleID(at:)
+)
+```
+
 ## Performance Boundaries
 
 - Workbench views do not observe `AppModel.controllerSession` directly. They
@@ -1008,6 +1193,14 @@ WorkbenchDataSearch.contains(query, in: row.searchText)
   summaries, and grouped network facts are separate invalidation subtrees. A
   traffic sample rebuilds telemetry only; a policy catalog change may rebuild
   its inspection index but cannot rebuild topology structure or layout.
+- `OverviewTopologyCatalogRequest.observing(_:)` reads only selected controller
+  ID, presentation generation, and `connectionsStructureRevision`.
+  `OverviewConnectionHighlightsRequest.observing(_:maximumCount:)` reads only
+  its session scope and `connectionsMetricsRevision`. Each `.task(id:)` yields,
+  rechecks the complete request, and only then captures
+  `connectionsCatalog.connections` for cancellable projection. Never read the
+  complete catalog while constructing either request: Observation tracks a
+  stored aggregate property, not the equality of the nested revision value.
 - The Overview vertical scroll uses lazy construction. Optional modules are
   filtered before subtree construction and hidden modules perform no work.
   Telemetry and topology are always constructed in fixed order; there is no row

@@ -63,6 +63,19 @@ struct ProxyOperationActivity: Equatable {
             || clearingFixedGroupID != nil
             || measuringDelayNode != nil
     }
+
+    func isSwitching(groupID: String) -> Bool {
+        switchingGroupID == groupID || switchingSurgePolicyGroup == groupID
+    }
+
+    func isTesting(groupID: String) -> Bool {
+        measuringDelayGroupID == groupID || testingSurgePolicyGroup == groupID
+    }
+
+    func isMeasuring(groupID: String, nodeName: String) -> Bool {
+        measuringDelayNode?.groupID == groupID
+            && measuringDelayNode?.nodeName == nodeName
+    }
 }
 
 struct ProxyLatencyScale: Equatable {
@@ -560,6 +573,194 @@ struct ProxyActiveGroupProjection: Equatable {
     ) {
         self.occurrence = occurrence
         self.members = members
+    }
+}
+
+struct ProxyAccessibilityIndex: Equatable {
+    struct GroupElement: Identifiable, Equatable {
+        let occurrence: ProxyGroupOccurrence
+        let item: ProxyGroupDirectoryItem
+        let isExpanded: Bool
+
+        var id: String {
+            ProxyAccessibilityIndex.groupElementID(occurrence.id)
+        }
+    }
+
+    struct MemberElement: Identifiable, Equatable {
+        let groupOccurrenceID: String
+        let groupName: String
+        let groupSelectable: Bool
+        let member: ProxyNodeRowProjection
+
+        var id: String {
+            ProxyProjection.revealTargetID(
+                groupID: groupOccurrenceID,
+                memberID: member.id
+            )
+        }
+    }
+
+    enum Element: Identifiable, Equatable {
+        case group(GroupElement)
+        case member(MemberElement)
+
+        var id: String {
+            switch self {
+            case .group(let group): group.id
+            case .member(let member): member.id
+            }
+        }
+    }
+
+    private struct GroupRecord: Equatable {
+        let occurrence: ProxyGroupOccurrence
+        let item: ProxyGroupDirectoryItem
+        let isExpanded: Bool
+        let members: [ProxyNodeRowProjection]
+        let lowerBound: Int
+
+        var upperBound: Int {
+            lowerBound + 1 + members.count
+        }
+    }
+
+    static let empty = ProxyAccessibilityIndex(
+        groups: [],
+        directoryItems: [],
+        openGroupIDs: [],
+        expandedGroups: [:]
+    )
+
+    private let groups: [GroupRecord]
+    let orderedIDs: [String]
+    private let positionsByID: [String: Int]
+
+    var totalCount: Int { orderedIDs.count }
+
+    init(
+        groups: [ProxyGroupOccurrence],
+        directoryItems: [ProxyGroupDirectoryItem],
+        openGroupIDs: [String],
+        expandedGroups: [String: ProxyActiveGroupProjection]
+    ) {
+        let itemsByID = Dictionary(
+            uniqueKeysWithValues: directoryItems.map { ($0.id, $0) }
+        )
+        let openIDs = Set(openGroupIDs)
+        var records: [GroupRecord] = []
+        records.reserveCapacity(groups.count)
+        var orderedIDs: [String] = []
+        var positionsByID: [String: Int] = [:]
+
+        for occurrence in groups {
+            guard let item = itemsByID[occurrence.id] else { continue }
+            let isExpanded = openIDs.contains(occurrence.id)
+            let members = isExpanded
+                ? expandedGroups[occurrence.id]?.members ?? []
+                : []
+            let lowerBound = orderedIDs.count
+            let groupID = Self.groupElementID(occurrence.id)
+            orderedIDs.append(groupID)
+            positionsByID[groupID] = lowerBound
+
+            for member in members {
+                let memberID = ProxyProjection.revealTargetID(
+                    groupID: occurrence.id,
+                    memberID: member.id
+                )
+                positionsByID[memberID] = orderedIDs.count
+                orderedIDs.append(memberID)
+            }
+
+            records.append(
+                GroupRecord(
+                    occurrence: occurrence,
+                    item: item,
+                    isExpanded: isExpanded,
+                    members: members,
+                    lowerBound: lowerBound
+                )
+            )
+        }
+
+        self.groups = records
+        self.orderedIDs = orderedIDs
+        self.positionsByID = positionsByID
+    }
+
+    func elements(in range: Range<Int>) -> [Element] {
+        range.compactMap(element(at:))
+    }
+
+    func element(at index: Int) -> Element? {
+        guard orderedIDs.indices.contains(index) else { return nil }
+        var lower = 0
+        var upper = groups.count
+
+        while lower < upper {
+            let middle = lower + ((upper - lower) / 2)
+            let group = groups[middle]
+            if index < group.lowerBound {
+                upper = middle
+            } else if index >= group.upperBound {
+                lower = middle + 1
+            } else if index == group.lowerBound {
+                return .group(
+                    GroupElement(
+                        occurrence: group.occurrence,
+                        item: group.item,
+                        isExpanded: group.isExpanded
+                    )
+                )
+            } else {
+                let memberIndex = index - group.lowerBound - 1
+                guard group.members.indices.contains(memberIndex) else {
+                    return nil
+                }
+                return .member(
+                    MemberElement(
+                        groupOccurrenceID: group.occurrence.id,
+                        groupName: group.item.groupID,
+                        groupSelectable: group.item.selectable,
+                        member: group.members[memberIndex]
+                    )
+                )
+            }
+        }
+
+        return nil
+    }
+
+    func index(of elementID: String) -> Int? {
+        positionsByID[elementID]
+    }
+
+    func id(at index: Int) -> String? {
+        orderedIDs.indices.contains(index) ? orderedIDs[index] : nil
+    }
+
+    func selectedElementID(
+        activeGroupID: String?,
+        selectedMemberID: String?
+    ) -> String? {
+        guard let activeGroupID else { return nil }
+        if let selectedMemberID {
+            let memberID = ProxyProjection.revealTargetID(
+                groupID: activeGroupID,
+                memberID: selectedMemberID
+            )
+            if positionsByID[memberID] != nil {
+                return memberID
+            }
+        }
+
+        let groupID = Self.groupElementID(activeGroupID)
+        return positionsByID[groupID] == nil ? nil : groupID
+    }
+
+    static func groupElementID(_ groupID: String) -> String {
+        "proxy-group:\(groupID.utf8.count):\(groupID)"
     }
 }
 

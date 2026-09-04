@@ -20,6 +20,7 @@ struct WorkbenchRulesView: View {
     @State private var scrollRequest: WorkbenchDataScrollRequest?
     @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
     @State private var isProjectionActive = false
+    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 980,
@@ -56,7 +57,7 @@ struct WorkbenchRulesView: View {
                    selected.rule.payload == payload {
                     return selected
                 }
-                return WorkbenchRuleNavigationResolver.resolve(
+                return WorkbenchRuleInspectorResolver.resolve(
                     type: type,
                     payload: payload,
                     in: cache.allRows
@@ -79,6 +80,7 @@ struct WorkbenchRulesView: View {
         .onChange(of: appModel.selectedRouterID) {
             projectionCache.reset()
             scrollRequest = nil
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true, update: .source)
             consumeRuleNavigation()
@@ -86,15 +88,16 @@ struct WorkbenchRulesView: View {
         .onChange(of: appModel.controllerSessionPresentation.generation) {
             projectionCache.reset()
             scrollRequest = nil
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true, update: .source)
             consumeRuleNavigation()
         }
-        .onChange(of: appModel.routingCatalog.rules) {
+        .onChange(of: appModel.rulesCatalog.rules) {
             rebuildRows(reconcileSelection: true, update: .source)
             consumeRuleNavigation()
         }
-        .onChange(of: appModel.connectionsCatalog.structureRevision) {
+        .onChange(of: appModel.connectionsStructureRevision) {
             rebuildRows(reconcileSelection: true, update: .connectionStructure)
         }
         .onChange(of: searchText) {
@@ -110,6 +113,7 @@ struct WorkbenchRulesView: View {
             consumeRuleNavigation()
         }
         .onChange(of: selectedRowID) { _, selection in
+            reconcileAccessibilityWindow(revealing: selection)
             persistSelection(selection)
             if let selection, let row = projectionCache.row(id: selection) {
                 workspaceStore.selectInspector(
@@ -200,6 +204,27 @@ struct WorkbenchRulesView: View {
     private var ruleTable: some View {
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
+        let accessibilityWindow = WorkbenchAccessibilityWindow.resolve(
+            totalCount: rows.count,
+            preferredLowerBound: accessibilityCursor.lowerBound
+        )
+        let localization = MicaStrings.localizationContext(for: language)
+        let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
+            scope: WorkbenchTableAccessibilityScope(
+                controllerID: controllerID,
+                generation: generation
+            ),
+            title: localization.localizedKey("dashboard.tab_rules"),
+            sourceRows: rows,
+            window: accessibilityWindow,
+            selectedRowID: selectedRowID,
+            localization: localization,
+            sortOptions: accessibilitySortOptions,
+            summary: WorkbenchRuleProjection.accessibilitySummary,
+            namedAction: { row in
+                accessibilityNamedAction(for: row, localization: localization)
+            }
+        )
         return WorkbenchDataTableViewport(
             generation: generation,
             restorationID: restoredScrollAnchorID,
@@ -239,8 +264,7 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             WorkbenchDataText(
                                 value: row.definitionTitleText,
-                                style: .callout,
-                                design: .monospaced
+                                role: .dataLabel
                             )
                         }
                         .width(min: 240, ideal: 420)
@@ -251,7 +275,7 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             WorkbenchDataText(
                                 value: row.targetText,
-                                style: .callout,
+                                role: .label,
                                 weight: .medium
                             )
                         }
@@ -300,6 +324,14 @@ struct WorkbenchRulesView: View {
                         language: language
                     )
                 )
+                .accessibilityHidden(true)
+                .overlay {
+                    WorkbenchTableAccessibilityHost(
+                        payload: accessibilityPayload,
+                        dispatch: dispatchAccessibilityIntent
+                    )
+                    .equatable()
+                }
             }
         }
     }
@@ -326,9 +358,8 @@ struct WorkbenchRulesView: View {
 
             WorkbenchDataText(
                 value: row.typeText,
-                style: .caption,
-                weight: .semibold,
-                design: .monospaced
+                role: .dataCaption,
+                weight: .semibold
             )
         }
         .frame(
@@ -400,7 +431,7 @@ struct WorkbenchRulesView: View {
             VStack(alignment: .trailing, spacing: 1) {
                 WorkbenchDataText(
                     value: row.targetText,
-                    style: .caption,
+                    role: .caption,
                     alignment: .trailing
                 )
 
@@ -461,6 +492,10 @@ struct WorkbenchRulesView: View {
 
     @ViewBuilder
     private func ruleAction(_ row: WorkbenchRuleRow) -> some View {
+        let commandScope = LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
         if appModel.updatingRuleID == row.rule.id {
             ProgressView()
                 .controlSize(.small)
@@ -471,7 +506,12 @@ struct WorkbenchRulesView: View {
                 systemImage: row.rule.disabled == true ? "play.circle" : "pause.circle",
                 isEnabled: canMutate(row)
             ) {
-                appModel.setRuleDisabled(row.rule, disabled: !(row.rule.disabled ?? false))
+                guard let commandScope else { return }
+                appModel.setRuleDisabled(
+                    row.rule,
+                    disabled: !(row.rule.disabled ?? false),
+                    scope: commandScope
+                )
             }
         }
     }
@@ -496,11 +536,11 @@ struct WorkbenchRulesView: View {
         let previousSelection = selectedRowID
         projectionCache.project(
             update: update,
-            rules: appModel.routingCatalog.rules,
+            rules: appModel.rulesCatalog.rules,
             connections: appModel.connectionsCatalog.connections,
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation,
-            structureRevision: appModel.connectionsCatalog.structureRevision,
+            structureRevision: appModel.connectionsStructureRevision,
             query: searchText,
             sortOrder: sortOrder,
             language: language,
@@ -515,6 +555,7 @@ struct WorkbenchRulesView: View {
                 identityFamily: \.identityFamily
             )
         }
+        reconcileAccessibilityWindow(revealing: selectedRowID)
     }
 
     private var state: WorkbenchDataState {
@@ -666,11 +707,10 @@ struct WorkbenchRulesView: View {
             destination: .rules
         )
         guard let pending = workspace.pendingRuleSelection,
-              pending.controllerID == controllerID,
-              pending.generation == generation,
               let row = WorkbenchRuleNavigationResolver.resolve(
-                  type: pending.type,
-                  payload: pending.payload,
+                  pending,
+                  controllerID: controllerID,
+                  generation: generation,
                   in: allRows
               ) else {
             return
@@ -710,6 +750,107 @@ struct WorkbenchRulesView: View {
         }
     }
 
+    private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
+        [
+            accessibilitySortOption("index", titleKey: "dashboard.col_index"),
+            accessibilitySortOption("type", titleKey: "dashboard.col_type"),
+            accessibilitySortOption("payload", titleKey: "dashboard.col_payload"),
+            accessibilitySortOption("proxy", titleKey: "dashboard.col_proxy"),
+            accessibilitySortOption("activeConnections", titleKey: "dashboard.active_sessions"),
+            accessibilitySortOption("hitCount", titleKey: "traffic.rule_hits"),
+        ]
+    }
+
+    private func accessibilitySortOption(
+        _ field: String,
+        titleKey: String
+    ) -> WorkbenchAccessibilitySortOption {
+        let stored = sortOrder
+            .compactMap(Self.ruleWorkspaceSort)
+            .first { $0.field == field }
+        return WorkbenchAccessibilitySortOption(
+            id: field,
+            title: MicaStrings.localizedKey(titleKey, language: language),
+            direction: stored.map { $0.ascending ? .ascending : .descending }
+        )
+    }
+
+    private func activateAccessibilitySort(_ field: String, ascending: Bool) {
+        sortOrder = Self.ruleSortOrder(from: [
+            WorkbenchWorkspaceSort(
+                field: field,
+                ascending: ascending
+            ),
+        ])
+    }
+
+    private func accessibilityNamedAction(
+        for row: WorkbenchRuleRow,
+        localization: MicaStrings.LocalizationContext
+    ) -> WorkbenchAccessibilityNamedAction? {
+        WorkbenchRuleAccessibilityMutationResolver.namedAction(
+            for: row,
+            title: localization.localizedKey("action.set_rule_state"),
+            updatingRuleID: appModel.updatingRuleID,
+            canRefresh: appModel.canRefreshSelectedRouter,
+            isBusy: appModel.isBusy,
+            supportsMutation: appModel.supportsUnifiedAction(.setRuleDisabled)
+        )
+    }
+
+    private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
+        let currentScope = WorkbenchTableAccessibilityScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        guard intent.scope == currentScope else { return }
+
+        switch intent {
+        case .selectRow(let id, _):
+            guard projectionCache.visibleRows.contains(where: { $0.id == id }) else { return }
+            selectedRowID = id
+        case .movePage(let lowerBound, _):
+            moveAccessibilityWindow(to: lowerBound)
+        case .setSort(let id, let ascending, _):
+            activateAccessibilitySort(id, ascending: ascending)
+        case .performNamedAction:
+            guard let rule = WorkbenchRuleAccessibilityMutationResolver.resolve(
+                intent: intent,
+                currentScope: currentScope,
+                rows: projectionCache.visibleRows,
+                updatingRuleID: appModel.updatingRuleID,
+                canRefresh: appModel.canRefreshSelectedRouter,
+                isBusy: appModel.isBusy,
+                supportsMutation: appModel.supportsUnifiedAction(.setRuleDisabled)
+            ) else {
+                return
+            }
+            guard let commandScope = LiveCommandScope(
+                controllerID: intent.scope.controllerID,
+                generation: intent.scope.generation
+            ) else { return }
+            appModel.setRuleDisabled(
+                rule,
+                disabled: !(rule.disabled ?? false),
+                scope: commandScope
+            )
+        }
+    }
+
+    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
+        accessibilityCursor.reconcile(
+            orderedIDs: rows.map(\.id),
+            revealing: selectionID
+        )
+    }
+
+    private func moveAccessibilityWindow(to lowerBound: Int) {
+        accessibilityCursor.move(
+            to: lowerBound,
+            orderedIDs: rows.map(\.id)
+        )
+    }
+
     private static func ruleWorkspaceSort(
         _ comparator: KeyPathComparator<WorkbenchRuleRow>
     ) -> WorkbenchWorkspaceSort? {
@@ -741,5 +882,69 @@ struct WorkbenchRulesView: View {
 
     private var rows: [WorkbenchRuleRow] {
         projectionCache.visibleRows
+    }
+}
+
+enum WorkbenchRuleAccessibilityMutationResolver {
+    static let actionID = "rule.set-disabled"
+
+    static func namedAction(
+        for row: WorkbenchRuleRow,
+        title: String,
+        updatingRuleID: String?,
+        canRefresh: Bool,
+        isBusy: Bool,
+        supportsMutation: Bool
+    ) -> WorkbenchAccessibilityNamedAction? {
+        guard isAvailable(
+            row,
+            updatingRuleID: updatingRuleID,
+            canRefresh: canRefresh,
+            isBusy: isBusy,
+            supportsMutation: supportsMutation
+        ) else {
+            return nil
+        }
+        return WorkbenchAccessibilityNamedAction(id: actionID, title: title)
+    }
+
+    static func resolve(
+        intent: WorkbenchTableAccessibilityIntent,
+        currentScope: WorkbenchTableAccessibilityScope,
+        rows: [WorkbenchRuleRow],
+        updatingRuleID: String?,
+        canRefresh: Bool,
+        isBusy: Bool,
+        supportsMutation: Bool
+    ) -> RuleViewState? {
+        guard case .performNamedAction(let rowID, let actionID, let scope) = intent,
+              scope == currentScope,
+              actionID == Self.actionID,
+              let row = rows.first(where: { $0.id == rowID }),
+              isAvailable(
+                  row,
+                  updatingRuleID: updatingRuleID,
+                  canRefresh: canRefresh,
+                  isBusy: isBusy,
+                  supportsMutation: supportsMutation
+              ) else {
+            return nil
+        }
+        return row.rule
+    }
+
+    static func isAvailable(
+        _ row: WorkbenchRuleRow,
+        updatingRuleID: String?,
+        canRefresh: Bool,
+        isBusy: Bool,
+        supportsMutation: Bool
+    ) -> Bool {
+        row.rule.hasMutableExtra
+            && row.rule.index != nil
+            && updatingRuleID != row.rule.id
+            && canRefresh
+            && !isBusy
+            && supportsMutation
     }
 }

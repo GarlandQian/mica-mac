@@ -1,6 +1,14 @@
 import Foundation
 
 extension AppModel {
+    var hasPublishedBaseSnapshot: Bool {
+        controllerMetadata.versionLabel != "-"
+            || !policyGroupCatalog.groups.isEmpty
+            || !connectionsCatalog.connections.isEmpty
+            || connectionsCatalog.traffic.upload > 0
+            || connectionsCatalog.traffic.download > 0
+    }
+
     var endpointCheckSteps: [EndpointCheckStep] {
         let session = selectedTrialSession
         let testStatus = latestCommandStatus(.test, in: session)
@@ -10,7 +18,7 @@ extension AppModel {
         let closeStatus = latestCommandStatus(.closeConnection, in: session) ?? latestCommandStatus(.closeAll, in: session)
         let hasRouter = selectedRouter != nil
         let isSurge = selectedRouter.map { runtimeControllerKind(for: $0) == .surgeCompatible } ?? false
-        let hasBaseSnapshot = isSurge ? !surgeSnapshot.isEmpty : dashboard.hasBaseSnapshot
+        let hasBaseSnapshot = isSurge ? !surgeSnapshot.isEmpty : hasPublishedBaseSnapshot
         let enhancedReady = isSurge ? !surgeSnapshot.isEmpty : (rulesSnapshotState == .available && providersSnapshotState == .available)
         let proxiesCapability = isSurge ? (!surgeSnapshot.policyGroups.isEmpty ? CapabilityStatus.supported : CapabilityStatus.untested) : capabilityStatus(for: .proxies)
         let connectionsCapability = isSurge ? (!surgeSnapshot.isEmpty ? CapabilityStatus.supported : CapabilityStatus.untested) : capabilityStatus(for: .connections)
@@ -94,7 +102,7 @@ extension AppModel {
         let delayStatus = latestCommandStatus(.testDelay, in: session)
         let diagnosticsStatus = latestCommandStatus(.diagnosticsCopy, in: session)
         let isSurge = selectedRouter.map { runtimeControllerKind(for: $0) == .surgeCompatible } ?? false
-        let hasBaseSnapshot = isSurge ? !surgeSnapshot.isEmpty : dashboard.hasBaseSnapshot
+        let hasBaseSnapshot = isSurge ? !surgeSnapshot.isEmpty : hasPublishedBaseSnapshot
         let enhancedReady = isSurge ? !surgeSnapshot.isEmpty : (rulesSnapshotState == .available && providersSnapshotState == .available)
         let diagnosticsCopied = diagnosticsStatus == .success || lastDiagnosticsCopyTarget != nil
 

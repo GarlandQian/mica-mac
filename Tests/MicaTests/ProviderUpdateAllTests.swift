@@ -33,7 +33,7 @@ struct ProviderUpdateAllTests {
         #expect(session.lastCommandAction == .providerUpdateAll)
         #expect(session.lastCommandStatus == .partial)
 
-        let refreshedProxy = model.routingCatalog.providers.first { $0.name == "Proxy Remote" }
+        let refreshedProxy = model.providersCatalog.providers.first { $0.name == "Proxy Remote" }
         #expect(refreshedProxy?.testURL == "https://probe.example.test/generate_204")
         #expect(refreshedProxy?.subscriptionInfo == .object(["remaining": .number(2048)]))
     }

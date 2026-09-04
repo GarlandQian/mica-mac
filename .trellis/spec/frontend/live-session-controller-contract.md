@@ -87,6 +87,11 @@ var canTogglePresentationPause: Bool
   flights. Manual and periodic requests join the same flight, reserve at most
   one latest follow-up, retry iteratively, and cancel on generation invalidation.
   Do not restore recursive retry or a second view-owned refresh loop.
+- Public user Refresh owns `selectedRouterRefreshOperationID` plus its task and
+  visible busy state. A repeated user Refresh rejects without cancelling or
+  replacing that owner. Internal immediate refresh requests may join the same
+  lane coordinator, but they never claim, clear, or impersonate the public
+  owner; completion clears markers only when its owner token still matches.
 - Mihomo WebSocket receive failures are normalized to `MihomoClientError.connectionFailure` before retry classification. Traffic, logs, memory, and connections share one live retry reservation; concurrent channel failures cannot cancel and replace the pending retry or advance the backoff multiple times.
 - A Mihomo producer captures the installed `LiveSessionRuntime` and includes
   that reference in failure handling. A callback from a replaced runtime is
@@ -129,6 +134,16 @@ var canTogglePresentationPause: Bool
 - Connection structure, metrics, and aggregate traffic use independent
   revisions. Rate/counter-only frames must not rebuild static connection rows,
   close groups, rules, providers, or topology structure.
+- Rules and providers publish through separate `RulesCatalogSnapshot` and
+  `ProvidersCatalogSnapshot` properties/domains. A successful endpoint refresh
+  invalidates only the catalog it owns; neither endpoint may recreate a combined
+  routing catalog or overwrite another pending domain.
+- `connectionsStructureRevision` and `connectionsMetricsRevision` are
+  independently observable AppModel scalar tokens. Publish the complete
+  `ConnectionsCatalogSnapshot` first, then advance only the token whose
+  semantic domain changed. Equality/change-plan evaluation happens before
+  publication and before any high-cardinality projection; an unchanged frame
+  advances freshness/baseline state without replacing observable catalogs.
 - `ConnectionsCatalogSnapshot.traffic` preserves the controller connection
   aggregate (for Mihomo/sing-box this can be cumulative totals). It is not the
   authoritative live rate. Rate-labelled UI consumes the latest received
@@ -160,7 +175,11 @@ var canTogglePresentationPause: Bool
   source-order occurrence. Duplicate-count changes or counter resets preserve
   a controller-reported speed, otherwise they return unavailable rather than
   borrowing another occurrence's counter.
-- Test stays available while paused. Refresh/reload/provider-update commands are disabled while paused. Menu, toolbar, Actions, Rules, and Sources consume the same capability rules.
+- Test is a controller reachability operation rather than a live mutation. It
+  stays available after first/later connection failure and while presentation is
+  paused; a duplicate Test preserves the active owner task/token. Refresh,
+  reload, and provider-update commands are disabled while paused. Menu, toolbar,
+  Actions, Rules, and Sources consume the same capability rules.
 - Closing the final main window or sleeping invalidates the generation. App deactivation and minimization do not. Settings-only state cannot issue selected-session commands.
 - Profile save/delete persist before observable mutation. Storage failure keeps profiles, credentials, selection, and the active generation unchanged.
 - Profile load, save, delete, reorder, and `lastConnectedAt` persistence share
@@ -177,6 +196,14 @@ var canTogglePresentationPause: Bool
   capability inside AppModel immediately before creating its task/client.
   Disabled or hidden UI is presentation defense only; stale clicks, controller
   switches, reconnects, and direct dispatcher calls must not start transport.
+  Persistent or delayed handlers additionally follow the
+  [Live Command Scope Contract](./live-command-scope-contract.md).
+- Each command family has one owner task/marker. A duplicate or competing
+  intent rejects without cancelling that owner, and an older cancelled task
+  cannot clear a newer token. Entity commands resolve one exact current rule,
+  connection occurrence, group, member, or provider immediately before any
+  optimistic mutation or transport; raw IDs, stale indexes, and historical
+  objects are not sufficient mutation targets.
 
 ## 4. Validation & Error Matrix
 

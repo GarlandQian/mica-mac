@@ -50,6 +50,31 @@ typealias ProviderSnapshotOperation = @Sendable (
     _ credential: String?
 ) async -> AppModel.ProviderSnapshotResults
 
+typealias MihomoRuleDisableOperation = @Sendable (
+    _ profile: RouterProfile,
+    _ credential: String?,
+    _ index: Int,
+    _ disabled: Bool
+) async throws -> RulesResponse
+
+typealias SelectedRouterTestOperation = @Sendable (
+    _ profile: RouterProfile,
+    _ credential: String?,
+    _ resolvedKind: ControllerKind
+) async throws -> Void
+
+typealias ImmediateSessionRefreshLaneOperation = @MainActor @Sendable (
+    _ lane: SessionRefreshLane,
+    _ profile: RouterProfile,
+    _ generation: UUID,
+    _ manual: Bool
+) async -> Void
+
+typealias ManualRefreshStreamRestartOperation = @MainActor @Sendable (
+    _ profile: RouterProfile,
+    _ generation: UUID
+) -> Void
+
 typealias MihomoConnectionCloseOperation = @Sendable (
     _ profile: RouterProfile,
     _ credential: String?,
@@ -66,13 +91,24 @@ typealias MihomoConnectionsSnapshotOperation = @Sendable (
     _ credential: String?
 ) async throws -> ConnectionsResponse
 
+typealias MihomoConfigUpdateOperation = @Sendable (
+    _ profile: RouterProfile,
+    _ credential: String?,
+    _ patch: MihomoConfigPatch
+) async throws -> Void
+
+typealias MihomoConfigSnapshotOperation = @Sendable (
+    _ profile: RouterProfile,
+    _ credential: String?
+) async throws -> ConfigResponse
+
 @MainActor
 @Observable
 final class AppModel {
     var routers: [RouterProfile]
     var selectedRouterID: RouterProfile.ID?
     var connectionState: ConnectionState
-    var dashboard: DashboardSnapshot
+    @ObservationIgnored var dashboard: DashboardSnapshot
     var controllerMetadata: ControllerMetadataSnapshot
     var policyGroupCatalog: PolicyGroupCatalogSnapshot
     private(set) var policyGroupCatalogRevision: UInt64
@@ -81,8 +117,11 @@ final class AppModel {
     // invalidate views observing an unrelated domain. Every dashboard publication
     // path re-derives the matching snapshot with an Equatable `!=` guard.
     var connectionsCatalog: ConnectionsCatalogSnapshot
+    private(set) var connectionsStructureRevision: UInt64
+    private(set) var connectionsMetricsRevision: UInt64
     var logsCatalog: LogsCatalogSnapshot
-    var routingCatalog: RoutingCatalogSnapshot
+    var rulesCatalog: RulesCatalogSnapshot
+    var providersCatalog: ProvidersCatalogSnapshot
     var insightCatalog: InsightSummarySnapshot
     var operationState: OperationState?
     var switchingGroupID: String?
@@ -97,6 +136,7 @@ final class AppModel {
     var updatingProviderName: String?
     var checkingProviderName: String?
     var isRefreshingDashboard = false
+    var isTestingSelectedRouter = false
     var rulesSnapshotState: EnhancedSnapshotState = .available
     var providersSnapshotState: EnhancedSnapshotState = .available
     var reloadingRules = false
@@ -170,8 +210,14 @@ final class AppModel {
     @ObservationIgnored private let mihomoConnectionCloseOperation: MihomoConnectionCloseOperation
     @ObservationIgnored private let mihomoCloseAllConnectionsOperation: MihomoCloseAllConnectionsOperation
     @ObservationIgnored private let mihomoConnectionsSnapshotOperation: MihomoConnectionsSnapshotOperation
+    @ObservationIgnored private let mihomoConfigUpdateOperation: MihomoConfigUpdateOperation
+    @ObservationIgnored private let mihomoConfigSnapshotOperation: MihomoConfigSnapshotOperation
     @ObservationIgnored private let providerUpdateOperation: ProviderUpdateOperation
     @ObservationIgnored private let providerSnapshotOperation: ProviderSnapshotOperation
+    @ObservationIgnored private let mihomoRuleDisableOperation: MihomoRuleDisableOperation
+    @ObservationIgnored private let selectedRouterTestOperation: SelectedRouterTestOperation?
+    @ObservationIgnored private let immediateSessionRefreshLaneOperation: ImmediateSessionRefreshLaneOperation?
+    @ObservationIgnored private let manualRefreshStreamRestartOperation: ManualRefreshStreamRestartOperation?
     @ObservationIgnored private let sessionPublicationSleepOperation: LiveSessionPublicationSleepOperation
     @ObservationIgnored private let liveSessionBaselineLoadOperation: LiveSessionBaselineLoadOperation?
     @ObservationIgnored var sessionPresentationCoordinator = LiveSessionPublicationCoordinator()
@@ -231,6 +277,8 @@ final class AppModel {
     @ObservationIgnored var mediumSessionRefreshTask: Task<Void, Never>?
     @ObservationIgnored var slowSessionRefreshTask: Task<Void, Never>?
     @ObservationIgnored var manualSessionRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var selectedRouterRefreshOperationID: UUID?
+    @ObservationIgnored var selectedRouterTestOperationID: UUID?
     @ObservationIgnored var runtimeOperationTask: Task<Void, Never>?
 
     static let selectedControllerDefaultsKey = "selectedControllerID"
@@ -291,6 +339,12 @@ final class AppModel {
         mihomoConnectionsSnapshotOperation: @escaping MihomoConnectionsSnapshotOperation = { profile, credential in
             try await MihomoClient(profile: profile, secret: credential).connections()
         },
+        mihomoConfigUpdateOperation: @escaping MihomoConfigUpdateOperation = { profile, credential, patch in
+            try await MihomoClient(profile: profile, secret: credential).updateConfigs(patch)
+        },
+        mihomoConfigSnapshotOperation: @escaping MihomoConfigSnapshotOperation = { profile, credential in
+            try await MihomoClient(profile: profile, secret: credential).configs()
+        },
         providerUpdateOperation: @escaping ProviderUpdateOperation = { profile, credential, provider in
             let client = MihomoClient(profile: profile, secret: credential)
             switch provider.kind {
@@ -305,6 +359,14 @@ final class AppModel {
                 client: MihomoClient(profile: profile, secret: credential)
             )
         },
+        mihomoRuleDisableOperation: @escaping MihomoRuleDisableOperation = { profile, credential, index, disabled in
+            let client = MihomoClient(profile: profile, secret: credential)
+            try await client.setRuleDisabled(index: index, disabled: disabled)
+            return try await client.rules()
+        },
+        selectedRouterTestOperation: SelectedRouterTestOperation? = nil,
+        immediateSessionRefreshLaneOperation: ImmediateSessionRefreshLaneOperation? = nil,
+        manualRefreshStreamRestartOperation: ManualRefreshStreamRestartOperation? = nil,
         controllerProbeSleepOperation: @escaping ControllerProbeSleepOperation = { attempt in
             try await Task.sleep(for: SessionRetryPolicy.delay(forAttempt: attempt))
         },
@@ -322,8 +384,11 @@ final class AppModel {
         self.policyGroupCatalog = PolicyGroupCatalogSnapshot(dashboard: dashboard)
         self.policyGroupCatalogRevision = 0
         self.connectionsCatalog = ConnectionsCatalogSnapshot(dashboard: dashboard)
+        self.connectionsStructureRevision = 0
+        self.connectionsMetricsRevision = 0
         self.logsCatalog = .empty
-        self.routingCatalog = RoutingCatalogSnapshot(dashboard: dashboard)
+        self.rulesCatalog = RulesCatalogSnapshot(dashboard: dashboard)
+        self.providersCatalog = ProvidersCatalogSnapshot(dashboard: dashboard)
         self.insightCatalog = dashboard.insight
         self.controllerSecrets = controllerSecrets
         self.operationState = operationState
@@ -336,8 +401,14 @@ final class AppModel {
         self.mihomoConnectionCloseOperation = mihomoConnectionCloseOperation
         self.mihomoCloseAllConnectionsOperation = mihomoCloseAllConnectionsOperation
         self.mihomoConnectionsSnapshotOperation = mihomoConnectionsSnapshotOperation
+        self.mihomoConfigUpdateOperation = mihomoConfigUpdateOperation
+        self.mihomoConfigSnapshotOperation = mihomoConfigSnapshotOperation
         self.providerUpdateOperation = providerUpdateOperation
         self.providerSnapshotOperation = providerSnapshotOperation
+        self.mihomoRuleDisableOperation = mihomoRuleDisableOperation
+        self.selectedRouterTestOperation = selectedRouterTestOperation
+        self.immediateSessionRefreshLaneOperation = immediateSessionRefreshLaneOperation
+        self.manualRefreshStreamRestartOperation = manualRefreshStreamRestartOperation
         self.sessionPublicationSleepOperation = sessionPublicationSleepOperation
         self.liveSessionBaselineLoadOperation = liveSessionBaselineLoadOperation
         self.controllerHealth = .idle(language: initialPresentationLanguage)
@@ -410,6 +481,67 @@ final class AppModel {
         try await controllerConnectionTestOperation(profile, credential, resolvedKind)
     }
 
+    func runImmediateSessionRefreshLane(
+        _ lane: SessionRefreshLane,
+        router: RouterProfile,
+        generation: UUID,
+        manual: Bool
+    ) async {
+        if let immediateSessionRefreshLaneOperation {
+            await immediateSessionRefreshLaneOperation(lane, router, generation, manual)
+        } else {
+            await performSessionRefresh(
+                lane,
+                router: router,
+                generation: generation,
+                manual: manual
+            )
+        }
+    }
+
+    func updateMihomoConfig(
+        profile: RouterProfile,
+        credential: String?,
+        patch: MihomoConfigPatch
+    ) async throws {
+        try await mihomoConfigUpdateOperation(profile, credential, patch)
+    }
+
+    func loadMihomoConfig(
+        profile: RouterProfile,
+        credential: String?
+    ) async throws -> ConfigResponse {
+        try await mihomoConfigSnapshotOperation(profile, credential)
+    }
+
+    func runSelectedRouterTestOverride(
+        router: RouterProfile,
+        credential: String?,
+        resolvedKind: ControllerKind
+    ) async throws -> Bool {
+        guard let selectedRouterTestOperation else { return false }
+        try await selectedRouterTestOperation(router, credential, resolvedKind)
+        return true
+    }
+
+    var hasSelectedRouterTestOverride: Bool {
+        selectedRouterTestOperation != nil
+    }
+
+    func restartStreamsForManualRefresh(
+        router: RouterProfile,
+        generation: UUID
+    ) {
+        if let manualRefreshStreamRestartOperation {
+            manualRefreshStreamRestartOperation(router, generation)
+        } else {
+            restartRequestedMihomoLiveStreamsForManualRefresh(
+                router: router,
+                generation: generation
+            )
+        }
+    }
+
     func synchronizePolicyGroupCatalog() {
         let next = PolicyGroupCatalogSnapshot(dashboard: dashboard)
         guard next != policyGroupCatalog else { return }
@@ -470,6 +602,20 @@ final class AppModel {
             )
         )
         connectionsCatalog = next
+        if structureChanged {
+            advanceConnectionsStructureRevision()
+        }
+        if metricsChanged {
+            advanceConnectionsMetricsRevision()
+        }
+    }
+
+    func advanceConnectionsStructureRevision() {
+        connectionsStructureRevision &+= 1
+    }
+
+    func advanceConnectionsMetricsRevision() {
+        connectionsMetricsRevision &+= 1
     }
 
     func synchronizeLogsCatalog(with entries: [ControllerLogEntry]) {
@@ -486,10 +632,16 @@ final class AppModel {
         logsCatalog = next
     }
 
-    func synchronizeRoutingCatalog() {
-        let next = RoutingCatalogSnapshot(dashboard: dashboard)
-        guard next != routingCatalog else { return }
-        routingCatalog = next
+    func synchronizeRulesCatalog() {
+        let next = RulesCatalogSnapshot(dashboard: dashboard)
+        guard next != rulesCatalog else { return }
+        rulesCatalog = next
+    }
+
+    func synchronizeProvidersCatalog() {
+        let next = ProvidersCatalogSnapshot(dashboard: dashboard)
+        guard next != providersCatalog else { return }
+        providersCatalog = next
     }
 
     func synchronizeInsightCatalog() {
@@ -507,18 +659,15 @@ final class AppModel {
         if domains.contains(.connections) {
             synchronizeConnectionsCatalog()
         }
-        if domains.contains(.routing) {
-            synchronizeRoutingCatalog()
+        if domains.contains(.rules) {
+            synchronizeRulesCatalog()
+        }
+        if domains.contains(.providers) {
+            synchronizeProvidersCatalog()
         }
         if domains.contains(.insight) {
             synchronizeInsightCatalog()
         }
-    }
-
-    /// Compatibility entry point for low-frequency callers that still replace a
-    /// complete dashboard. High-frequency session ingestion uses named domains.
-    func synchronizeDomainCatalogs() {
-        publishDashboardDomains(.baseline)
     }
 
     private func synchronizeControllerSessionPresentation() {
@@ -550,26 +699,51 @@ final class AppModel {
         return controllerSupports(action, router: router, action: actionTitle)
     }
 
-    func setMode(_ mode: String) {
-        modeTask?.cancel()
-
-        guard mode != sessionActionDashboard.mode else {
-            return
+    /// Readiness and capability admission for an already-current live intent.
+    /// Persisted handlers first validate their captured identity through
+    /// `matchesCurrentCommandScope`; this gate may then publish a truthful
+    /// outcome when the current session cannot run the requested action.
+    func admitLiveActionIntent(
+        _ action: UnifiedControllerAction,
+        router: RouterProfile,
+        action actionTitle: String,
+        requiresUnpausedPresentation: Bool = false
+    ) -> Bool {
+        guard isCurrentSession(routerID: router.id, generation: controllerSession.generation) else {
+            return false
         }
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_mode"))
-            return
+        guard controllerSessionPresentation.state.allowsLiveCommands else {
+            operationState = .partial(
+                localized("command.disabled_unavailable"),
+                action: actionTitle,
+                target: router.displayName
+            )
+            return false
         }
+        if requiresUnpausedPresentation, dashboardSessionControls.dashboardUpdatesPaused {
+            operationState = .partial(
+                localized("operation.dashboard_updates_paused"),
+                action: actionTitle,
+                target: router.displayName
+            )
+            return false
+        }
+        return controllerSupports(action, router: router, action: actionTitle)
+    }
+
+    func setMode(_ mode: String, scope: LiveCommandScope) {
+        guard matchesCurrentCommandScope(scope),
+              mode != sessionActionDashboard.mode,
+              let router = selectedRouter,
+              !changingMode,
+              modeTask == nil else { return }
 
         if modeChangeAction(for: router) == .setOutboundMode {
             setSurgeOutboundMode(mode)
             return
         }
 
-        guard controllerSupportsLiveAction(.changeMode, router: router, action: TrialCommandAction.setMode.title(language: presentationLanguage)) else {
-            return
-        }
+        guard canBeginLiveAction(.changeMode, router: router, familyInFlight: false) else { return }
 
         if runtimeControllerKind(for: router) == .singBoxCompatible {
             setSingBoxMode(mode, router: router)
@@ -601,6 +775,7 @@ final class AppModel {
                     $0.replaceConfig(with: config)
                 }
                 changingMode = false
+                modeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.mode_changed_summary"))
                 operationState = .success(localized("operation.mode_changed \(MicaStrings.displayMode(dashboard.mode, language: presentationLanguage))"), action: TrialCommandAction.setMode.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -609,6 +784,7 @@ final class AppModel {
                 }
 
                 changingMode = false
+                modeTask = nil
                 if didUpdateMode {
                     finishCommand(
                         commandID,
@@ -639,15 +815,15 @@ final class AppModel {
             : .changeMode
     }
 
-    func selectNode(_ node: String, in groupID: String) {
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_switch"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.switchPolicy, router: router, action: TrialCommandAction.switchNode.title(language: presentationLanguage)) else {
-            return
-        }
+    func selectNode(
+        _ node: String,
+        in groupID: String,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              switchTask == nil,
+              canBeginLiveAction(.switchPolicy, router: router, familyInFlight: hasSwitchOperationInFlight) else { return }
 
         guard let group = sessionActionDashboard.groups.first(where: { $0.id == groupID }) else {
             operationState = .error(localized("operation.policy_group_gone \(groupID)"))
@@ -668,8 +844,6 @@ final class AppModel {
             return
         }
 
-        switchTask?.cancel()
-        clearingFixedGroupID = nil
         let previousNode = group.selected
 
         if runtimeControllerKind(for: router) == .singBoxCompatible {
@@ -712,6 +886,7 @@ final class AppModel {
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.switched_route"))
                 operationState = .success(localized("operation.switched_route"), action: TrialCommandAction.switchNode.title(language: presentationLanguage), target: router.displayName)
                 switchingGroupID = nil
+                switchTask = nil
             } catch {
                 guard isCurrentSession(routerID: router.id, generation: generation), !Task.isCancelled else {
                     return
@@ -740,26 +915,23 @@ final class AppModel {
                     operationState = .error(Self.routerTrialFailureMessage(for: error, language: presentationLanguage), action: TrialCommandAction.switchNode.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
                 }
                 switchingGroupID = nil
+                switchTask = nil
             }
         }
     }
 
-    func clearFixedSelection(in groupID: String) {
-        switchTask?.cancel()
-        switchingGroupID = nil
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_switch"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(
-            .clearFixedSelection,
-            router: router,
-            action: TrialCommandAction.clearFixedSelection.title(language: presentationLanguage)
-        ) else {
-            return
-        }
+    func clearFixedSelection(
+        in groupID: String,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              switchTask == nil,
+              canBeginLiveAction(
+                .clearFixedSelection,
+                router: router,
+                familyInFlight: hasSwitchOperationInFlight
+              ) else { return }
 
         guard let group = sessionActionDashboard.groups.first(where: { $0.id == groupID }),
               group.details?.fixed?.nilIfEmpty != nil else {
@@ -798,6 +970,7 @@ final class AppModel {
                     $0.replaceGroups(with: proxies)
                 }
                 clearingFixedGroupID = nil
+                switchTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -815,6 +988,7 @@ final class AppModel {
                 }
 
                 clearingFixedGroupID = nil
+                switchTask = nil
                 if didClearFixedSelection {
                     mutateSessionDashboard(publishing: [.policyGroups, .insight]) { dashboard in
                         if let index = dashboard.groups.firstIndex(where: { $0.id == groupID }) {
@@ -851,19 +1025,11 @@ final class AppModel {
         }
     }
 
-    func measureDelay(in groupID: String) {
-        delayTask?.cancel()
-        measuringDelayGroupID = nil
-        measuringDelayNode = nil
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_delay"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.testLatency, router: router, action: TrialCommandAction.testDelay.title(language: presentationLanguage)) else {
-            return
-        }
+    func measureDelay(in groupID: String, scope: LiveCommandScope) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              delayTask == nil,
+              canBeginLiveAction(.testLatency, router: router, familyInFlight: hasDelayOperationInFlight) else { return }
 
         guard sessionActionDashboard.groups.contains(where: { $0.id == groupID }) else {
             operationState = .error(localized("operation.policy_group_gone \(groupID)"))
@@ -899,6 +1065,7 @@ final class AppModel {
                     $0.replaceDelays(response.delay, in: groupID)
                 }
                 measuringDelayGroupID = nil
+                delayTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.updated_delay"))
                 operationState = .success(localized("operation.updated_delay"), action: TrialCommandAction.testDelay.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -907,29 +1074,22 @@ final class AppModel {
                 }
 
                 measuringDelayGroupID = nil
+                delayTask = nil
                 finishCommand(commandID, routerID: router.id, status: .failed, summary: localized("operation.delay_test_failed"))
                 operationState = .error(Self.routerTrialFailureMessage(for: error, language: presentationLanguage), action: TrialCommandAction.testDelay.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
             }
         }
     }
 
-    func measureDelay(for node: String, in groupID: String) {
-        delayTask?.cancel()
-        measuringDelayGroupID = nil
-        measuringDelayNode = nil
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_delay"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(
-            .testLatency,
-            router: router,
-            action: TrialCommandAction.testDelay.title(language: presentationLanguage)
-        ) else {
-            return
-        }
+    func measureDelay(
+        for node: String,
+        in groupID: String,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              delayTask == nil,
+              canBeginLiveAction(.testLatency, router: router, familyInFlight: hasDelayOperationInFlight) else { return }
 
         guard let group = sessionActionDashboard.groups.first(where: { $0.id == groupID }) else {
             operationState = .error(localized("operation.policy_group_gone \(groupID)"))
@@ -980,6 +1140,7 @@ final class AppModel {
                     $0.replaceDelay(delay, for: node, in: groupID)
                 }
                 measuringDelayNode = nil
+                delayTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -998,6 +1159,7 @@ final class AppModel {
                 }
 
                 measuringDelayNode = nil
+                delayTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -1042,14 +1204,25 @@ final class AppModel {
     }
 
     func closeConnection(_ connection: ConnectionSnapshot) {
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_close"))
-            return
-        }
+        guard let router = selectedRouter,
+              !hasConnectionOperationInFlight,
+              connectionTask == nil else { return }
 
         let actionTitle = TrialCommandAction.closeConnection.title(
             language: presentationLanguage
         )
+        let runtimeKind = runtimeControllerKind(for: router)
+        let closeAction: UnifiedControllerAction = runtimeKind == .surgeCompatible
+            ? .killActiveRequest
+            : .closeConnection
+        guard canBeginLiveAction(
+            closeAction,
+            router: router,
+            familyInFlight: runtimeKind == .surgeCompatible
+                ? hasSurgeOperationInFlight
+                : false
+        ) else { return }
+
         guard !connection.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             operationState = .partial(
                 localized("operation.connection_id_unavailable"),
@@ -1058,26 +1231,24 @@ final class AppModel {
             )
             return
         }
-        let connectionID = connection.id
+        guard let target = ConnectionMutationTargetResolver.resolve(
+            requested: connection,
+            currentConnections: connectionsCatalog.connections
+        ) else { return }
+        let connectionID = target.id
 
-        connectionTask?.cancel()
-
-        if runtimeControllerKind(for: router) == .surgeCompatible {
-            closeSurgeProjectedConnection(connection)
+        if runtimeKind == .surgeCompatible {
+            closeSurgeProjectedConnection(target)
             return
         }
 
-        if runtimeControllerKind(for: router) == .singBoxCompatible {
-            closeSingBoxConnection(connection, router: router)
-            return
-        }
-
-        guard controllerSupportsLiveAction(.closeConnection, router: router, action: actionTitle) else {
+        if runtimeKind == .singBoxCompatible {
+            closeSingBoxConnection(target, router: router)
             return
         }
 
         let commandID = beginCommand(.closeConnection, router: router, summary: localized("operation.closing_connection"))
-        closingConnectionID = connection.id
+        closingConnectionID = target.id
         closingConnectionGroupID = nil
         closingAllConnections = false
         operationState = .working(localized("operation.closing_connection_progress"), action: actionTitle, target: router.displayName)
@@ -1095,8 +1266,8 @@ final class AppModel {
                 }
 
                 didCloseConnection = true
-                recordClosedSessionConnections([connection])
-                removeSessionConnections([connection])
+                recordClosedSessionConnections([target])
+                removeSessionConnections([target])
 
                 let connections = try await mihomoConnectionsSnapshotOperation(router, secret)
 
@@ -1108,6 +1279,7 @@ final class AppModel {
                     $0.replaceConnections(with: connections)
                 }
                 closingConnectionID = nil
+                connectionTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.closed_connection"))
                 operationState = .success(localized("operation.closed_connection"), action: actionTitle, target: router.displayName)
             } catch {
@@ -1116,6 +1288,7 @@ final class AppModel {
                 }
 
                 closingConnectionID = nil
+                connectionTask = nil
                 if didCloseConnection {
                     finishCommand(
                         commandID,
@@ -1145,15 +1318,29 @@ final class AppModel {
         groupID: String,
         groupLabel: String
     ) {
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_close"))
-            return
-        }
+        guard let router = selectedRouter,
+              !hasConnectionOperationInFlight,
+              connectionTask == nil else { return }
+
+        let actionTitle = TrialCommandAction.closeConnectionGroup.title(
+            language: presentationLanguage
+        )
+        let runtimeKind = runtimeControllerKind(for: router)
+        let closeAction: UnifiedControllerAction = runtimeKind == .surgeCompatible
+            ? .killActiveRequest
+            : .closeConnection
+        guard canBeginLiveAction(
+            closeAction,
+            router: router,
+            familyInFlight: runtimeKind == .surgeCompatible
+                ? hasSurgeOperationInFlight
+                : false
+        ) else { return }
 
         guard !connections.isEmpty else {
             operationState = .success(
                 localized("operation.no_active_connections"),
-                action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage),
+                action: actionTitle,
                 target: router.displayName
             )
             return
@@ -1165,50 +1352,41 @@ final class AppModel {
         guard !closableConnections.isEmpty else {
             operationState = .partial(
                 localized("operation.connection_id_unavailable"),
-                action: TrialCommandAction.closeConnectionGroup.title(
-                    language: presentationLanguage
-                ),
+                action: actionTitle,
                 target: groupLabel
             )
             return
         }
+        guard let currentConnections = ConnectionMutationTargetResolver.resolve(
+            requested: closableConnections,
+            currentConnections: connectionsCatalog.connections
+        ) else { return }
 
-        if runtimeControllerKind(for: router) == .singBoxCompatible {
+        if runtimeKind == .singBoxCompatible {
             operationState = .partial(
                 localized("capability.unsupported_sing_box_data"),
-                action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage),
+                action: actionTitle,
                 target: groupLabel
             )
             return
         }
-
-        guard controllerSupportsLiveAction(
-            runtimeControllerKind(for: router) == .surgeCompatible ? .killActiveRequest : .closeConnection,
-            router: router,
-            action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage)
-        ) else {
-            return
-        }
-
-        connectionTask?.cancel()
 
         let commandID = beginCommand(
             .closeConnectionGroup,
             router: router,
-            summary: localized("operation.closing_connection_group \(closableConnections.count)")
+            summary: localized("operation.closing_connection_group \(currentConnections.count)")
         )
         closingConnectionID = nil
         closingConnectionGroupID = groupID
         closingAllConnections = false
         operationState = .working(
-            localized("operation.closing_connection_group_progress \(closableConnections.count) \(groupLabel)"),
-            action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage),
+            localized("operation.closing_connection_group_progress \(currentConnections.count) \(groupLabel)"),
+            action: actionTitle,
             target: router.displayName
         )
 
         let generation = controllerSession.generation
         let credential = controllerSecrets[router.id]
-        let runtimeKind = runtimeControllerKind(for: router)
 
         connectionTask = Task {
             var closed: [ConnectionSnapshot] = []
@@ -1225,7 +1403,7 @@ final class AppModel {
                     )
                     let client = SurgeHttpAPIClient(profile: router, apiKey: credential)
 
-                    for connection in closableConnections {
+                    for connection in currentConnections {
                         try Task.checkCancellation()
                         guard let request = requestsByProjectedID[connection.id],
                               !request.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -1245,7 +1423,7 @@ final class AppModel {
                     snapshot.checkedAt = Date()
                     applySurgeSnapshot(snapshot, router: router)
                 } else {
-                    for connection in closableConnections {
+                    for connection in currentConnections {
                         try Task.checkCancellation()
                         try await mihomoConnectionCloseOperation(
                             router,
@@ -1271,6 +1449,7 @@ final class AppModel {
                 recordClosedSessionConnections(closed)
                 removeSessionConnections(closed)
                 closingConnectionGroupID = nil
+                connectionTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -1279,7 +1458,7 @@ final class AppModel {
                 )
                 operationState = .success(
                     localized("operation.closed_connection_group \(closed.count)"),
-                    action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage),
+                    action: actionTitle,
                     target: router.displayName
                 )
             } catch {
@@ -1290,6 +1469,7 @@ final class AppModel {
                 recordClosedSessionConnections(closed)
                 removeSessionConnections(closed)
                 closingConnectionGroupID = nil
+                connectionTask = nil
                 let failure = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
                 if closed.isEmpty {
                     finishCommand(
@@ -1300,7 +1480,7 @@ final class AppModel {
                     )
                     operationState = .error(
                         failure,
-                        action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage),
+                        action: actionTitle,
                         target: router.displayName,
                         nextStep: localized("action.refresh")
                     )
@@ -1309,11 +1489,11 @@ final class AppModel {
                         commandID,
                         routerID: router.id,
                         status: .partial,
-                        summary: localized("operation.close_connection_group_partial \(closed.count) \(closableConnections.count)")
+                        summary: localized("operation.close_connection_group_partial \(closed.count) \(currentConnections.count)")
                     )
                     operationState = .partial(
-                        localized("operation.close_connection_group_partial \(closed.count) \(closableConnections.count)"),
-                        action: TrialCommandAction.closeConnectionGroup.title(language: presentationLanguage),
+                        localized("operation.close_connection_group_partial \(closed.count) \(currentConnections.count)"),
+                        action: actionTitle,
                         target: router.displayName,
                         nextStep: failure
                     )
@@ -1323,20 +1503,15 @@ final class AppModel {
     }
 
     func closeAllConnections() {
-        connectionTask?.cancel()
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_close_all"))
-            return
-        }
+        guard let router = selectedRouter,
+              !hasConnectionOperationInFlight,
+              connectionTask == nil else { return }
 
         let runtimeKind = runtimeControllerKind(for: router)
         let closeAction: UnifiedControllerAction = runtimeKind == .surgeCompatible
             ? .killActiveRequest
             : .closeAllConnections
-        guard controllerSupportsLiveAction(closeAction, router: router, action: TrialCommandAction.closeAll.title(language: presentationLanguage)) else {
-            return
-        }
+        guard canBeginLiveAction(closeAction, router: router, familyInFlight: false) else { return }
 
         if runtimeKind == .surgeCompatible {
             closeAllSurgeProjectedConnections(router: router)
@@ -1390,6 +1565,7 @@ final class AppModel {
                     $0.replaceConnections(with: connections)
                 }
                 closingAllConnections = false
+                connectionTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.closed_all"))
                 operationState = .success(localized("operation.closed_all"), action: TrialCommandAction.closeAll.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -1398,6 +1574,7 @@ final class AppModel {
                 }
 
                 closingAllConnections = false
+                connectionTask = nil
                 if didCloseAllConnections {
                     finishCommand(
                         commandID,
@@ -1425,18 +1602,15 @@ final class AppModel {
     }
 
     func updateAllProviders() {
+        let actionTitle = TrialCommandAction.providerUpdateAll.title(language: presentationLanguage)
         guard let router = selectedRouter else {
             operationState = .error(localized("operation.select_router_providers"))
             return
         }
 
         let generation = controllerSession.generation
-        guard isCurrentSession(routerID: router.id, generation: generation) else {
-            operationState = .error(localized("operation.select_router_providers"))
-            return
-        }
+        guard isCurrentSession(routerID: router.id, generation: generation) else { return }
 
-        let actionTitle = TrialCommandAction.providerUpdateAll.title(language: presentationLanguage)
         guard !dashboardSessionControls.dashboardUpdatesPaused else {
             operationState = .partial(
                 localized("operation.dashboard_updates_paused"),
@@ -1446,7 +1620,7 @@ final class AppModel {
             return
         }
 
-        guard !isBusy else {
+        guard !hasProviderOperationInFlight, providerTask == nil, !isBusy else {
             operationState = .partial(
                 localized("command.disabled_busy"),
                 action: actionTitle,
@@ -1455,11 +1629,14 @@ final class AppModel {
             return
         }
 
-        guard controllerSupportsLiveAction(.updateProvider, router: router, action: actionTitle) else {
-            return
-        }
+        guard admitLiveActionIntent(
+            .updateProvider,
+            router: router,
+            action: actionTitle,
+            requiresUnpausedPresentation: true
+        ) else { return }
 
-        let providers = routingCatalog.providers.filter(\.updatable)
+        let providers = providersCatalog.providers.filter(\.updatable)
         guard let firstProvider = providers.first else {
             operationState = .partial(
                 localized("traffic.no_updatable_providers"),
@@ -1469,7 +1646,6 @@ final class AppModel {
             return
         }
 
-        providerTask?.cancel()
         let commandID = beginCommand(
             .providerUpdateAll,
             router: router,
@@ -1597,32 +1773,26 @@ final class AppModel {
 
     func updateProxyProvider(_ provider: ProxyProviderViewState) {
         let actionTitle = TrialCommandAction.providerUpdate.title(language: presentationLanguage)
-        guard providerUpdateAllProgress?.isRunning != true else {
-            operationState = .partial(
-                localized("command.disabled_busy"),
-                action: actionTitle,
-                target: selectedRouter?.displayName
-            )
-            return
-        }
-
-        providerTask?.cancel()
-        providerUpdateAllProgress = nil
-        checkingProviderName = nil
-
         guard let router = selectedRouter else {
             operationState = .error(localized("operation.select_router_provider"))
             return
         }
 
-        guard canRefreshSelectedRouter else {
-            operationState = .partial(localized("operation.dashboard_updates_paused"))
+        guard !hasProviderOperationInFlight, providerTask == nil else {
+            operationState = .partial(
+                localized("command.disabled_busy"),
+                action: actionTitle,
+                target: router.displayName
+            )
             return
         }
 
-        guard controllerSupportsLiveAction(.updateProvider, router: router, action: actionTitle) else {
-            return
-        }
+        guard admitLiveActionIntent(
+            .updateProvider,
+            router: router,
+            action: actionTitle,
+            requiresUnpausedPresentation: true
+        ) else { return }
 
         guard provider.updatable else {
             operationState = .partial(
@@ -1632,6 +1802,8 @@ final class AppModel {
             )
             return
         }
+
+        guard providersCatalog.providers.contains(provider) else { return }
 
         let commandID = beginCommand(.providerUpdate, router: router, summary: localized("operation.updating_provider"))
         updatingProviderName = provider.id
@@ -1680,37 +1852,26 @@ final class AppModel {
 
     func healthCheckProxyProvider(_ provider: ProxyProviderViewState) {
         let actionTitle = TrialCommandAction.providerHealthCheck.title(language: presentationLanguage)
-        guard providerUpdateAllProgress?.isRunning != true else {
-            operationState = .partial(
-                localized("command.disabled_busy"),
-                action: actionTitle,
-                target: selectedRouter?.displayName
-            )
-            return
-        }
-
-        providerTask?.cancel()
-        providerUpdateAllProgress = nil
-        updatingProviderName = nil
-        checkingProviderName = nil
-
         guard let router = selectedRouter else {
             operationState = .error(localized("operation.select_router_provider_health"))
             return
         }
 
-        guard canRefreshSelectedRouter else {
-            operationState = .partial(localized("operation.dashboard_updates_paused"))
+        guard !hasProviderOperationInFlight, providerTask == nil else {
+            operationState = .partial(
+                localized("command.disabled_busy"),
+                action: actionTitle,
+                target: router.displayName
+            )
             return
         }
 
-        guard controllerSupportsLiveAction(
+        guard admitLiveActionIntent(
             .healthCheckProvider,
             router: router,
-            action: actionTitle
-        ) else {
-            return
-        }
+            action: actionTitle,
+            requiresUnpausedPresentation: true
+        ) else { return }
 
         guard provider.supportsHealthCheck else {
             operationState = .partial(
@@ -1720,6 +1881,8 @@ final class AppModel {
             )
             return
         }
+
+        guard providersCatalog.providers.contains(provider) else { return }
 
         let commandID = beginCommand(
             .providerHealthCheck,
@@ -1826,7 +1989,7 @@ final class AppModel {
 
         if proxyProviders != nil || ruleProviders != nil || dashboard.providers.isEmpty {
             dashboard.replaceProviders(proxyProviders: proxyProviders, ruleProviders: ruleProviders)
-            publishDashboardDomains([.routing, .insight])
+            publishDashboardDomains([.providers, .insight])
         }
 
         var nextHealth = controllerHealth
@@ -1846,24 +2009,18 @@ final class AppModel {
     }
 
     func reloadRules() {
-        rulesTask?.cancel()
-        updatingRuleID = nil
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_rules"))
-            return
-        }
-
-        guard canRefreshSelectedRouter else {
-            operationState = .partial(localized("operation.dashboard_updates_paused"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.reloadRules, router: router, action: TrialCommandAction.reloadRules.title(language: presentationLanguage)) else {
-            return
-        }
+        guard let router = selectedRouter,
+              !hasRuleOperationInFlight,
+              rulesTask == nil,
+              canBeginLiveAction(
+                .reloadRules,
+                router: router,
+                familyInFlight: false,
+                requiresUnpausedPresentation: true
+              ) else { return }
 
         if runtimeControllerKind(for: router) == .surgeCompatible {
+            guard !hasSurgeOperationInFlight, surgeTask == nil else { return }
             reloadSurgeRules(router)
             return
         }
@@ -1886,7 +2043,7 @@ final class AppModel {
                 }
 
                 dashboard.replaceRules(with: rules)
-                publishDashboardDomains([.routing, .insight])
+                publishDashboardDomains([.rules, .insight])
                 controllerSession.endpointCache.rules = rules
                 rulesSnapshotState = .available
                 var nextHealth = controllerHealth
@@ -1894,6 +2051,7 @@ final class AppModel {
                 nextHealth.finalize()
                 controllerHealth = nextHealth
                 reloadingRules = false
+                rulesTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.rules_reloaded"))
                 operationState = .success(localized("operation.reloaded_rules \(dashboard.rules.count)"), action: TrialCommandAction.reloadRules.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -1908,69 +2066,74 @@ final class AppModel {
                 nextHealth.finalize()
                 controllerHealth = nextHealth
                 reloadingRules = false
+                rulesTask = nil
                 finishCommand(commandID, routerID: router.id, status: .partial, summary: localized("operation.rules_unavailable"))
                 operationState = .partial(localized("operation.rules_unavailable"), action: TrialCommandAction.reloadRules.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
             }
         }
     }
 
-    func setRuleDisabled(_ rule: RuleViewState, disabled: Bool) {
-        rulesTask?.cancel()
-        reloadingRules = false
+    func setRuleDisabled(
+        _ rule: RuleViewState,
+        disabled: Bool,
+        scope: LiveCommandScope
+    ) {
+        let actionTitle = TrialCommandAction.setRuleState.title(language: presentationLanguage)
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              !hasRuleOperationInFlight,
+              rulesTask == nil else { return }
 
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_rules"))
-            return
-        }
-
-        guard canRefreshSelectedRouter else {
-            operationState = .partial(localized("operation.dashboard_updates_paused"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(
+        guard admitLiveActionIntent(
             .setRuleDisabled,
             router: router,
-            action: TrialCommandAction.setRuleState.title(language: presentationLanguage)
-        ) else {
-            return
-        }
+            action: actionTitle,
+            requiresUnpausedPresentation: true
+        ) else { return }
 
-        guard rule.hasMutableExtra, let index = rule.index else {
+        guard rule.hasMutableExtra, rule.index != nil else {
             operationState = .partial(localized("operation.rule_state_not_supported"))
             return
         }
+
+        guard let target = RuleMutationTargetResolver.resolve(
+            requested: rule,
+            currentRules: rulesCatalog.rules
+        ), let index = target.index else { return }
 
         let commandID = beginCommand(
             .setRuleState,
             router: router,
             summary: localized("operation.updating_rule_state")
         )
-        updatingRuleID = rule.id
-        ruleUpdateFailures.removeValue(forKey: rule.id)
+        updatingRuleID = target.id
+        ruleUpdateFailures.removeValue(forKey: target.id)
         operationState = .working(
             localized("operation.updating_rule_state"),
-            action: TrialCommandAction.setRuleState.title(language: presentationLanguage),
-            target: rule.payload
+            action: actionTitle,
+            target: target.payload
         )
 
         let generation = controllerSession.generation
         let secret = controllerSecrets[router.id]
         rulesTask = Task {
-            let client = MihomoClient(profile: router, secret: secret)
-
             do {
-                try await client.setRuleDisabled(index: index, disabled: disabled)
-                let rules = try await client.rules()
+                let rules = try await mihomoRuleDisableOperation(
+                    router,
+                    secret,
+                    index,
+                    disabled
+                )
 
                 guard isCurrentSession(routerID: router.id, generation: generation), !Task.isCancelled else {
                     return
                 }
 
                 dashboard.replaceRules(with: rules)
-                publishDashboardDomains([.routing, .insight])
+                publishDashboardDomains([.rules, .insight])
                 controllerSession.endpointCache.rules = rules
                 updatingRuleID = nil
+                rulesTask = nil
                 rulesSnapshotState = .available
                 finishCommand(
                     commandID,
@@ -1981,7 +2144,7 @@ final class AppModel {
                 operationState = .success(
                     localized("operation.rule_state_updated"),
                     action: TrialCommandAction.setRuleState.title(language: presentationLanguage),
-                    target: rule.payload
+                    target: target.payload
                 )
             } catch {
                 guard isCurrentSession(routerID: router.id, generation: generation), !Task.isCancelled else {
@@ -1989,8 +2152,9 @@ final class AppModel {
                 }
 
                 let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
-                ruleUpdateFailures[rule.id] = message
+                ruleUpdateFailures[target.id] = message
                 updatingRuleID = nil
+                rulesTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -2000,7 +2164,7 @@ final class AppModel {
                 operationState = .error(
                     message,
                     action: TrialCommandAction.setRuleState.title(language: presentationLanguage),
-                    target: rule.payload,
+                    target: target.payload,
                     nextStep: localized("action.retry")
                 )
             }
@@ -2009,31 +2173,15 @@ final class AppModel {
 
     func reloadProviders() {
         let actionTitle = TrialCommandAction.reloadProviders.title(language: presentationLanguage)
-        guard providerUpdateAllProgress?.isRunning != true else {
-            operationState = .partial(
-                localized("command.disabled_busy"),
-                action: actionTitle,
-                target: selectedRouter?.displayName
-            )
-            return
-        }
-
-        providerTask?.cancel()
-        providerUpdateAllProgress = nil
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_providers"))
-            return
-        }
-
-        guard canRefreshSelectedRouter else {
-            operationState = .partial(localized("operation.dashboard_updates_paused"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.reloadProviders, router: router, action: actionTitle) else {
-            return
-        }
+        guard let router = selectedRouter,
+              !hasProviderOperationInFlight,
+              providerTask == nil,
+              canBeginLiveAction(
+                .reloadProviders,
+                router: router,
+                familyInFlight: false,
+                requiresUnpausedPresentation: true
+              ) else { return }
 
         let commandID = beginCommand(.reloadProviders, router: router, summary: localized("operation.reloading_providers"))
         reloadingProviders = true
@@ -2072,26 +2220,83 @@ final class AppModel {
     }
 
     func testSelectedRouter() {
-        refreshTask?.cancel()
-
-        guard let router = selectedRouter else {
-            connectionState = .disconnected
-            operationState = .error(localized("operation.select_router_test"))
-            return
-        }
+        guard canTestSelectedRouter,
+              let router = selectedRouter,
+              controllerSessionPresentation.controllerID == router.id else { return }
 
         let commandID = beginCommand(.test, router: router, summary: localized("operation.testing_base_endpoints"))
         let generation = controllerSession.generation
+        let operationID = UUID()
+        selectedRouterTestOperationID = operationID
+        isTestingSelectedRouter = true
         operationState = .working(
             localized("operation.testing_endpoints_progress"),
             action: TrialCommandAction.test.title(language: presentationLanguage),
             target: router.displayName
         )
 
+        if hasSelectedRouterTestOverride {
+            let credential = controllerSecrets[router.id]
+            let resolvedKind = runtimeControllerKind(for: router)
+            refreshTask = Task {
+                defer {
+                    finishSelectedRouterTest(
+                        operationID: operationID,
+                        routerID: router.id,
+                        generation: generation
+                    )
+                }
+                do {
+                    _ = try await runSelectedRouterTestOverride(
+                        router: router,
+                        credential: credential,
+                        resolvedKind: resolvedKind
+                    )
+                    guard isCurrentSession(routerID: router.id, generation: generation),
+                          !Task.isCancelled else { return }
+                    finishCommand(
+                        commandID,
+                        routerID: router.id,
+                        status: .success,
+                        summary: localized("operation.capabilities_ready")
+                    )
+                    operationState = .success(
+                        localized("operation.capabilities_ready"),
+                        action: TrialCommandAction.test.title(language: presentationLanguage),
+                        target: router.displayName
+                    )
+                } catch {
+                    guard isCurrentSession(routerID: router.id, generation: generation),
+                          !Task.isCancelled else { return }
+                    let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
+                    finishCommand(
+                        commandID,
+                        routerID: router.id,
+                        status: .failed,
+                        summary: localized("operation.base_endpoint_test_failed")
+                    )
+                    operationState = .error(
+                        message,
+                        action: TrialCommandAction.test.title(language: presentationLanguage),
+                        target: router.displayName,
+                        nextStep: localized("action.edit_router")
+                    )
+                }
+            }
+            return
+        }
+
         if (router.controllerKind == .autoDetect || router.controllerKind == .stashCmfaCompatible),
            activeSessionControllerKind == nil {
             let credential = controllerSecrets[router.id]
             refreshTask = Task {
+                defer {
+                    finishSelectedRouterTest(
+                        operationID: operationID,
+                        routerID: router.id,
+                        generation: generation
+                    )
+                }
                 do {
                     let detectedKind = try await probeControllerKind(
                         for: router,
@@ -2137,6 +2342,13 @@ final class AppModel {
         if runtimeControllerKind(for: router) == .surgeCompatible {
             let apiKey = controllerSecrets[router.id]
             refreshTask = Task {
+                defer {
+                    finishSelectedRouterTest(
+                        operationID: operationID,
+                        routerID: router.id,
+                        generation: generation
+                    )
+                }
                 let client = SurgeHttpAPIClient(profile: router, apiKey: apiKey)
                 do {
                     _ = try await client.outbound()
@@ -2156,20 +2368,18 @@ final class AppModel {
             return
         }
 
-        closingConnectionID = nil
-        closingConnectionGroupID = nil
-        closingAllConnections = false
-        updatingProviderName = nil
-        checkingProviderName = nil
-        isRefreshingDashboard = false
-        reloadingRules = false
-        reloadingProviders = false
-        providerUpdateFailures = [:]
-        providerHealthCheckFailures = [:]
         let secret = controllerSecrets[router.id]
 
         refreshTask = Task {
-            let client = MihomoClient(profile: router, secret: secret)
+            defer {
+                finishSelectedRouterTest(
+                    operationID: operationID,
+                    routerID: router.id,
+                    generation: generation
+                )
+            }
+            let client = sessionMihomoClient
+                ?? MihomoClient(profile: router, secret: secret)
             let baseProbe = await Self.probeBaseEndpoints(
                 client: client,
                 router: router,
@@ -2221,6 +2431,20 @@ final class AppModel {
                 operationState = .error(message, action: TrialCommandAction.test.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.edit_router"))
             }
         }
+    }
+
+    private func finishSelectedRouterTest(
+        operationID: UUID,
+        routerID: RouterProfile.ID,
+        generation: UUID
+    ) {
+        guard selectedRouterTestOperationID == operationID,
+              isCurrentSession(routerID: routerID, generation: generation) else {
+            return
+        }
+        selectedRouterTestOperationID = nil
+        isTestingSelectedRouter = false
+        refreshTask = nil
     }
 
     static func secretReference(for profileID: RouterProfile.ID) -> String {

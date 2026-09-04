@@ -168,6 +168,10 @@ struct WorkbenchInspectorContainer: View {
     /// per-rule failure, and the AppModel-validated toggle intent.
     @ViewBuilder
     private func ruleInspectorContent(type: String, payload: String) -> some View {
+        let commandScope = LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
         if let row = workspaceStore.ruleRowResolver?(type, payload) {
             WorkbenchRuleInspector(
                 row: row,
@@ -180,7 +184,14 @@ struct WorkbenchInspectorContainer: View {
                 close: { workspaceStore.dismissInspector() },
                 disabled: Binding(
                     get: { row.rule.disabled ?? false },
-                    set: { appModel.setRuleDisabled(row.rule, disabled: $0) }
+                    set: { disabled in
+                        guard let commandScope else { return }
+                        appModel.setRuleDisabled(
+                            row.rule,
+                            disabled: disabled,
+                            scope: commandScope
+                        )
+                    }
                 )
             )
         } else {

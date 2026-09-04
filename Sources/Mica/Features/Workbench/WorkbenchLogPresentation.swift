@@ -45,7 +45,6 @@ struct WorkbenchLogRow: Identifiable, Equatable {
     let typeText: String
     let levelText: String
     let payloadText: String
-    let accessibilityText: String
 }
 
 enum WorkbenchLogSeverity: String, CaseIterable, Equatable, Sendable {
@@ -176,17 +175,43 @@ enum WorkbenchLogProjection {
             receivedDateTimeText: receivedDateTimeText,
             typeText: typeText,
             levelText: levelText,
-            payloadText: payloadText,
-            accessibilityText: [
-                receivedDateTimeText, levelText, typeText, payloadText,
-            ].joined(separator: ", ")
+            payloadText: payloadText
         )
+    }
+
+    static func accessibilitySummary(
+        for row: WorkbenchLogRow,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        [
+            WorkbenchAccessibilitySummary.field(
+                "traffic.log_received_time",
+                value: row.receivedDateTimeText,
+                localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.log_level", value: row.levelText, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.log_type", value: row.typeText, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.log_payload", value: row.payloadText, localization: localization
+            ),
+        ].joined(separator: ", ")
     }
 }
 
 struct WorkbenchLogProjectionCache {
+    enum AccessibilityOrderChange: Equatable {
+        case unchanged
+        case replace
+        case prefixDelta(droppedCount: Int)
+    }
+
     private(set) var allRows: [WorkbenchLogRow] = []
     private(set) var visibleRows: [WorkbenchLogRow] = []
+    private(set) var accessibilityOrderChange = AccessibilityOrderChange.unchanged
     private(set) var sourceProjectionCount = 0
     private(set) var filterProjectionCount = 0
     private(set) var fullProjectionCount = 0
@@ -219,6 +244,7 @@ struct WorkbenchLogProjectionCache {
         isActive: Bool = true
     ) -> Bool {
         guard isActive else { return false }
+        accessibilityOrderChange = .unchanged
 
         let sourceChanged = sourceRevision != revision || self.language != language
         var changedRowIDs: Set<String> = []
@@ -304,12 +330,22 @@ struct WorkbenchLogProjectionCache {
             visibleIncludesAllRows = true
             visibleRowIDs.removeAll(keepingCapacity: true)
             filterMatchesByID.removeAll(keepingCapacity: true)
+            if let appliedDelta, !filterChanged, appliedDelta.dropsSourcePrefix {
+                accessibilityOrderChange = .prefixDelta(
+                    droppedCount: appliedDelta.droppedIDs.count
+                )
+            } else {
+                accessibilityOrderChange = .replace
+            }
         } else if let appliedDelta, !filterChanged {
-            applyVisibleDelta(
+            let droppedCount = applyVisibleDelta(
                 appliedDelta,
                 level: level,
                 query: normalizedQuery
             )
+            accessibilityOrderChange = appliedDelta.dropsSourcePrefix
+                ? .prefixDelta(droppedCount: droppedCount)
+                : .replace
         } else {
             visibleIncludesAllRows = false
             var nextVisibleRows: [WorkbenchLogRow] = []
@@ -338,6 +374,7 @@ struct WorkbenchLogProjectionCache {
             visibleRows = nextVisibleRows
             visibleRowIDs = Set(nextVisibleRows.map(\.id))
             filterMatchesByID = nextMatches
+            accessibilityOrderChange = .replace
         }
         self.level = level
         self.query = normalizedQuery
@@ -387,6 +424,7 @@ struct WorkbenchLogProjectionCache {
         let droppedIDs: Set<String>
         let appendedRows: [WorkbenchLogRow]
         let reusedCount: Int
+        let dropsSourcePrefix: Bool
     }
 
     private func makeDeltaReplacement(
@@ -419,8 +457,11 @@ struct WorkbenchLogProjectionCache {
             }
         }
 
+        let dropsSourcePrefix = Array(
+            allRows.prefix(droppedEntryIDs.count).map(\.id)
+        ) == droppedEntryIDs
         let retainedRows: [WorkbenchLogRow]
-        if Array(allRows.prefix(droppedEntryIDs.count).map(\.id)) == droppedEntryIDs {
+        if dropsSourcePrefix {
             retainedRows = Array(allRows.dropFirst(droppedEntryIDs.count))
         } else {
             retainedRows = allRows.filter { !droppedIDs.contains($0.id) }
@@ -468,7 +509,8 @@ struct WorkbenchLogProjectionCache {
             rowsByID: rowsByID,
             droppedIDs: droppedIDs,
             appendedRows: appendedRows,
-            reusedCount: retainedRows.count
+            reusedCount: retainedRows.count,
+            dropsSourcePrefix: dropsSourcePrefix
         )
     }
 
@@ -476,8 +518,13 @@ struct WorkbenchLogProjectionCache {
         _ replacement: DeltaReplacement,
         level: LogSessionLevel,
         query: String?
-    ) {
+    ) -> Int {
         visibleIncludesAllRows = false
+        let droppedVisibleCount = replacement.droppedIDs.reduce(into: 0) { count, id in
+            if filterMatchesByID[id] == true {
+                count += 1
+            }
+        }
         if !replacement.droppedIDs.isEmpty {
             visibleRows.removeAll { replacement.droppedIDs.contains($0.id) }
             visibleRowIDs.subtract(replacement.droppedIDs)
@@ -499,6 +546,7 @@ struct WorkbenchLogProjectionCache {
                 visibleRowIDs.insert(row.id)
             }
         }
+        return droppedVisibleCount
     }
 
     private static func stableIDs(for entries: [ControllerLogEntry]) -> [String]? {

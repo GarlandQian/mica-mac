@@ -405,7 +405,11 @@ struct SessionStreamStateTests {
             hasMutableExtra: false
         )
 
-        model.setRuleDisabled(rule, disabled: true)
+        model.setRuleDisabled(
+            rule,
+            disabled: true,
+            scope: commandScope(for: model)
+        )
 
         #expect(model.rulesTask == nil)
         #expect(model.updatingRuleID == nil)

@@ -3,18 +3,20 @@ import MicaCore
 
 extension AppModel {
     private var hasSelectedLiveSession: Bool {
-        selectedRouterID != nil && controllerSession.controllerID == selectedRouterID
+        selectedRouterID != nil
+            && controllerSessionPresentation.controllerID == selectedRouterID
     }
 
     var canTestSelectedRouter: Bool {
-        hasSelectedLiveSession && !isBusy
+        hasSelectedLiveSession && !isBusy && refreshTask == nil
     }
 
     var canRefreshSelectedRouter: Bool {
         hasSelectedLiveSession
             && !isBusy
-            && !dashboardSessionControls.dashboardUpdatesPaused
-            && controllerSession.state.allowsLiveCommands
+            && manualSessionRefreshTask == nil
+            && !controllerSessionPresentation.controls.dashboardUpdatesPaused
+            && controllerSessionPresentation.state.allowsLiveCommands
     }
 
     var canTogglePresentationPause: Bool {
@@ -300,26 +302,18 @@ extension AppModel {
 
     func requestImmediateSessionRefresh(isUserInitiated: Bool = false) {
         guard let router = selectedRouter,
-              controllerSession.controllerID == router.id else {
-            operationState = .error(localized("operation.select_router_refresh"))
-            return
-        }
+              controllerSessionPresentation.controllerID == router.id else { return }
 
-        guard !dashboardSessionControls.dashboardUpdatesPaused else {
-            if isUserInitiated {
-                operationState = .partial(localized("operation.dashboard_updates_paused"))
+        if isUserInitiated {
+            guard canRefreshSelectedRouter,
+                  !(sessionRequiresRuntimeProbe(for: router) && activeSessionControllerKind == nil) else {
+                return
             }
-            return
+        } else {
+            guard !controllerSessionPresentation.controls.dashboardUpdatesPaused else { return }
         }
 
         if sessionRequiresRuntimeProbe(for: router), activeSessionControllerKind == nil {
-            if isUserInitiated {
-                operationState = .working(
-                    localized("operation.testing_endpoints_progress"),
-                    action: TrialCommandAction.refresh.title(language: presentationLanguage),
-                    target: router.displayName
-                )
-            }
             startAutoDetectProbe(
                 for: router,
                 generation: controllerSession.generation,
@@ -329,6 +323,11 @@ extension AppModel {
         }
 
         let generation = controllerSession.generation
+        let operationID = isUserInitiated ? UUID() : nil
+        if let operationID {
+            selectedRouterRefreshOperationID = operationID
+            isRefreshingDashboard = true
+        }
         if runtimeControllerKind(for: router) == .singBoxCompatible {
             if isUserInitiated {
                 operationState = .working(
@@ -338,7 +337,12 @@ extension AppModel {
                 )
             }
             startLiveStreams(for: router, generation: generation)
-            if isUserInitiated {
+            if let operationID,
+               finishSelectedRouterRefresh(
+                    operationID: operationID,
+                    routerID: router.id,
+                    generation: generation
+               ) {
                 operationState = .success(
                     localized("operation.full_refresh_loaded"),
                     action: TrialCommandAction.refresh.title(language: presentationLanguage),
@@ -354,26 +358,26 @@ extension AppModel {
                 action: TrialCommandAction.refresh.title(language: presentationLanguage),
                 target: router.displayName
             )
-            restartRequestedMihomoLiveStreamsForManualRefresh(
+            restartStreamsForManualRefresh(
                 router: router,
                 generation: generation
             )
         }
 
-        manualSessionRefreshTask = Task {
-            async let fast: Void = performSessionRefresh(
+        let refreshOperation = Task {
+            async let fast: Void = runImmediateSessionRefreshLane(
                 .fast,
                 router: router,
                 generation: generation,
                 manual: isUserInitiated
             )
-            async let medium: Void = performSessionRefresh(
+            async let medium: Void = runImmediateSessionRefreshLane(
                 .medium,
                 router: router,
                 generation: generation,
                 manual: isUserInitiated
             )
-            async let slow: Void = performSessionRefresh(
+            async let slow: Void = runImmediateSessionRefreshLane(
                 .slow,
                 router: router,
                 generation: generation,
@@ -381,9 +385,12 @@ extension AppModel {
             )
             _ = await (fast, medium, slow)
 
-            guard isCurrentSession(routerID: router.id, generation: generation) else { return }
-            manualSessionRefreshTask = nil
-            if isUserInitiated {
+            if let operationID,
+               finishSelectedRouterRefresh(
+                    operationID: operationID,
+                    routerID: router.id,
+                    generation: generation
+               ) {
                 operationState = controllerSession.state.failureDetail.map {
                     .partial($0, action: TrialCommandAction.refresh.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
                 } ?? .success(
@@ -393,6 +400,25 @@ extension AppModel {
                 )
             }
         }
+        if isUserInitiated {
+            manualSessionRefreshTask = refreshOperation
+        }
+    }
+
+    @discardableResult
+    private func finishSelectedRouterRefresh(
+        operationID: UUID,
+        routerID: RouterProfile.ID,
+        generation: UUID
+    ) -> Bool {
+        guard selectedRouterRefreshOperationID == operationID,
+              isCurrentSession(routerID: routerID, generation: generation) else {
+            return false
+        }
+        selectedRouterRefreshOperationID = nil
+        isRefreshingDashboard = false
+        manualSessionRefreshTask = nil
+        return true
     }
 
     func setPresentationPaused(_ paused: Bool) {
@@ -729,7 +755,7 @@ extension AppModel {
         }
     }
 
-    private func performSessionRefresh(
+    func performSessionRefresh(
         _ lane: SessionRefreshLane,
         router: RouterProfile,
         generation: UUID,
@@ -850,32 +876,48 @@ extension AppModel {
         case .medium:
             let proxies = try await client.proxies()
             try ensureCurrentSession(routerID: router.id, generation: generation)
-            controllerSession.endpointCache.proxies = proxies
-
             var nextHealth = currentPresentationHealth()
-            nextHealth.set(.proxies, status: .ready(localized("endpoint.groups_count \(proxies.policyGroups.count)")))
+            let policyGroups = proxies.policyGroups
+            nextHealth.set(.proxies, status: .ready(localized("endpoint.groups_count \(policyGroups.count)")))
+
+            let smartGroups = policyGroups
+                .filter { $0.type.caseInsensitiveCompare("Smart") == .orderedSame }
+                .map(\.name)
+            let proxyChangePlan = MihomoEndpointChangePlan.medium(
+                cache: controllerSession.endpointCache,
+                proxies: proxies,
+                smartWeights: smartGroups.isEmpty ? .replace(nil) : .notReceived
+            )
+            if proxyChangePlan.shouldWriteProxies {
+                controllerSession.endpointCache.proxies = proxies
+            }
+            if proxyChangePlan.shouldWriteSmartWeights {
+                controllerSession.endpointCache.smartWeights = nil
+            }
             publishMihomoPresentation(
                 router: router,
                 health: nextHealth,
-                domains: [.policyGroups, .insight]
+                domains: proxyChangePlan.domains,
+                rebuildUnifiedSnapshot: proxyChangePlan.shouldRebuildUnifiedSnapshot
             )
 
-            let smartGroups = proxies.policyGroups
-                .filter { $0.type.caseInsensitiveCompare("Smart") == .orderedSame }
-                .map(\.name)
-            guard !smartGroups.isEmpty else {
-                controllerSession.endpointCache.smartWeights = nil
-                return .success
-            }
+            guard !smartGroups.isEmpty else { return .success }
 
             do {
                 let smartWeights = try await client.smartWeights(forGroups: smartGroups)
                 try ensureCurrentSession(routerID: router.id, generation: generation)
-                controllerSession.endpointCache.smartWeights = smartWeights
+                let smartWeightsChangePlan = MihomoEndpointChangePlan.medium(
+                    cache: controllerSession.endpointCache,
+                    smartWeights: .replace(smartWeights)
+                )
+                if smartWeightsChangePlan.shouldWriteSmartWeights {
+                    controllerSession.endpointCache.smartWeights = smartWeights
+                }
                 publishMihomoPresentation(
                     router: router,
                     health: nextHealth,
-                    domains: [.policyGroups, .insight]
+                    domains: smartWeightsChangePlan.domains,
+                    rebuildUnifiedSnapshot: smartWeightsChangePlan.shouldRebuildUnifiedSnapshot
                 )
             } catch is CancellationError {
                 throw CancellationError()
@@ -903,11 +945,26 @@ extension AppModel {
             var firstFailure: Error?
             var providerFailure: Error?
             var successCount = 0
+            let nextVersion = try? results.version.get()
+            let nextConfig = try? results.config.get()
+            let nextRules = try? results.rules.get()
+            let nextProxyProviders = try? results.providers.proxy.get()
+            let nextRuleProviders = try? results.providers.rule.get()
+            let changePlan = MihomoEndpointChangePlan.slow(
+                cache: controllerSession.endpointCache,
+                version: nextVersion,
+                config: nextConfig,
+                rules: nextRules,
+                proxyProviders: nextProxyProviders,
+                ruleProviders: nextRuleProviders
+            )
 
             switch results.version {
             case .success(let value):
                 successCount += 1
-                controllerSession.endpointCache.version = value
+                if changePlan.shouldWriteVersion {
+                    controllerSession.endpointCache.version = value
+                }
                 nextHealth.set(.version, status: .ready(value.version))
             case .failure(let error):
                 firstFailure = firstFailure ?? error
@@ -917,7 +974,9 @@ extension AppModel {
             switch results.config {
             case .success(let value):
                 successCount += 1
-                controllerSession.endpointCache.config = value
+                if changePlan.shouldWriteConfig {
+                    controllerSession.endpointCache.config = value
+                }
                 nextHealth.set(.configs, status: .ready(MicaStrings.displayMode(DashboardSnapshot.displayMode(value.mode), language: presentationLanguage)))
             case .failure(let error):
                 firstFailure = firstFailure ?? error
@@ -927,7 +986,9 @@ extension AppModel {
             switch results.rules {
             case .success(let value):
                 successCount += 1
-                controllerSession.endpointCache.rules = value
+                if changePlan.shouldWriteRules {
+                    controllerSession.endpointCache.rules = value
+                }
                 nextHealth.set(.rules, status: .ready(localized("endpoint.rules_count \(value.rules.count)")))
             case .failure(let error):
                 firstFailure = firstFailure ?? error
@@ -937,7 +998,9 @@ extension AppModel {
             switch results.providers.proxy {
             case .success(let value):
                 successCount += 1
-                controllerSession.endpointCache.proxyProviders = value
+                if changePlan.shouldWriteProxyProviders {
+                    controllerSession.endpointCache.proxyProviders = value
+                }
             case .failure(let error):
                 firstFailure = firstFailure ?? error
                 providerFailure = providerFailure ?? error
@@ -945,7 +1008,9 @@ extension AppModel {
             switch results.providers.rule {
             case .success(let value):
                 successCount += 1
-                controllerSession.endpointCache.ruleProviders = value
+                if changePlan.shouldWriteRuleProviders {
+                    controllerSession.endpointCache.ruleProviders = value
+                }
             case .failure(let error):
                 firstFailure = firstFailure ?? error
                 providerFailure = providerFailure ?? error
@@ -962,7 +1027,8 @@ extension AppModel {
             publishMihomoPresentation(
                 router: router,
                 health: nextHealth,
-                domains: [.metadata, .routing, .insight]
+                domains: changePlan.domains,
+                rebuildUnifiedSnapshot: changePlan.shouldRebuildUnifiedSnapshot
             )
             guard let firstFailure else { return .success }
             guard successCount > 0 else { throw firstFailure }
@@ -1134,7 +1200,7 @@ extension AppModel {
                 snapshot,
                 router: router,
                 health: nextHealth,
-                domains: [.routing, .insight]
+                domains: [.rules, .insight]
             )
             if let rulesFailure {
                 publishRulesSnapshotState(
@@ -1164,7 +1230,8 @@ extension AppModel {
     private func publishMihomoPresentation(
         router: RouterProfile,
         health: ControllerHealthSnapshot,
-        domains: DashboardPublicationDomains
+        domains: DashboardPublicationDomains,
+        rebuildUnifiedSnapshot: Bool
     ) {
         controllerSession.recordReceived(at: Date())
         if controllerSession.baselineTransaction.isActive {
@@ -1178,27 +1245,41 @@ extension AppModel {
         let cache = controllerSession.endpointCache
         var nextDashboard = controllerSession.pendingPresentation.dashboard ?? dashboard
 
-        if let version = cache.version {
-            nextDashboard.versionLabel = version.version
+        if domains.contains(.metadata) {
+            if let version = cache.version {
+                nextDashboard.versionLabel = version.version
+            }
+            if let config = cache.config {
+                nextDashboard.replaceConfig(with: config)
+            }
         }
-        if let config = cache.config {
-            nextDashboard.replaceConfig(with: config)
-        }
-        if let proxies = cache.proxies {
+        if domains.contains(.policyGroups), let proxies = cache.proxies {
             nextDashboard.replaceGroups(with: proxies, smartWeights: cache.smartWeights)
         }
-        if let connections = cache.connections {
+        if domains.contains(.connections), let connections = cache.connections {
             nextDashboard.replaceConnections(with: connections)
         }
-        if let rules = cache.rules {
+        if domains.contains(.rules), let rules = cache.rules {
             nextDashboard.replaceRules(with: rules)
         }
-        nextDashboard.replaceProviders(
-            proxyProviders: cache.proxyProviders,
-            ruleProviders: cache.ruleProviders
-        )
-        let nextUnified: UnifiedControllerSnapshot?
-        if let version = cache.version,
+        if domains.contains(.providers) {
+            nextDashboard.replaceProviders(
+                proxyProviders: cache.proxyProviders,
+                ruleProviders: cache.ruleProviders
+            )
+        }
+
+        let unifiedInputDomains: DashboardPublicationDomains = [
+            .metadata,
+            .policyGroups,
+            .connections,
+            .rules,
+            .providers,
+        ]
+        var nextUnified: UnifiedControllerSnapshot?
+        if rebuildUnifiedSnapshot,
+           !domains.intersection(unifiedInputDomains).isEmpty,
+           let version = cache.version,
            let config = cache.config,
            let proxies = cache.proxies,
            let connections = cache.connections {
@@ -1213,8 +1294,6 @@ extension AppModel {
                 providers: cache.proxyProviders,
                 ruleProviders: cache.ruleProviders
             )
-        } else {
-            nextUnified = nil
         }
 
         var finalizedHealth = health
@@ -1222,39 +1301,67 @@ extension AppModel {
         let nextConnectionState: ConnectionState = cache.version.map {
             .connected(version: $0.version)
         } ?? .connecting
+        let currentRulesState = controllerSession.pendingPresentation.rulesSnapshotState
+            ?? rulesSnapshotState
         let nextRulesState = enhancedSnapshotState(
             for: .rules,
             hasValue: cache.rules != nil,
-            fallback: rulesSnapshotState,
+            fallback: currentRulesState,
             health: finalizedHealth
         )
         let hasProviders = cache.proxyProviders != nil || cache.ruleProviders != nil
+        let currentProvidersState = controllerSession.pendingPresentation.providersSnapshotState
+            ?? providersSnapshotState
         let nextProvidersState = enhancedSnapshotState(
             for: .providers,
             hasValue: hasProviders,
-            fallback: providersSnapshotState,
+            fallback: currentProvidersState,
             health: finalizedHealth
         )
 
         if dashboardSessionControls.dashboardUpdatesPaused {
-            controllerSession.pendingPresentation.dashboard = nextDashboard
-            controllerSession.pendingPresentation.controllerHealth = finalizedHealth
-            controllerSession.pendingPresentation.connectionState = nextConnectionState
-            controllerSession.pendingPresentation.rulesSnapshotState = nextRulesState
-            controllerSession.pendingPresentation.providersSnapshotState = nextProvidersState
-            if let nextUnified {
+            if !domains.isEmpty {
+                controllerSession.pendingPresentation.dashboard = nextDashboard
+            }
+            if (controllerSession.pendingPresentation.controllerHealth ?? controllerHealth)
+                != finalizedHealth {
+                controllerSession.pendingPresentation.controllerHealth = finalizedHealth
+            }
+            if (controllerSession.pendingPresentation.connectionState ?? connectionState)
+                != nextConnectionState {
+                controllerSession.pendingPresentation.connectionState = nextConnectionState
+            }
+            if currentRulesState != nextRulesState {
+                controllerSession.pendingPresentation.rulesSnapshotState = nextRulesState
+            }
+            if currentProvidersState != nextProvidersState {
+                controllerSession.pendingPresentation.providersSnapshotState = nextProvidersState
+            }
+            if let nextUnified,
+               nextUnified
+                   != (controllerSession.pendingPresentation.unifiedSnapshot ?? unifiedSnapshot) {
                 controllerSession.pendingPresentation.unifiedSnapshot = nextUnified
             }
             return
         }
 
-        dashboard = nextDashboard
-        publishDashboardDomains(domains)
-        controllerHealth = finalizedHealth
-        connectionState = nextConnectionState
-        rulesSnapshotState = nextRulesState
-        providersSnapshotState = nextProvidersState
-        if let nextUnified {
+        if !domains.isEmpty {
+            dashboard = nextDashboard
+            publishDashboardDomains(domains)
+        }
+        if controllerHealth != finalizedHealth {
+            controllerHealth = finalizedHealth
+        }
+        if connectionState != nextConnectionState {
+            connectionState = nextConnectionState
+        }
+        if rulesSnapshotState != nextRulesState {
+            rulesSnapshotState = nextRulesState
+        }
+        if providersSnapshotState != nextProvidersState {
+            providersSnapshotState = nextProvidersState
+        }
+        if let nextUnified, nextUnified != unifiedSnapshot {
             unifiedSnapshot = nextUnified
         }
     }
@@ -1331,8 +1438,10 @@ extension AppModel {
                 liveStreamUpdatedAt = latest.receivedAt
             }
         }
-        if domains.contains(.routing) {
+        if domains.contains(.rules) {
             dashboard.rules = projected.rules
+        }
+        if domains.contains(.providers) {
             dashboard.providers = projected.providers
         }
         if domains.contains(.insight) {
@@ -2050,6 +2159,8 @@ extension AppModel {
         mediumSessionRefreshTask = nil
         slowSessionRefreshTask = nil
         manualSessionRefreshTask = nil
+        selectedRouterRefreshOperationID = nil
+        isRefreshingDashboard = false
         liveTrafficTask = nil
         liveLogsTask = nil
         liveMemoryTask = nil
@@ -2815,6 +2926,8 @@ extension AppModel {
         mediumSessionRefreshTask = nil
         slowSessionRefreshTask = nil
         manualSessionRefreshTask = nil
+        selectedRouterRefreshOperationID = nil
+        isRefreshingDashboard = false
         liveTrafficTask = nil
         liveLogsTask = nil
         liveMemoryTask = nil

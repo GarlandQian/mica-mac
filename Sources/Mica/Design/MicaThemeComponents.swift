@@ -438,9 +438,13 @@ struct WorkbenchPageScaffold<Commands: View, Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             commands
+                // Command, status, and supplementary chrome must keep its
+                // intrinsic height; only the page content fills the remainder.
+                .fixedSize(horizontal: false, vertical: true)
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MicaTheme.canvas)
+                .layoutPriority(1)
         }
         .background(MicaTheme.canvas)
     }

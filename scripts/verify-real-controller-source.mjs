@@ -297,6 +297,7 @@ const managementPageFiles = [
 ];
 
 const requiredPresentationTests = [
+  "Tests/MicaTests/AppModelCommandBoundaryTests.swift",
   "Tests/MicaTests/AppModelEndpointChecksTests.swift",
   "Tests/MicaTests/ConnectionMutationSafetyTests.swift",
   "Tests/MicaTests/GeoIPResolverTests.swift",
@@ -323,16 +324,20 @@ const requiredFiles = [
   "AGENTS.md",
   ".trellis/spec/frontend/workbench-ui-contract.md",
   ".trellis/spec/frontend/live-session-controller-contract.md",
+  ".trellis/spec/frontend/live-command-scope-contract.md",
   ".trellis/spec/backend/controller-data-contract.md",
   "Sources/Mica/App/AppAppearance.swift",
   "Sources/Mica/App/AppFontScale.swift",
   "Sources/Mica/App/AppLanguage.swift",
+  "Sources/Mica/App/AppModelConfigurationOperations.swift",
   "Sources/Mica/App/AppPreferenceEnvironment.swift",
   "Sources/Mica/App/AppPreferencesStore.swift",
   "Sources/Mica/App/AppModel.swift",
+  "Sources/Mica/App/AppModelDiagnostics.swift",
   "Sources/Mica/App/AppModelEndpointChecks.swift",
   "Sources/Mica/App/AppModelLiveSession.swift",
   "Sources/Mica/App/AppModelLiveSessionRuntime.swift",
+  "Sources/Mica/App/AppModelReadiness.swift",
   "Sources/Mica/App/AppModelSessionRefreshCoordinator.swift",
   "Sources/Mica/App/AppModelRouterProfiles.swift",
   "Sources/Mica/App/AppModelSelectionState.swift",
@@ -344,6 +349,7 @@ const requiredFiles = [
   "Sources/Mica/App/SessionBuffers.swift",
   "Sources/Mica/App/LiveSessionRefreshModels.swift",
   "Sources/Mica/App/LiveSessionRuntime.swift",
+  "Sources/Mica/App/LiveCommandScope.swift",
   "Sources/Mica/App/PerformanceObservation.swift",
   "Sources/Mica/App/SessionRefreshCoordinator.swift",
   "Sources/Mica/App/ConnectionTopologyModel.swift",
@@ -423,6 +429,7 @@ const appInfoPlist = read("Sources/Mica/App/Info.plist");
 const workbenchContract = read(".trellis/spec/frontend/workbench-ui-contract.md");
 const controllerContract = read(".trellis/spec/backend/controller-data-contract.md");
 const liveSessionContract = read(".trellis/spec/frontend/live-session-controller-contract.md");
+const liveCommandScopeContract = read(".trellis/spec/frontend/live-command-scope-contract.md");
 // Mica Ops design system (task 08-17 Phase 7.3): the consolidated theme namespace.
 const designSystem = read("Sources/Mica/Design/MicaTheme.swift");
 const themeComponents = read("Sources/Mica/Design/MicaThemeComponents.swift");
@@ -506,10 +513,15 @@ const workbenchCode = code(workbenchSource);
 const presentationTests = requiredPresentationTests.map(read).join("\n");
 const sessionStreamTests = read("Tests/MicaTests/SessionStreamStateTests.swift");
 const liveSessionPublicationTests = read("Tests/MicaTests/LiveSessionPublicationTests.swift");
+const liveSessionTransactionTests = read("Tests/MicaTests/LiveSessionTransactionTests.swift");
 const liveSessionRuntimeTests = read("Tests/MicaTests/LiveSessionRuntimeTests.swift");
+const overviewPerformanceTests = read(
+  "Tests/MicaTests/WorkbenchOverviewPerformanceTests.swift",
+);
 const overviewPreferencesTests = read(
   "Tests/MicaTests/WorkbenchOverviewPreferencesTests.swift",
 );
+const xcStringsResolverTests = read("Tests/MicaTests/XCStringsResolverTests.swift");
 const appAppearance = read("Sources/Mica/App/AppAppearance.swift");
 const appFontScale = read("Sources/Mica/App/AppFontScale.swift");
 const appLanguage = read("Sources/Mica/App/AppLanguage.swift");
@@ -525,7 +537,12 @@ const routerEditorDiagnosis = read(
   "Sources/Mica/Features/Routers/Views/RouterEditorDiagnosisSections.swift",
 );
 const appModel = read("Sources/Mica/App/AppModel.swift");
+const appModelConfigurationOperations = read(
+  "Sources/Mica/App/AppModelConfigurationOperations.swift",
+);
+const appModelDiagnostics = read("Sources/Mica/App/AppModelDiagnostics.swift");
 const appModelEndpointChecks = read("Sources/Mica/App/AppModelEndpointChecks.swift");
+const appModelReadiness = read("Sources/Mica/App/AppModelReadiness.swift");
 const liveSession = read("Sources/Mica/App/AppModelLiveSession.swift");
 const liveSessionRuntime = read("Sources/Mica/App/LiveSessionRuntime.swift");
 const liveSessionRuntimeBridge = read("Sources/Mica/App/AppModelLiveSessionRuntime.swift");
@@ -533,10 +550,12 @@ const refreshCoordinator = read("Sources/Mica/App/SessionRefreshCoordinator.swif
 const performanceObservation = read("Sources/Mica/App/PerformanceObservation.swift");
 const routerProfiles = read("Sources/Mica/App/AppModelRouterProfiles.swift");
 const selectionState = read("Sources/Mica/App/AppModelSelectionState.swift");
+const liveCommandScope = read("Sources/Mica/App/LiveCommandScope.swift");
 const surgeOperations = read("Sources/Mica/App/AppModelSurgeOperations.swift");
 const surgeProjection = read("Sources/Mica/App/DashboardSurgeProjectionModels.swift");
 const sessionControls = read("Sources/Mica/App/DashboardSessionControls.swift");
 const dashboardSessionModels = read("Sources/Mica/App/DashboardSessionModels.swift");
+const performanceBenchmarkTests = read("Tests/MicaTests/MicaPerformanceBenchmarkTests.swift");
 const sessionBuffers = read("Sources/Mica/App/SessionBuffers.swift");
 const liveSessionRefreshModels = read("Sources/Mica/App/LiveSessionRefreshModels.swift");
 const connectionTopology = read("Sources/Mica/App/ConnectionTopologyModel.swift");
@@ -550,6 +569,7 @@ const surgeClient = read("Sources/MicaCore/API/SurgeHttpAPIClient.swift");
 const unifiedAdapters = read("Sources/MicaCore/API/UnifiedControllerAdapters.swift");
 const unifiedModels = read("Sources/MicaCore/Models/UnifiedControllerModels.swift");
 const controllerVariantTests = read("Tests/MicaTests/ControllerVariantCapabilityTests.swift");
+const commandBoundaryTests = read("Tests/MicaTests/AppModelCommandBoundaryTests.swift");
 const runtimeSmoke = read("Sources/Mica/App/AppRuntimeSmokeProbe.swift");
 const executableSource = listFiles("Sources/Mica")
   .filter((file) => file.endsWith(".swift"))
@@ -608,6 +628,24 @@ assertIncludes(liveSessionContract, "LiveSessionRuntime", "Live-session contract
 assertIncludes(liveSessionContract, "SessionRefreshCoordinator", "Live-session contract must retain actor-owned lane coordination");
 assertIncludes(liveSessionContract, "200 records and 30 minutes", "Live-session contract must preserve current-session closed-history limits");
 assertIncludes(liveSessionContract, "DashboardSnapshot` does not own logs", "Live-session contract must keep logs out of the broad dashboard snapshot");
+assertIncludes(liveSessionContract, "Live Command Scope Contract", "Live-session contract must route persistent handlers to the dedicated scope contract");
+for (const commandScopeContractSection of [
+  "## 1. Scope / Trigger",
+  "## 2. Signatures",
+  "## 3. Contracts",
+  "## 4. Validation & Error Matrix",
+  "## 5. Good / Base / Bad Cases",
+  "## 6. Tests Required",
+  "## 7. Wrong vs Correct",
+]) {
+  assertIncludes(
+    liveCommandScopeContract,
+    commandScopeContractSection,
+    `Live-command-scope contract must retain ${commandScopeContractSection}`,
+  );
+}
+assertIncludes(liveCommandScopeContract, "Same controller ID, older generation", "Live-command-scope contract must reject same-controller generation replacement");
+assertIncludes(liveCommandScopeContract, "Test/Refresh remain unscoped", "Live-command-scope contract must preserve activation-time Test/Refresh semantics");
 
 assertIncludes(
   routerEditorView,
@@ -709,6 +747,36 @@ assertExcludes(
 assertIncludes(liveSessionRuntime, "actor LiveSessionRuntime", "High-frequency live ingestion must remain actor-owned");
 assertIncludes(liveSessionRuntime, "struct LiveSessionRuntimePublication", "Runtime must publish immutable typed envelopes");
 assertIncludes(liveSessionRuntime, "LiveSessionConnectionRevisions", "Connection structure, metrics, and traffic revisions must remain separate");
+const catalogConnectionStructureComparison = sourceSection(
+  dashboardSessionModels,
+  "static func structuresMatch(",
+  "static func metricsMatch(",
+);
+assertIncludes(
+  catalogConnectionStructureComparison,
+  "left.additionalFields == right.additionalFields",
+  "Catalog connection structure classification must exclude known mutable metric fields",
+);
+assertExcludes(
+  catalogConnectionStructureComparison,
+  "left.fields == right.fields",
+  "Catalog connection structure classification must not compare raw decoded fields",
+);
+const runtimeConnectionStructureComparison = sourceSection(
+  liveSessionRuntime,
+  "private static func connectionStructureEquals(",
+  "private static func connectionMetricsEquals(",
+);
+assertIncludes(
+  runtimeConnectionStructureComparison,
+  "lhs.additionalFields == rhs.additionalFields",
+  "Runtime connection structure classification must exclude known mutable metric fields",
+);
+assertExcludes(
+  runtimeConnectionStructureComparison,
+  "lhs.fields == rhs.fields",
+  "Runtime connection structure classification must not compare raw decoded fields",
+);
 assertIncludes(liveSessionRefreshModels, "struct LiveSessionWindowDemandID", "Each window must own a stable demand token");
 assertIncludes(liveSessionRefreshModels, "private(set) var windowDestinations:", "The coordinator must retain token-scoped destinations");
 assertIncludes(liveSessionRefreshModels, "struct LiveSessionPresentationDemand", "Runtime visibility must travel as one complete demand snapshot");
@@ -810,6 +878,36 @@ assertIncludes(
   "content.font(MicaTheme.font(for: role, scale: fontScale, weight: weight))",
   "The MicaTheme font modifier must own ordinary interface font construction",
 );
+const workbenchDataText = sourceSection(
+  dataShared,
+  "struct WorkbenchDataText: View {",
+  "struct WorkbenchDataMetric: View {",
+);
+assertIncludes(
+  workbenchDataText,
+  "var role: MicaTheme.TextRole = .label",
+  "WorkbenchDataText must accept the MicaTheme semantic role directly",
+);
+assertIncludes(
+  workbenchDataText,
+  ".micaThemeFont(role, weight: weight)",
+  "WorkbenchDataText must render its direct MicaTheme semantic role",
+);
+assertExcludes(
+  workbenchCode,
+  "MicaTextStyle",
+  "The removed Workbench text-style compatibility enum must not return",
+);
+assertExcludes(
+  workbenchDataText,
+  "themeRole(",
+  "WorkbenchDataText must not restore a text-style-to-theme-role compatibility bridge",
+);
+assertExcludes(
+  workbenchDataText,
+  "Font.Design",
+  "WorkbenchDataText must express monospaced text through MicaTheme data roles",
+);
 // Task 08-20: topology text moved to the system-pipeline label band, which
 // reads the font scale from the environment via micaThemeFont.
 assertIncludes(
@@ -895,6 +993,21 @@ for (const primitive of [
 ]) {
   assertIncludes(themeComponents, primitive, `Mica Ops theme components must expose ${primitive}`);
 }
+const pageScaffold = sourceSection(
+  themeComponents,
+  "struct WorkbenchPageScaffold",
+  "extension WorkbenchPageScaffold",
+);
+assertIncludes(
+  pageScaffold,
+  ".fixedSize(horizontal: false, vertical: true)",
+  "Workbench command and supplementary chrome must remain content-height instead of absorbing page height",
+);
+assertIncludes(
+  pageScaffold,
+  ".layoutPriority(1)",
+  "Workbench main content must remain the scaffold's flexible-height region",
+);
 assertIncludes(themeComponents, ".symbolRenderingMode(.monochrome)", "Shared workbench symbols must retain deterministic native rendering");
 assertIncludes(themeComponents, "ContentUnavailableView", "Shared states must use native centered unavailable content");
 assertIncludes(themeComponents, ".frame(maxWidth: .infinity, maxHeight: .infinity)", "Full-page states must center in the remaining region");
@@ -993,7 +1106,7 @@ for (const realTimeline of [
   "OverviewTimelineProjection.connectionSamples(",
   "OverviewProjection.latencyAnomalies(",
   "OverviewProjection.ruleHitSummary(",
-  "OverviewProjection.topActiveConnections(",
+  "OverviewProjection.topActiveConnectionsCancellable(",
   "OverviewProjection.networkFactGroups(",
   "ConnectionTopologyBuilder.buildCancellable(",
 ]) {
@@ -1236,6 +1349,33 @@ const overviewTopologyViewport = sourceSection(
   "private struct OverviewTopologyViewport",
   "private struct OverviewTopologyIdleSummary",
 );
+const overviewTopologyAccessibility = sourceSection(
+  overviewTopologyView,
+  "private struct OverviewTopologyAccessibilityRepresentation",
+  "private enum OverviewTopologyDrawing",
+);
+assertIncludes(overviewTopology, "func accessibilityWindow(", "Overview paths must use the shared bounded accessibility window");
+assertIncludes(overviewTopology, "enum OverviewTopologyHeightReservation", "Overview must share one pure topology-height reservation decision");
+assertIncludes(overviewTopologyView, "visibleTopologyIsEmpty: visibleTopologyIsEmpty", "Overview must reserve flow height from the currently visible topology state");
+assertIncludes(overviewTopologyView, "minHeight: reservedMinimumHeight.map(CGFloat.init)", "Resolved empty topology must be allowed to collapse to intrinsic height");
+assertIncludes(presentationTests, "topologyHeightReservationCollapsesOnlyResolvedEmptyContent", "Overview needs resolved-empty topology height regression coverage");
+assertIncludes(overviewTopology, "private let accessibilityPolicyNodes: [ConnectionTopology.Node]", "Overview must pre-index policy nodes instead of filtering the complete topology during interaction updates");
+assertIncludes(overviewTopology, "func accessibilityPolicyNodeWindow(", "Overview policy nodes must use the shared bounded accessibility window");
+assertExcludes(overviewTopology, "accessibilityGroups", "Overview must not prebuild every accessibility path group");
+assertIncludes(overviewTopologyAccessibility, "topologyIndex.accessibilityPolicyNodes(", "Overview must instantiate only the active policy-node accessibility window");
+assertIncludes(overviewTopologyAccessibility, "pathRange: pathWindow.range", "Overview must instantiate only the active 32-path accessibility window");
+assertIncludes(overviewTopologyAccessibility, "WorkbenchAccessibilityPageControls(", "Overview accessibility windows must expose Previous/Next traversal");
+assertIncludes(overviewTopologyAccessibility, ".onChange(of: interaction.snapshot)", "Overview must observe pinned selection state when revealing an accessibility window");
+assertIncludes(overviewTopologyAccessibility, "guard snapshot.isPinned else { return }", "Overview hover alone must not page the accessibility window");
+assertExcludes(code(overviewTopologyAccessibility), "nodes.filter", "Overview interaction updates must not scan every topology node");
+assertIncludes(overviewTopologyAccessibility, ".onChange(of: structure)", "Overview accessibility windows must reset or clamp across structural generations");
+assertExcludes(code(overviewTopologyAccessibility), "ForEach(groups)", "Overview must not materialize every accessibility path group");
+assertExcludes(code(overviewTopologyAccessibility), "LazyVStack", "A lazy stack must not mask an unbounded Overview accessibility subtree");
+assertExcludes(code(overviewTopologyAccessibility), "Table(", "Overview accessibility replacement must not nest a Table");
+assertExcludes(code(overviewTopologyAccessibility), "List(", "Overview accessibility replacement must not nest a List");
+assertIncludes(overviewTopologyViewport, ".accessibilityHidden(true)", "Expanded visual path rows must not duplicate the bounded accessibility path projection");
+assertIncludes(presentationTests, "topologyRenderBandsAndAccessibilityCoverCompleteTopology", "Overview needs 2,000-path bounded traversal coverage");
+assertIncludes(presentationTests, "topologyAccessibilityPolicyNodeWindowTraversesAndRevealsSelection", "Overview needs bounded policy-node traversal and selected-node reveal coverage");
 assertIncludes(overviewTopologyViewport, "ScrollView(.horizontal)", "Long-chain topology must retain its bounded horizontal viewport");
 assertIncludes(overviewTopologyViewport, ".scrollPosition($scrollPosition)", "Topology selection reveal must use stable scroll position state");
 assertIncludes(overviewTopologyViewport, "hasHorizontalOverflow ? .visible : .hidden", "Topology must expose a native horizontal indicator only for overflow");
@@ -1308,7 +1448,17 @@ assertIncludes(overviewTopologyBandLayers, "OverviewTopologyLabelBand(", "Topolo
 assertIncludes(overviewTopologyBandLayers, "policyStatusRevision == rhs.policyStatusRevision", "Topology band equality must gate on the policy-status revision, never per-tick values (task 08-20 R5)");
 assertIncludes(overviewTopologyBandLayers, "OverviewTopologyHitBand(", "Topology bands must retain an isolated hit-testing layer");
 assertIncludes(overviewTopologyBandLayers, "allowsMotion: allowsMotion", "Topology bands must gate all motion through the resolved motion state");
-assertIncludes(overviewTopologyView, "revision: catalog.structureRevision", "Topology must react to a new real topology revision");
+const overviewTopologySectionBody = sourceSection(
+  overviewTopologyView,
+  "var body: some View {",
+  "@MainActor\n    private func loadStructureInput",
+);
+assertIncludes(overviewTopologySectionBody, "OverviewTopologyCatalogRequest.observing(appModel)", "Topology body must observe the narrow controller, generation, and structure request");
+assertIncludes(overviewTopologySectionBody, ".task(id: request)", "Topology structure loading must be keyed by the narrow observation request");
+assertIncludes(overviewTopologySectionBody, "revision: visibleInput.catalogRevision", "Topology must render the revision captured with its visible structure input");
+assertExcludes(overviewTopologySectionBody, "connectionsCatalog", "Topology body must not observe the high-frequency connection catalog");
+assertIncludes(overviewTopologyView, "structureRevision: appModel.connectionsStructureRevision", "Topology request must observe the standalone connection structure token");
+assertIncludes(overviewTopologyView, "let catalog = appModel.connectionsCatalog", "Topology task must load the full connection structure outside body observation");
 const overviewTopologyBaseBandSection = sourceSection(
   overviewTopologyView,
   "private struct OverviewTopologyBaseBand",
@@ -1402,11 +1552,210 @@ assertIncludes(operationSessionModels, "if state != session.state", "Session pre
 assertIncludes(operationSessionModels, "if runtime != session.runtime", "Session presentation must guard runtime publication independently");
 assertIncludes(appModel, "synchronizeControllerSessionPresentation()", "Controller session mutations must synchronize the narrow presentation state");
 assertIncludes(appModel, "resetSessionPublicationCoordinator(for: controllerSession)", "New generations must reset publication ownership");
+assertIncludes(liveCommandScope, "struct LiveCommandScope: Equatable, Sendable", "Persisted command handlers must carry immutable controller and generation identity");
+const currentCommandScopeMatcher = sourceSection(
+  liveCommandScope,
+  "func matchesCurrentCommandScope(_ scope: LiveCommandScope) -> Bool",
+);
+for (const identityCheck of [
+  "selectedRouterID == scope.controllerID",
+  "controllerSessionPresentation.controllerID == scope.controllerID",
+  "controllerSessionPresentation.generation == scope.generation",
+  "controllerSession.controllerID == scope.controllerID",
+  "controllerSession.generation == scope.generation",
+]) {
+  assertIncludes(currentCommandScopeMatcher, identityCheck, `Live command scope must validate ${identityCheck}`);
+}
+for (const scopedCommand of [
+  [appModelConfigurationOperations, "scope: LiveCommandScope", "configuration writes"],
+  [appModel, "func setMode(_ mode: String, scope: LiveCommandScope)", "mode writes"],
+  [sourceSection(appModel, "    func selectNode(", "    func clearFixedSelection("), "scope: LiveCommandScope", "proxy selection"],
+  [sourceSection(appModel, "    func clearFixedSelection(", "    func measureDelay(in groupID:"), "scope: LiveCommandScope", "fixed-selection clearing"],
+  [sourceSection(appModel, "    func measureDelay(in groupID:", "    func setRuleDisabled("), "scope: LiveCommandScope", "latency measurement"],
+  [sourceSection(appModel, "    func setRuleDisabled("), "scope: LiveCommandScope", "rule writes"],
+  [surgeOperations, "scope: LiveCommandScope", "Surge policy commands"],
+  [selectionState, "func setControllerLogLevel(\n        _ level: LogSessionLevel,\n        scope: LiveCommandScope", "log-level changes"],
+]) {
+  assertIncludes(scopedCommand[0], scopedCommand[1], `AppModel ${scopedCommand[2]} must require a captured live command scope`);
+}
+assert(
+  count(configurationPage, "let commandScope = LiveCommandScope(") >= 4,
+  "Every Configuration control family must capture its render-generation command scope",
+);
+assertIncludes(rulesRoot, "controllerID: intent.scope.controllerID", "Rules AX mutation must preserve the payload's controller identity");
+assertIncludes(rulesRoot, "generation: intent.scope.generation", "Rules AX mutation must preserve the payload's generation");
+assertIncludes(workspaceView, "scope: commandScope", "The persisted Rules inspector binding must submit its captured scope");
+assertIncludes(logsRoot, "let commandScope = LiveCommandScope(", "The Logs level Picker must capture its render-generation command scope");
+assertIncludes(logsRoot, "appModel.setControllerLogLevel(level, scope: commandScope)", "The Logs level Picker must submit its captured scope");
+assertExcludes(proxyPanels, "@Environment(AppModel.self)", "The bounded proxy AX subtree must not substitute current AppModel identity for its captured scope");
+assertIncludes(proxyPanels, "let onToggleGroup: (String, LiveCommandScope) -> Void", "Proxy AX expansion must carry captured scope");
+assertIncludes(proxyPanels, "let onLocateCurrent: (String, LiveCommandScope) -> Void", "Proxy AX location must carry captured scope");
+assertIncludes(proxyPanels, "let onSelectMember: (String, String, LiveCommandScope) -> Void", "Proxy AX member selection must carry captured scope");
+assertIncludes(proxyPanels, "private var commandScope: LiveCommandScope?", "Proxy AX commands must derive scope from their immutable payload identity");
+assert(
+  count(proxyRoot, "guard appModel.matchesCurrentCommandScope(scope)") >= 6,
+  "Every Proxy AX side-effect family must reject a retained old-generation handler before workspace or command mutation",
+);
+assertIncludes(commandBoundaryTests, "retainedScopeFromEarlierGenerationCannotStartCommands", "Same-controller generation replacement needs a zero-side-effect command regression");
+assertIncludes(commandBoundaryTests, "retainedSurgeLogLevelScopeCannotStartRemoteCommand", "Surge log-level changes need an old-generation zero-side-effect regression");
 assertExcludes(workbenchCode, "appModel.controllerSession.", "Workbench views must not observe the high-frequency controller session aggregate directly");
 assertIncludes(liveSessionPublicationTests, "sessionPresentationIgnoresTimelineOnlyChanges", "Timeline-only updates need a presentation-isolation regression test");
 assertIncludes(dashboardSessionModels, "struct ControllerMetadataSnapshot", "Low-frequency controller metadata must be published separately from live dashboard frames");
 assertIncludes(appModel, "func synchronizeControllerMetadata()", "Dashboard publication must synchronize controller metadata independently");
+assertIncludes(appModel, "@ObservationIgnored var dashboard: DashboardSnapshot", "The complete dashboard must remain an internal non-observable assembly cache");
+assertIncludes(liveSessionPublicationTests, "dashboardAssemblyCacheIsNotObservedButDomainCatalogPublicationInvalidates", "Dashboard cache mutations must not invalidate observers while explicit domain catalogs still publish");
+for (const splitCatalogContract of [
+  "var rulesCatalog: RulesCatalogSnapshot",
+  "var providersCatalog: ProvidersCatalogSnapshot",
+  "func synchronizeRulesCatalog()",
+  "func synchronizeProvidersCatalog()",
+]) {
+  assertIncludes(appModel, splitCatalogContract, `Rule/provider publication ownership must retain ${splitCatalogContract}`);
+}
+assertIncludes(dashboardSessionModels, "struct RulesCatalogSnapshot", "Rules must own an independent observable catalog");
+assertIncludes(dashboardSessionModels, "struct ProvidersCatalogSnapshot", "Providers must own an independent observable catalog");
+assertIncludes(dashboardSessionModels, "static let rules = DashboardPublicationDomains", "Rules must own an independent publication domain");
+assertIncludes(dashboardSessionModels, "static let providers = DashboardPublicationDomains", "Providers must own an independent publication domain");
+assertExcludes(executableSource, ["Routing", "CatalogSnapshot"].join(""), "The combined rule/provider catalog must not return");
+assertExcludes(executableSource, ["routing", "Catalog"].join(""), "Production code must consume the split rule/provider catalogs directly");
+assertExcludes(dashboardSessionModels, "static let routing = DashboardPublicationDomains", "The combined routing publication domain must not return");
+assertIncludes(liveSessionPublicationTests, "ruleAndProviderCatalogObservationsInvalidateIndependently", "Split rule/provider catalogs need Observation regression coverage");
+assertIncludes(appModel, "private(set) var connectionsStructureRevision: UInt64", "Connection structure must publish an independently observable token");
+assertIncludes(appModel, "private(set) var connectionsMetricsRevision: UInt64", "Connection metrics must publish an independently observable token");
+assertIncludes(rulesRoot, ".onChange(of: appModel.connectionsStructureRevision)", "Rules must observe only the standalone connection structure token");
+assertIncludes(rulesRoot, "structureRevision: appModel.connectionsStructureRevision", "Rules must project against the standalone connection structure token");
+assertExcludes(rulesRoot, ".onChange(of: appModel.connectionsCatalog.structureRevision)", "Rules must not observe the complete connection catalog for structure changes");
+const runtimeConnectionsPublication = sourceSection(
+  liveSessionRuntimeBridge,
+  "    private func publishRuntimeConnections(",
+);
+assertOrdered(
+  runtimeConnectionsPublication,
+  ["connectionsCatalog = ConnectionsCatalogSnapshot(", "advanceConnectionsStructureRevision()"],
+  "Runtime connection structure publication must update the catalog before notifying structure-only observers",
+);
+assertOrdered(
+  runtimeConnectionsPublication,
+  ["connectionsCatalog = ConnectionsCatalogSnapshot(", "advanceConnectionsMetricsRevision()"],
+  "Runtime connection metric publication must update the catalog before notifying metric-only observers",
+);
+assertIncludes(liveSessionPublicationTests, "decodedMetricOnlyConnectionFrameKeepsCatalogStructureRevisionStable", "Metric-only connection frames need standalone-token Observation coverage");
+assertIncludes(liveSessionPublicationTests, "runtimeMetricOnlyConnectionPublicationKeepsStructureTokenUnobserved", "Actor-backed metric publications must preserve the standalone structure observation boundary");
+assertIncludes(dashboard, "metricsRevision: appModel.connectionsMetricsRevision", "Overview connection highlights must observe the standalone connection metrics token");
+assertExcludes(dashboard, "metricsRevision: appModel.connectionsCatalog.metricsRevision", "Overview connection highlights must not observe the complete connection catalog for metric changes");
+assertIncludes(overviewPerformanceTests, "connectionHighlightsRequestTracksMetricsButNotAggregateTraffic", "Overview connection highlights need traffic-versus-metrics Observation coverage");
+const refreshCapabilityGates = sourceSection(
+  liveSession,
+  "    private var hasSelectedLiveSession: Bool {",
+  "    func mainWindowDidAppear()",
+);
+assertIncludes(refreshCapabilityGates, "controllerSessionPresentation.controllerID", "Selected-session gates must observe the narrow presentation identity");
+assertIncludes(refreshCapabilityGates, "controllerSessionPresentation.controls.dashboardUpdatesPaused", "Refresh gates must observe narrow presentation controls");
+assertIncludes(refreshCapabilityGates, "controllerSessionPresentation.state.allowsLiveCommands", "Refresh gates must observe narrow presentation lifecycle state");
+assertExcludes(refreshCapabilityGates, "controllerSession.", "Selected-session gates must not observe the raw controller session aggregate");
+assertIncludes(liveSessionPublicationTests, "refreshGateObservesOnlySessionPresentationLifecycleAndControls", "Refresh gates need field-granular Observation regression coverage");
 assertExcludes(workbenchCode, "appModel.dashboard.", "Workbench views must consume per-domain snapshots instead of the broad dashboard aggregate");
+assertIncludes(appModelEndpointChecks, "var hasPublishedBaseSnapshot: Bool", "Endpoint readiness must derive from published domain catalogs");
+assertExcludes(appModelEndpointChecks, "dashboard.hasBaseSnapshot", "Endpoint readiness must not observe the internal dashboard assembly cache");
+assertExcludes(appModelReadiness, "dashboard.", "Compatibility readiness must consume published controller metadata");
+assertExcludes(appModelDiagnostics, "dashboard.", "Diagnostics must consume published domain catalogs");
+const snapshotStatsDiagnostics = sourceSection(
+  selectionState,
+  "    var snapshotStatsDiagnostics: String {",
+  "    func trialSession(for router:",
+);
+assertExcludes(snapshotStatsDiagnostics, "dashboard.", "Snapshot diagnostics must consume published domain catalogs");
+assertIncludes(presentationTests, "publishedDomainCatalogsOwnBaseSnapshotReadiness", "Published base-snapshot readiness needs ownership regression coverage");
+assertIncludes(presentationTests, "diagnosticsUsePublishedDomainCatalogs", "Diagnostics need published-domain regression coverage");
+const proxyNodeViewState = sourceSection(
+  dashboardSessionModels,
+  "struct ProxyNodeViewState",
+  "extension ConnectionSnapshot",
+);
+assertIncludes(proxyNodeViewState, "static func == (lhs: Self, rhs: Self) -> Bool", "Proxy catalog equality must use its presentation-aware fast path");
+assertIncludes(proxyNodeViewState, "&& reportedMetadataMatches(lhs, rhs)", "Proxy catalog equality must include every reported additional field");
+assertIncludes(proxyNodeViewState, "if let left = lhs.additionalMetadataText", "Proxy catalog equality must reuse its existing canonical presentation text");
+assertIncludes(proxyNodeViewState, "return lhs.reportedMetadata == rhs.reportedMetadata", "Proxy catalog equality must retain exact fallback semantics for unencodable or normalization-edge values");
+assertExcludes(proxyNodeViewState, "metadataComparisonData", "Proxy catalog equality must not add a second per-node metadata encoding cost");
+assertIncludes(presentationTests, "proxyNodePresentationEqualityKeepsReportedMetadataAndFallbackSemantics", "Proxy equality needs nested metadata and normalization-edge regression coverage");
+assertIncludes(performanceBenchmarkTests, 'name: "policy-catalog-equality"', "Proxy catalog equality needs a 2,000-node release benchmark");
+assertIncludes(performanceBenchmarkTests, 'name: "policy-catalog-projection-and-equality"', "Proxy projection and equality must be benchmarked together to reject shifted construction cost");
+assertIncludes(performanceBenchmarkTests, 'name: "mihomo-medium-unchanged-change-plan"', "Unchanged 2,000-node Mihomo medium refreshes need an equality-path release benchmark");
+assertIncludes(liveSessionRefreshModels, "struct MihomoEndpointChangePlan", "Mihomo endpoint publication must classify exact cache changes before projection");
+for (const exactCacheComparison of [
+  "cache.proxies != $0",
+  "cache.smartWeights != next",
+  "cache.version != $0",
+  "cache.config != $0",
+  "cache.rules != $0",
+  "cache.proxyProviders != $0",
+  "cache.ruleProviders != $0",
+]) {
+  assertIncludes(liveSessionRefreshModels, exactCacheComparison, `Mihomo endpoint change plans must retain exact comparison ${exactCacheComparison}`);
+}
+const mihomoRefreshLane = sourceSection(
+  liveSession,
+  "    private func refreshMihomoLane(",
+  "    private func refreshSurgeLane(",
+);
+const mihomoMediumRefresh = sourceSection(
+  mihomoRefreshLane,
+  "        case .medium:",
+  "        case .slow:",
+);
+for (const mediumGate of [
+  "if proxyChangePlan.shouldWriteProxies {",
+  "if proxyChangePlan.shouldWriteSmartWeights {",
+  "smartWeights: smartGroups.isEmpty ? .replace(nil) : .notReceived",
+  "if smartWeightsChangePlan.shouldWriteSmartWeights {",
+  "domains: smartWeightsChangePlan.domains",
+]) {
+  assertIncludes(mihomoMediumRefresh, mediumGate, `Mihomo medium refreshes must retain ${mediumGate}`);
+}
+const mihomoSlowRefresh = sourceSection(
+  liveSession,
+  "        case .slow:\n            async let versionResult",
+  "    private func refreshSurgeLane(",
+);
+for (const slowGate of [
+  "let changePlan = MihomoEndpointChangePlan.slow(",
+  "if changePlan.shouldWriteVersion {",
+  "if changePlan.shouldWriteConfig {",
+  "if changePlan.shouldWriteRules {",
+  "if changePlan.shouldWriteProxyProviders {",
+  "if changePlan.shouldWriteRuleProviders {",
+  "domains: changePlan.domains",
+]) {
+  assertIncludes(mihomoSlowRefresh, slowGate, `Mihomo slow refreshes must retain ${slowGate}`);
+}
+const mihomoPresentationPublisher = sourceSection(
+  liveSession,
+  "    private func publishMihomoPresentation(",
+  "    private func publishSurgePresentation(",
+);
+for (const projectionGate of [
+  "if domains.contains(.metadata) {",
+  "if domains.contains(.policyGroups), let proxies = cache.proxies {",
+  "if domains.contains(.connections), let connections = cache.connections {",
+  "if domains.contains(.rules), let rules = cache.rules {",
+  "if domains.contains(.providers) {",
+  "if rebuildUnifiedSnapshot,",
+  "if !domains.isEmpty {",
+]) {
+  assertIncludes(mihomoPresentationPublisher, projectionGate, `Mihomo presentation publication must retain ${projectionGate}`);
+}
+assert(count(mihomoPresentationPublisher, "nextDashboard.replaceGroups(") === 1, "Mihomo publication must have one domain-gated policy-group projection site");
+for (const refreshRegression of [
+  "identicalMihomoMediumResponsesAdvanceFreshnessWithoutRepublishingGroups",
+  "disappearingSmartGroupsClearWeightsWithOneGroupPublication",
+  "identicalMediumResponseStillCommitsAnActiveBaseline",
+  "unchangedMediumResponseDoesNotOverwritePausedPendingDashboard",
+  "slowRuleAndProviderChangesPublishIndependently",
+]) {
+  assertIncludes(liveSessionTransactionTests, refreshRegression, `Mihomo refresh gating needs regression coverage for ${refreshRegression}`);
+}
+assertIncludes(liveSessionPublicationTests, "mihomoMediumChangePlanUsesExactRawProxyAndWeightEquality", "Mihomo medium change planning needs order, metadata, and Smart-weight regression coverage");
+assertIncludes(liveSessionPublicationTests, "mihomoSlowChangePlanKeepsRuleAndProviderDomainsIndependent", "Mihomo slow change planning needs independent rule/provider regression coverage");
 assertIncludes(appModel, "guard next != liveStreamState else { return }", "Live stream state publication must ignore equivalent frames");
 assertIncludes(liveSessionRuntime, "timelineSource: .connectionsFrame", "Mihomo connection frames must publish their reported memory samples");
 assertIncludes(sessionTimelines, "case memoryEndpoint", "Memory samples must retain endpoint provenance");
@@ -1524,6 +1873,7 @@ for (const displacedInteractionContract of [
 for (const presentationContract of [
   "struct ProxySessionPresentation",
   "struct ProxyOperationActivity",
+  "struct ProxyAccessibilityIndex",
   "struct ProxyCatalogProjectionCache",
   "enum ProxyWorkspaceProjection",
   "enum ProxyProjection",
@@ -1573,6 +1923,38 @@ for (const mihomoConfigurationOrderContract of [
 const proxyRootContent = sourceSection(proxyRoot, "private var content:", "private var emptyState:");
 assertIncludes(proxyRootContent, "LazyVStack", "Policy groups must render as one source-ordered vertical workspace");
 assertExcludes(proxyRootContent, "ScrollView(.horizontal)", "Policy groups must not force a horizontal canvas");
+assertOrdered(
+  proxyRootContent,
+  [".background(MicaTheme.canvas)", ".accessibilityRepresentation {", "ProxyBoundedAccessibilityCatalog("],
+  "The complete visual Proxies workspace must expose a bounded semantic replacement at its one outer scroll boundary",
+);
+assertIncludes(proxyRoot, "@State private var accessibilityIndex", "Proxies must retain its accessibility index outside View.body");
+assertIncludes(proxyRoot, "private func rebuildAccessibilityIndex", "Proxies must rebuild accessibility order only with accepted projection changes");
+const proxyAccessibilityIndex = sourceSection(
+  proxyPresentation,
+  "struct ProxyAccessibilityIndex",
+  "struct ProxyActiveGroupIndex",
+);
+assertIncludes(proxyAccessibilityIndex, "let orderedIDs: [String]", "Proxy accessibility paging must preserve complete stable order");
+assertIncludes(proxyAccessibilityIndex, "func elements(in range: Range<Int>)", "Proxy accessibility paging must instantiate only its requested range");
+assertIncludes(proxyAccessibilityIndex, "func selectedElementID(", "Proxy accessibility paging must reveal the active group or inspected member");
+const proxyAccessibilityCatalog = sourceSection(
+  proxyPanels,
+  "struct ProxyBoundedAccessibilityCatalog",
+  "struct ProxyPolicyGroupPanel",
+);
+assertIncludes(proxyAccessibilityCatalog, "WorkbenchAccessibilityPageControls(", "Proxy accessibility must expose complete Previous/Next traversal");
+assertIncludes(proxyAccessibilityCatalog, "ForEach(index.elements(in: window.range))", "Proxy accessibility must create only the active global 32-item slice");
+assertIncludes(proxyAccessibilityCatalog, ".accessibilityActions {", "Proxy accessibility rows must preserve secondary group and node commands");
+assertIncludes(proxyAccessibilityCatalog, "routing.locate_current_node", "Proxy accessibility must preserve Locate Current");
+assertIncludes(proxyAccessibilityCatalog, "routing.test_group", "Proxy accessibility must preserve group testing");
+assertIncludes(proxyAccessibilityCatalog, "routing.clear_fixed_selection", "Proxy accessibility must preserve fixed-selection clearing");
+assertIncludes(proxyAccessibilityCatalog, "routing.test_node %@", "Proxy accessibility must preserve node testing");
+assert(count(proxyAccessibilityCatalog, "WorkbenchAccessibilityPageControls(") === 1, "Proxy accessibility must use one global pager rather than multiplying one pager per open group");
+assertExcludes(code(proxyAccessibilityCatalog), "LazyVStack", "A lazy stack must not mask an unbounded Proxy accessibility subtree");
+assertExcludes(code(proxyAccessibilityCatalog), "LazyVGrid", "Proxy accessibility must not instantiate the visual member grid");
+assertExcludes(code(proxyAccessibilityCatalog), "Table(", "Proxy accessibility replacement must not nest a Table");
+assertExcludes(code(proxyAccessibilityCatalog), "List(", "Proxy accessibility replacement must not nest a List");
 assertIncludes(proxyPanels, "struct ProxyPolicyGroupPanel", "Policy groups must use the redesigned expandable panel");
 assertIncludes(proxyPanels, "ProxyLatencyDistributionView", "Collapsed groups must retain a real latency distribution preview");
 assertIncludes(proxyPanels, ".adaptive(minimum: 340, maximum: 460)", "Expanded groups must keep node cells readable in a three/two/one-column grid");
@@ -1615,6 +1997,13 @@ assertExcludes(proxyPanels, ".scrollTargetLayout()", "Nested proxy grids must no
 assertIncludes(proxyPanels, "ProxyProjection.revealTargetID(", "Each proxy node tile must expose its exact reveal target ID");
 assertIncludes(proxyPanels, ".accessibilityLabel(", "Proxy icon commands must expose localized accessibility labels");
 assertIncludes(proxyPanels, '"routing.test_node \\(member.name)"', "The node-test icon must name its reported node");
+for (const proxyAccessibilityRegression of [
+  "proxyAccessibilityIndexKeepsEveryPageGloballyBounded",
+  "proxyAccessibilityIndexFlattensExpandedMembersIntoOneGlobalWindow",
+  "proxyAccessibilityIndexRevealsSelectionAndClampsAfterCollapse",
+]) {
+  assertIncludes(presentationTests, proxyAccessibilityRegression, `Proxy accessibility needs regression coverage for ${proxyAccessibilityRegression}`);
+}
 assertIncludes(overviewTopologyView, "workspaceStore.stageProxyNavigation(target)", "Topology Open Proxies must stage an exact target before navigation");
 assertIncludes(overviewPolicyInspection, "workspaceStore.stageProxyNavigation(target)", "Policy inspector Open Proxies must stage an exact target before navigation");
 assertIncludes(workspaceStore, "let groupOccurrenceID: String", "Proxy navigation must retain stable group occurrence identity");
@@ -1689,11 +2078,176 @@ for (const purePresentationSource of [
   assertExcludes(purePresentationSource, "import SwiftUI", "Pure data presentation and cache sources must not depend on SwiftUI");
 }
 for (const file of dataBrowserTableFiles) {
+  const tableSource = code(read(file));
   assert(
-    (code(read(file)).match(/\bTable\(/g) ?? []).length === 1,
+    (tableSource.match(/\bTable\(/g) ?? []).length === 1,
     `${file} must construct exactly one native Table`,
   );
+  assertOrdered(
+    tableSource,
+    [
+      ".micaWorkbenchTable(",
+      ".accessibilityHidden(true)",
+      ".overlay {",
+      "WorkbenchTableAccessibilityHost(",
+      "payload: accessibilityPayload",
+      "dispatch: dispatchAccessibilityIntent",
+      ".equatable()",
+    ],
+    `${file} must hide the native Table and host one equatable semantic payload on a detached overlay`,
+  );
+  assert(
+    (tableSource.match(/WorkbenchTableAccessibilityHost\(/g) ?? []).length === 1,
+    `${file} must construct exactly one detached Table accessibility host`,
+  );
+  assertIncludes(
+    tableSource,
+    "let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(",
+    `${file} must resolve its bounded semantic payload before constructing the AX host`,
+  );
+  assertIncludes(
+    tableSource,
+    "sourceRows: rows",
+    `${file} must pass its ordered visual rows to the bounded payload materializer`,
+  );
+  assertIncludes(
+    tableSource,
+    "private func dispatchAccessibilityIntent(",
+    `${file} must dispatch payload intents through its current page state`,
+  );
 }
+assertIncludes(dataPresentation, "struct WorkbenchAccessibilityWindow", "Data pages must share one pure accessibility window projection");
+assertIncludes(dataPresentation, "static let capacity = 32", "The shared accessibility window must remain bounded to 32 items");
+assertIncludes(dataPresentation, "struct WorkbenchAccessibilityWindowCursor", "Data pages must preserve stable accessibility anchors across updates");
+assertIncludes(dataPresentation, "struct WorkbenchTableAccessibilityScope: Equatable, Sendable", "Table accessibility intents must carry a session-bound pure-value scope");
+assertIncludes(dataPresentation, "struct WorkbenchTableAccessibilityPayload: Equatable, Sendable", "Table accessibility semantics must use one pure-value payload");
+assertIncludes(dataPresentation, "enum WorkbenchTableAccessibilityIntent: Equatable, Sendable", "Table accessibility commands must use a small pure-value intent");
+const tableAccessibilityPayload = sourceSection(
+  dataPresentation,
+  "struct WorkbenchTableAccessibilityPayload",
+  "enum WorkbenchTableAccessibilityIntent",
+);
+assertIncludes(tableAccessibilityPayload, "sourceRows[resolvedWindow.range].map", "The semantic payload must materialize only the active bounded row slice");
+assertIncludes(tableAccessibilityPayload, "summary: summary(row, localization)", "Only active rows may resolve localized accessibility summaries");
+assertIncludes(tableAccessibilityPayload, "namedAction: namedAction?(row)", "Only active Rules rows may resolve named-action availability");
+assertIncludes(tableAccessibilityPayload, "let rows: [Row]", "The AX host must receive resolved semantic rows rather than business row models");
+assertExcludes(tableAccessibilityPayload, "@Environment", "The pure table accessibility payload must not observe SwiftUI environment state");
+const detachedTableAccessibilityHost = sourceSection(
+  dataShared,
+  "struct WorkbenchTableAccessibilityHost",
+  "struct WorkbenchAccessibilityPageControls",
+);
+assertIncludes(detachedTableAccessibilityHost, "@MainActor Equatable", "The detached Table accessibility host must gate updates by payload equality");
+assertIncludes(detachedTableAccessibilityHost, "lhs.payload == rhs.payload", "Dispatcher identity must not invalidate the semantic host");
+assertIncludes(detachedTableAccessibilityHost, "Color.clear", "The detached Table accessibility host must remain visually inert");
+assertIncludes(detachedTableAccessibilityHost, ".allowsHitTesting(false)", "The detached Table accessibility host must not intercept native Table interaction");
+assertIncludes(detachedTableAccessibilityHost, ".accessibilityRepresentation {", "The detached host must own the replacement accessibility subtree");
+assertIncludes(detachedTableAccessibilityHost, "WorkbenchResolvedTableAccessibilityRepresentation(", "The detached host must render only its resolved payload");
+assertExcludes(detachedTableAccessibilityHost, "Table(", "The detached Table accessibility host must not instantiate another native Table");
+const resolvedAccessibilityReplacement = sourceSection(
+  dataShared,
+  "private struct WorkbenchResolvedTableAccessibilityRepresentation",
+  "struct WorkbenchDataActivityIndicator",
+);
+assertIncludes(resolvedAccessibilityReplacement, "ForEach(payload.rows)", "The accessibility replacement must expose each resolved active row as one action");
+assertIncludes(resolvedAccessibilityReplacement, "Text(verbatim: row.summary)", "The accessibility subtree must consume pre-resolved row summaries");
+assertIncludes(resolvedAccessibilityReplacement, "Text(verbatim: payload.pageLabel)", "The accessibility subtree must consume pre-resolved page metadata");
+assertIncludes(resolvedAccessibilityReplacement, "Text(verbatim: payload.rangeLabel)", "The accessibility subtree must consume pre-resolved range metadata");
+assertIncludes(resolvedAccessibilityReplacement, ".performNamedAction(", "Resolved Rules actions must dispatch a stable row and action identity");
+assertExcludes(resolvedAccessibilityReplacement, "@Environment", "The resolved accessibility subtree must not observe language or AppModel environment state");
+assertExcludes(code(resolvedAccessibilityReplacement), "Table(", "The resolved accessibility replacement must not nest a Table");
+assertExcludes(code(resolvedAccessibilityReplacement), "List(", "The resolved accessibility replacement must not nest a List");
+const localizationContext = sourceSection(
+  appLanguage,
+  "struct LocalizationContext",
+  "static var appLanguage",
+);
+assertIncludes(localizationContext, "Sendable", "The bounded accessibility localization context must be immutable and Sendable");
+assertIncludes(localizationContext, "fileprivate let languageCode: String", "The bounded accessibility localization context must store one resolved language code");
+assertIncludes(localizationContext, "XCStringsResolver.string(forKey: key, languageCode: languageCode)", "The bounded accessibility localization context must preserve the catalog resolver");
+assertIncludes(appLanguage, "static func localizationContext(for language: AppLanguage)", "MicaStrings must expose explicit per-evaluation localization contexts");
+assertExcludes(localizationContext, "AppLanguage.systemLocale", "The row summary context must not resolve the system locale per field");
+const accessibilitySummarySources = [
+  sourceSection(connectionsPresentation, "static func accessibilitySummary(", "static func visibleRows("),
+  sourceSection(logPresentation, "static func accessibilitySummary(", "struct WorkbenchLogProjectionCache"),
+  sourceSection(rulePresentation, "static func accessibilitySummary(", "enum WorkbenchRuleProjectionUpdate"),
+  sourceSection(sourcePresentation, "static func accessibilitySummary(", "struct WorkbenchSourceFocusProjection"),
+];
+for (const accessibilitySummarySource of accessibilitySummarySources) {
+  assertIncludes(accessibilitySummarySource, "localization: MicaStrings.LocalizationContext", "Bounded row summaries must consume the resolved localization context");
+  assertExcludes(accessibilitySummarySource, "language: AppLanguage", "Bounded row summaries must not resolve an AppLanguage per row");
+  assertExcludes(accessibilitySummarySource, "MicaStrings.localizedKey(", "Bounded row summaries must not bypass their resolved localization context");
+  assertExcludes(accessibilitySummarySource, "resolvedLanguageCode", "Bounded row summaries must not resolve a language per field");
+}
+for (const file of dataBrowserTableFiles) {
+  const tableSource = code(read(file));
+  assertIncludes(tableSource, "let localization = MicaStrings.localizationContext(for: language)", `${file} must resolve localization once before materializing its payload`);
+  assertIncludes(tableSource, "localization: localization", `${file} must pass the resolved context only into its bounded payload projection`);
+}
+for (const localizedAccessibilityControl of [
+  "traffic.previous_page",
+  "traffic.next_page",
+  "traffic.page_label %lld %lld %lld",
+  "traffic.range_label %lld %lld %lld",
+  "traffic.sort_ascending",
+  "traffic.sort_descending",
+  "traffic.help_sort_direction",
+]) {
+  assertLocalized(strings, localizedAccessibilityControl);
+}
+for (const sortableAccessibilitySource of [connectionsRoot, rulesRoot, sourcesRoot]) {
+  assertIncludes(sortableAccessibilitySource, "sortOptions: accessibilitySortOptions", "Sortable native Tables must mirror sort fields in their bounded accessibility replacement");
+  assertIncludes(sortableAccessibilitySource, "activateAccessibilitySort(id, ascending: ascending)", "Accessibility sort intents must use the native Table sort authority");
+}
+assertIncludes(rulesRoot, "enum WorkbenchRuleAccessibilityMutationResolver", "Rules must resolve named actions against current projected rows");
+assertIncludes(rulesRoot, "scope == currentScope", "Rules named actions must reject stale controller or generation scopes");
+assertIncludes(rulesRoot, "let row = rows.first(where: { $0.id == rowID })", "Rules named actions must resolve the current row by stable presentation identity");
+for (const currentRuleGate of [
+  "row.rule.hasMutableExtra",
+  "row.rule.index != nil",
+  "updatingRuleID != row.rule.id",
+  "canRefresh",
+  "!isBusy",
+  "supportsMutation",
+]) {
+  assertIncludes(rulesRoot, currentRuleGate, "Rules named actions must revalidate every current mutation gate");
+}
+assertIncludes(rulesRoot, "reconcileAccessibilityWindow(revealing: selectedRowID)", "Rule data updates must keep an unchanged selection inside the bounded accessibility window");
+assertIncludes(sourcesRoot, "reconcileAccessibilityWindow(revealing: selectedRowID)", "Source data updates must keep an unchanged selection inside the bounded accessibility window");
+assertIncludes(logsRoot, "followNewest = false", "Paging older Logs accessibility windows must disable Follow Newest");
+assertIncludes(connectionCache, "func visibleIndex(id: String) -> Int?", "Connection accessibility paging must reuse the projection cache's constant-time visible index");
+assertIncludes(connectionsRoot, "if usesMetricAccessibilitySort", "Connection metric frames must reconcile accessibility anchors only when metric sorting can reorder rows");
+assertIncludes(connectionsRoot, "indexOf: projectionCache.visibleIndex(id:)", "Connection accessibility selection reveal must not scan or copy every row ID");
+assertExcludes(connectionsRoot, "orderedIDs: rows.map(\\.id)", "Connection metric publication must not rebuild a complete accessibility ID array");
+assertIncludes(logPresentation, "case prefixDelta(droppedCount: Int)", "Log projection deltas must report their bounded accessibility order shift");
+assertIncludes(logsRoot, "accessibilityCursor.applyPrefixDelta(", "Logs must update an older accessibility page from the accepted prefix delta");
+for (const [source, start, end] of [
+  [connectionsPresentation, "struct WorkbenchConnectionRow", "enum WorkbenchConnectionProjection"],
+  [logPresentation, "struct WorkbenchLogRow", "enum WorkbenchLogSeverity"],
+  [rulePresentation, "struct WorkbenchRuleRow", "enum WorkbenchRuleProjection"],
+  [sourcePresentation, "struct WorkbenchSourceRow", "enum WorkbenchSourceProjection"],
+]) {
+  assertExcludes(
+    sourceSection(source, start, end),
+    "let accessibilityText: String",
+    "High-cardinality row projections must not cache full localized accessibility summaries",
+  );
+}
+for (const accessibilityRegression of [
+  "accessibilityWindowNeverExposesMoreThanItsBoundedCapacity",
+  "accessibilityWindowTraversalCoversTwoThousandItemsExactlyOnce",
+  "accessibilityWindowClampsAfterShrinkAndResetsForGenerationChange",
+  "accessibilityWindowRevealsSelectionAndPreservesStableAnchor",
+  "accessibilityWindowUsesExactStableIdentityForDuplicateAndBlankReportedIDs",
+  "accessibilityCursorKeepsTheOlderPageAfterLeavingFollowNewest",
+  "accessibilityCursorUsesIndexedLookupAfterMetricSortReordersRows",
+  "accessibilityCursorAppliesLogPrefixDeltaWithoutScanningTheOrder",
+  "logAccessibilityDeltaReportsOnlyVisiblePrefixDrops",
+  "boundedAccessibilitySummariesSwitchLabelsWithoutChangingRowValues",
+]) {
+  assertIncludes(presentationTests, accessibilityRegression, `Bounded accessibility needs regression coverage for ${accessibilityRegression}`);
+}
+assertIncludes(xcStringsResolverTests, "localizationContextMatchesDirectLookupAndKeepsItsResolvedLanguage", "Localization contexts need direct-lookup equivalence and switching coverage");
 assertIncludes(dataPages, ".dataTableEvaluation", "Data Table evaluation must remain observable in DEBUG builds");
 assertIncludes(dataPages, ".scrollPhase", "Data scroll begin/end must remain observable in DEBUG builds");
 assertIncludes(dashboardSessionModels, "struct ConnectionsCatalogChange", "Connections must publish typed structural and metric changes");
@@ -1879,7 +2433,7 @@ assertIncludes(dashboardSessionModels, "struct ProviderUpdateAllProgress", "Prov
 assertIncludes(operationSessionModels, "case providerUpdateAll", "Provider update-all must be retained in command history");
 const providerUpdateAll = sourceSection(appModel, "    func updateAllProviders()", "    func updateProxyProvider");
 for (const providerOperation of [
-  "routingCatalog.providers.filter(\\.updatable)",
+  "providersCatalog.providers.filter(\\.updatable)",
   "for (index, provider) in providers.enumerated()",
   "try await providerUpdateOperation(router, secret, provider)",
   "let providerSnapshots = await providerSnapshotOperation(router, secret)",
@@ -2366,7 +2920,7 @@ assertIncludes(controllerVariantTests, "autoDetectedSingBoxConnectionTestUsesSta
 assertIncludes(controllerVariantTests, "singBoxConnectionFailureUsesRPCReportInsteadOfJSONReport", "sing-box failures must not be presented as JSON failures");
 assertIncludes(controllerVariantTests, "autoDetectSingBoxProbeFailureUsesRPCReportInsteadOfJSONReport", "Auto Detect probe failures from sing-box must retain the RPC report boundary");
 assertIncludes(liveSession, "isCurrentSession", "Async live-session publication must validate the current generation");
-assertIncludes(appModel, "canRefreshSelectedRouter", "Shared refresh capability must remain the command authority");
+assertIncludes(liveSession, "var canRefreshSelectedRouter", "Shared refresh capability must remain the command authority");
 
 for (const forbiddenRuntimePrimitive of [
   "Process()",

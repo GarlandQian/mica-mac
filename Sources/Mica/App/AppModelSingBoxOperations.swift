@@ -10,6 +10,16 @@ extension AppModel {
     }
 
     func setSingBoxMode(_ mode: String, router: RouterProfile) {
+        guard mode != sessionActionDashboard.mode,
+              modeTask == nil,
+              !changingMode,
+              runtimeControllerKind(for: router) == .singBoxCompatible,
+              canBeginLiveAction(
+                .changeMode,
+                router: router,
+                familyInFlight: false
+              ) else { return }
+
         let previousMode = sessionActionDashboard.mode
         let commandID = beginCommand(
             .setMode,
@@ -45,6 +55,7 @@ extension AppModel {
                 }
                 mutateSessionDashboard(publishing: [.metadata]) { $0.mode = mode }
                 changingMode = false
+                modeTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -64,6 +75,7 @@ extension AppModel {
 
                 mutateSessionDashboard(publishing: [.metadata]) { $0.mode = previousMode }
                 changingMode = false
+                modeTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -85,10 +97,20 @@ extension AppModel {
         in groupID: String,
         router: RouterProfile
     ) {
-        guard let previousNode = sessionActionDashboard.groups.first(where: { $0.id == groupID })?.selected else {
+        guard switchTask == nil,
+              runtimeControllerKind(for: router) == .singBoxCompatible,
+              canBeginLiveAction(
+                .switchPolicy,
+                router: router,
+                familyInFlight: hasSwitchOperationInFlight
+              ) else { return }
+        guard let group = sessionActionDashboard.groups.first(where: { $0.id == groupID }),
+              group.selectable,
+              group.options.contains(node) else {
             operationState = .error(localized("operation.policy_group_gone \(groupID)"))
             return
         }
+        let previousNode = group.selected
         let commandID = beginCommand(
             .switchNode,
             router: router,
@@ -127,6 +149,7 @@ extension AppModel {
                     controllerSession.singBoxGroups = catalog
                 }
                 switchingGroupID = nil
+                switchTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -150,6 +173,7 @@ extension AppModel {
                     }
                 }
                 switchingGroupID = nil
+                switchTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -190,6 +214,16 @@ extension AppModel {
         nodeName: String?,
         router: RouterProfile
     ) {
+        guard delayTask == nil,
+              runtimeControllerKind(for: router) == .singBoxCompatible,
+              canBeginLiveAction(
+                .testLatency,
+                router: router,
+                familyInFlight: hasDelayOperationInFlight
+              ),
+              let group = sessionActionDashboard.groups.first(where: { $0.id == groupID }),
+              nodeName == nil || group.options.contains(outboundTag) else { return }
+
         let commandID = beginCommand(
             .testDelay,
             router: router,
@@ -224,6 +258,7 @@ extension AppModel {
 
                 measuringDelayGroupID = nil
                 measuringDelayNode = nil
+                delayTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -243,6 +278,7 @@ extension AppModel {
 
                 measuringDelayGroupID = nil
                 measuringDelayNode = nil
+                delayTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -261,12 +297,24 @@ extension AppModel {
     }
 
     func closeSingBoxConnection(_ connection: ConnectionSnapshot, router: RouterProfile) {
+        guard connectionTask == nil,
+              runtimeControllerKind(for: router) == .singBoxCompatible,
+              canBeginLiveAction(
+                .closeConnection,
+                router: router,
+                familyInFlight: hasConnectionOperationInFlight
+              ),
+              let target = ConnectionMutationTargetResolver.resolve(
+                requested: connection,
+                currentConnections: connectionsCatalog.connections
+              ) else { return }
+
         let commandID = beginCommand(
             .closeConnection,
             router: router,
             summary: localized("operation.closing_connection")
         )
-        closingConnectionID = connection.id
+        closingConnectionID = target.id
         closingConnectionGroupID = nil
         closingAllConnections = false
         operationState = .working(
@@ -283,16 +331,17 @@ extension AppModel {
                     profile: router,
                     credential: credential
                 ) { client in
-                    try await client.closeConnection(id: connection.id)
+                    try await client.closeConnection(id: target.id)
                 }
                 guard isCurrentSession(routerID: router.id, generation: generation),
                       !Task.isCancelled else {
                     return
                 }
 
-                controllerSession.singBoxActiveConnections.removeAll { $0.id == connection.id }
-                recordClosedSingBoxConnections([connection])
+                controllerSession.singBoxActiveConnections.removeAll { $0.id == target.id }
+                recordClosedSingBoxConnections([target])
                 closingConnectionID = nil
+                connectionTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -311,6 +360,7 @@ extension AppModel {
                 }
 
                 closingConnectionID = nil
+                connectionTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -328,6 +378,14 @@ extension AppModel {
     }
 
     func closeAllSingBoxConnections(router: RouterProfile) {
+        guard connectionTask == nil,
+              runtimeControllerKind(for: router) == .singBoxCompatible,
+              canBeginLiveAction(
+                .closeAllConnections,
+                router: router,
+                familyInFlight: hasConnectionOperationInFlight
+              ) else { return }
+
         let commandID = beginCommand(
             .closeAll,
             router: router,
@@ -376,6 +434,7 @@ extension AppModel {
                 controllerSession.singBoxActiveConnections.removeAll(keepingCapacity: true)
                 recordClosedSingBoxConnections(closingSnapshot)
                 closingAllConnections = false
+                connectionTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -394,6 +453,7 @@ extension AppModel {
                 }
 
                 closingAllConnections = false
+                connectionTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -411,7 +471,12 @@ extension AppModel {
     }
 
     func clearSingBoxControllerLogs(router: RouterProfile) {
-        runtimeOperationTask?.cancel()
+        guard runtimeOperationTask == nil,
+              runningRuntimeOperationID == nil,
+              selectedRouterID == router.id,
+              controllerSessionPresentation.controllerID == router.id,
+              controllerSessionPresentation.state.allowsLiveCommands,
+              runtimeControllerKind(for: router) == .singBoxCompatible else { return }
         let commandID = beginCommand(
             .singBoxClearLogs,
             router: router,
@@ -441,6 +506,7 @@ extension AppModel {
 
                 clearLiveSessionRuntimeLogs()
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -459,6 +525,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -498,13 +565,12 @@ extension AppModel {
         endpointTag: String,
         operation: @Sendable @escaping (SingBoxGRPCClient) async throws -> Void
     ) {
-        runtimeOperationTask?.cancel()
         guard let router = selectedRouter,
               runtimeControllerKind(for: router) == .singBoxCompatible,
-              isCurrentSession(routerID: router.id, generation: controllerSession.generation) else {
-            operationState = .error(localized("operation.select_router_config"))
-            return
-        }
+              isCurrentSession(routerID: router.id, generation: controllerSession.generation),
+              controllerSessionPresentation.state.allowsLiveCommands,
+              runtimeOperationTask == nil,
+              runningRuntimeOperationID == nil else { return }
 
         let commandID = beginCommand(
             action,
@@ -533,6 +599,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -551,6 +618,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,

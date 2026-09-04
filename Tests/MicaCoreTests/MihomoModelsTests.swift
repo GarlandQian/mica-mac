@@ -300,6 +300,211 @@ final class MihomoModelsTests: XCTestCase {
         XCTAssertEqual(node.enabledTransportNames, ["UDP", "TFO", "MPTCP", "SMUX"])
     }
 
+    func testSpecializedProxyDecodePreservesKnownFieldsAndCompleteMetadata() throws {
+        let data = Data(#"""
+        {
+          "proxies": {
+            "\uD83C\uDF38 Group \"A\"": {
+              "type": "Selector",
+              "now": "节点一",
+              "all": ["节点一", "DIRECT"],
+              "alive": true,
+              "history": [
+                {
+                  "time": "2026-09-02T12:00:00Z",
+                  "delay": 47,
+                  "mean-delay": "51",
+                  "detail": { "samples": [1, true, null] }
+                }
+              ],
+              "icon": "https://controller.example/icon.png",
+              "tester": "https://controller.example/generate_204",
+              "provider-name": "机场 A",
+              "fixed": "节点一",
+              "interface": "utun7",
+              "udp": true,
+              "uot": false,
+              "xudp": true,
+              "tfo": false,
+              "mptcp": true,
+              "smux": false,
+              "hidden": true,
+              "unknown-object": {
+                "nested": [1, true, null, { "name": "值" }]
+              },
+              "unknown-number": 42,
+              "unknown-bool": false,
+              "unknown-null": null
+            },
+            "Second \\ Path": {
+              "type": "Direct"
+            }
+          }
+        }
+        """#.utf8)
+
+        let response = try ProxiesResponse.decodePreservingProxyOrder(from: data)
+        let groupName = "🌸 Group \"A\""
+        let group = try XCTUnwrap(response.proxies[groupName])
+
+        XCTAssertEqual(response.proxyOrder, [groupName, "Second \\ Path"])
+        XCTAssertEqual(group.type, "Selector")
+        XCTAssertEqual(group.now, "节点一")
+        XCTAssertEqual(group.all, ["节点一", "DIRECT"])
+        XCTAssertEqual(group.alive, true)
+        XCTAssertEqual(
+            group.history,
+            [
+                ProxyDelayHistorySnapshot(
+                    time: "2026-09-02T12:00:00Z",
+                    delay: 47,
+                    meanDelay: 51
+                ),
+            ]
+        )
+        XCTAssertEqual(group.icon, "https://controller.example/icon.png")
+        XCTAssertEqual(group.testURL, "https://controller.example/generate_204")
+        XCTAssertEqual(group.providerName, "机场 A")
+        XCTAssertEqual(group.fixed, "节点一")
+        XCTAssertEqual(group.interfaceName, "utun7")
+        XCTAssertEqual(group.enabledTransportNames, ["UDP", "XUDP", "MPTCP"])
+        XCTAssertEqual(group.hidden, true)
+        XCTAssertEqual(
+            group.metadata,
+            [
+                "type": .string("Selector"),
+                "now": .string("节点一"),
+                "all": .array([.string("节点一"), .string("DIRECT")]),
+                "alive": .bool(true),
+                "history": .array([
+                    .object([
+                        "time": .string("2026-09-02T12:00:00Z"),
+                        "delay": .number(47),
+                        "mean-delay": .string("51"),
+                        "detail": .object([
+                            "samples": .array([.number(1), .bool(true), .null]),
+                        ]),
+                    ]),
+                ]),
+                "icon": .string("https://controller.example/icon.png"),
+                "tester": .string("https://controller.example/generate_204"),
+                "provider-name": .string("机场 A"),
+                "fixed": .string("节点一"),
+                "interface": .string("utun7"),
+                "udp": .bool(true),
+                "uot": .bool(false),
+                "xudp": .bool(true),
+                "tfo": .bool(false),
+                "mptcp": .bool(true),
+                "smux": .bool(false),
+                "hidden": .bool(true),
+                "unknown-object": .object([
+                    "nested": .array([
+                        .number(1),
+                        .bool(true),
+                        .null,
+                        .object(["name": .string("值")]),
+                    ]),
+                ]),
+                "unknown-number": .number(42),
+                "unknown-bool": .bool(false),
+                "unknown-null": .null,
+            ]
+        )
+    }
+
+    func testSpecializedProxyDecodePreservesTestURLPrecedenceAndLegacyFallback() throws {
+        let data = Data(#"""
+        {
+          "proxies": {
+            "Preferred": {
+              "testUrl": "https://controller.example/preferred",
+              "tester": "https://controller.example/legacy"
+            },
+            "Legacy": {
+              "tester": "https://controller.example/legacy-only"
+            },
+            "Null Preferred": {
+              "testUrl": null,
+              "tester": "https://controller.example/null-fallback"
+            }
+          }
+        }
+        """#.utf8)
+
+        let response = try ProxiesResponse.decodePreservingProxyOrder(from: data)
+
+        XCTAssertEqual(
+            response.proxies["Preferred"]?.testURL,
+            "https://controller.example/preferred"
+        )
+        XCTAssertEqual(
+            response.proxies["Legacy"]?.testURL,
+            "https://controller.example/legacy-only"
+        )
+        XCTAssertEqual(
+            response.proxies["Null Preferred"]?.testURL,
+            "https://controller.example/null-fallback"
+        )
+        XCTAssertEqual(
+            response.proxies["Preferred"]?.metadata["tester"],
+            .string("https://controller.example/legacy")
+        )
+        XCTAssertEqual(
+            response.proxies["Null Preferred"]?.metadata["testUrl"],
+            .null
+        )
+    }
+
+    func testSpecializedProxyDecodeRetainsPermissiveKnownFieldFallbacks() throws {
+        let data = Data(#"""
+        {
+          "proxies": {
+            "Mixed": {
+              "type": 7,
+              "now": false,
+              "all": ["Node", 9, true, null],
+              "alive": 1,
+              "history": [
+                null,
+                { "delay": "42", "meanDelay": 5.4 },
+                "ignored"
+              ],
+              "udp": 0
+            }
+          }
+        }
+        """#.utf8)
+
+        let proxy = try XCTUnwrap(
+            ProxiesResponse.decodePreservingProxyOrder(from: data).proxies["Mixed"]
+        )
+
+        XCTAssertEqual(proxy.type, "Proxy")
+        XCTAssertNil(proxy.now)
+        XCTAssertEqual(proxy.all, ["Node"])
+        XCTAssertNil(proxy.alive)
+        XCTAssertEqual(
+            proxy.history,
+            [ProxyDelayHistorySnapshot(delay: 42, meanDelay: 5)]
+        )
+        XCTAssertNil(proxy.udp)
+        XCTAssertEqual(proxy.metadata["type"], .number(7))
+        XCTAssertEqual(proxy.metadata["now"], .bool(false))
+        XCTAssertEqual(
+            proxy.metadata["all"],
+            .array([.string("Node"), .number(9), .bool(true), .null])
+        )
+        XCTAssertEqual(proxy.metadata["alive"], .number(1))
+        XCTAssertEqual(proxy.metadata["udp"], .number(0))
+
+        XCTAssertThrowsError(
+            try ProxiesResponse.decodePreservingProxyOrder(
+                from: Data(#"{"proxies":{"Broken":{"type":"Direct"}"#.utf8)
+            )
+        )
+    }
+
     func testMemoryDecodesAggregateFields() throws {
         let data = Data("""
         {

@@ -28,6 +28,7 @@ extension AppModel {
     }
 
     private func checkMihomoMemory() {
+        guard runtimeOperationTask == nil, runningRuntimeOperationID == nil else { return }
         guard let router = selectedMihomoRuntimeRouter(action: TrialCommandAction.memoryCheck.title(language: presentationLanguage)) else {
             return
         }
@@ -47,7 +48,6 @@ extension AppModel {
         let generation = controllerSession.generation
         let client = MihomoClient(profile: router, secret: controllerSecrets[router.id])
 
-        runtimeOperationTask?.cancel()
         runningRuntimeOperationID = "memory"
         operationState = .working(localized("operation.memory_checking"), action: TrialCommandAction.memoryCheck.title(language: presentationLanguage), target: router.displayName)
 
@@ -60,6 +60,7 @@ extension AppModel {
 
                 controllerSession.runtime.recordMemory(memory)
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(commandID, routerID: routerID, status: .success, summary: localized("operation.memory_checked \(formatMemoryBytes(memory.inuse))"))
                 operationState = .success(
                     localized("operation.memory_checked \(formatMemoryBytes(memory.inuse))"),
@@ -72,6 +73,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
                 finishCommand(commandID, routerID: routerID, status: .failed, summary: message)
                 operationState = .error(message, action: TrialCommandAction.memoryCheck.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
@@ -92,6 +94,7 @@ extension AppModel {
     }
 
     private func flushSurgeDNSCache() {
+        guard runtimeOperationTask == nil, runningRuntimeOperationID == nil else { return }
         guard let router = selectedSurgeRuntimeRouter(action: TrialCommandAction.dnsFlush.title(language: presentationLanguage)) else {
             return
         }
@@ -109,7 +112,6 @@ extension AppModel {
         let generation = controllerSession.generation
         let client = SurgeHttpAPIClient(profile: router, apiKey: controllerSecrets[router.id])
 
-        runtimeOperationTask?.cancel()
         runningRuntimeOperationID = "dns-flush"
         operationState = .working(localized("operation.dns_flush_running"), action: TrialCommandAction.dnsFlush.title(language: presentationLanguage), target: router.displayName)
 
@@ -122,6 +124,7 @@ extension AppModel {
 
                 controllerSession.runtime.recordDNSFlush()
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(commandID, routerID: routerID, status: .success, summary: localized("operation.dns_flush_done"))
                 operationState = .success(localized("operation.dns_flush_done"), action: TrialCommandAction.dnsFlush.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -130,6 +133,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
                 finishCommand(commandID, routerID: routerID, status: .failed, summary: message)
                 operationState = .error(message, action: TrialCommandAction.dnsFlush.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
@@ -203,6 +207,7 @@ extension AppModel {
         successKey: String.LocalizationValue,
         perform: @escaping (MihomoClient) async throws -> Void
     ) {
+        guard runtimeOperationTask == nil, runningRuntimeOperationID == nil else { return }
         guard let router = selectedMihomoRuntimeRouter(action: action.title(language: presentationLanguage)) else {
             return
         }
@@ -226,7 +231,6 @@ extension AppModel {
         let generation = controllerSession.generation
         let client = MihomoClient(profile: router, secret: controllerSecrets[router.id])
 
-        runtimeOperationTask?.cancel()
         runningRuntimeOperationID = operationID
         operationState = .working(localized(workingKey), action: action.title(language: presentationLanguage), target: router.displayName)
 
@@ -251,6 +255,7 @@ extension AppModel {
                     break
                 }
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(commandID, routerID: routerID, status: .success, summary: localized(successKey))
                 operationState = .success(localized(successKey), action: action.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -259,6 +264,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
                 finishCommand(commandID, routerID: routerID, status: .failed, summary: message)
                 operationState = .error(message, action: action.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
@@ -273,6 +279,7 @@ extension AppModel {
         successKey: String.LocalizationValue,
         perform: @escaping (MihomoClient) async throws -> Void
     ) {
+        guard runtimeOperationTask == nil, runningRuntimeOperationID == nil else { return }
         guard let router = selectedMihomoRuntimeRouter(action: action.title(language: presentationLanguage)) else {
             return
         }
@@ -296,7 +303,6 @@ extension AppModel {
         let generation = controllerSession.generation
         let client = MihomoClient(profile: router, secret: controllerSecrets[router.id])
 
-        runtimeOperationTask?.cancel()
         runningRuntimeOperationID = operationID
         operationState = .working(localized(workingKey), action: action.title(language: presentationLanguage), target: router.displayName)
 
@@ -313,6 +319,7 @@ extension AppModel {
                     controllerSession.runtime.recordCoreUpgrade()
                 }
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 finishCommand(commandID, routerID: routerID, status: .success, summary: localized(successKey))
                 operationState = .success(localized(successKey), action: action.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -321,6 +328,7 @@ extension AppModel {
                 }
 
                 runningRuntimeOperationID = nil
+                runtimeOperationTask = nil
                 let message = Self.routerTrialFailureMessage(for: error, language: presentationLanguage)
                 finishCommand(commandID, routerID: routerID, status: .failed, summary: message)
                 operationState = .error(message, action: action.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry"))
@@ -334,7 +342,9 @@ extension AppModel {
             return nil
         }
 
-        guard controllerSession.state.allowsLiveCommands else {
+        guard controllerSessionPresentation.controllerID == router.id else { return nil }
+
+        guard controllerSessionPresentation.state.allowsLiveCommands else {
             operationState = .partial(
                 localized("command.disabled_unavailable"),
                 action: action,
@@ -364,7 +374,9 @@ extension AppModel {
             return nil
         }
 
-        guard controllerSession.state.allowsLiveCommands else {
+        guard controllerSessionPresentation.controllerID == router.id else { return nil }
+
+        guard controllerSessionPresentation.state.allowsLiveCommands else {
             operationState = .partial(
                 localized("command.disabled_unavailable"),
                 action: action,

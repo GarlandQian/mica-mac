@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import Synchronization
 import Testing
 @testable import Mica
 @testable import MicaCore
@@ -178,6 +180,42 @@ private actor MixedMihomoEndpointScript {
     }
 }
 
+private actor MihomoRefreshResponseScript {
+    private let responseBodies: [String: [Data]]
+    private var requestCounts: [String: Int] = [:]
+
+    init(responseBodies: [String: [String]]) {
+        self.responseBodies = responseBodies.mapValues { bodies in
+            bodies.map { Data($0.utf8) }
+        }
+    }
+
+    func load(_ request: URLRequest) throws -> (Data, URLResponse) {
+        guard let url = request.url,
+              let bodies = responseBodies[url.path],
+              !bodies.isEmpty else {
+            throw MihomoClientError.invalidResponse
+        }
+
+        let requestCount = (requestCounts[url.path] ?? 0) + 1
+        requestCounts[url.path] = requestCount
+        let body = bodies[min(requestCount - 1, bodies.count - 1)]
+        guard let response = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        ) else {
+            throw MihomoClientError.invalidResponse
+        }
+        return (body, response)
+    }
+
+    func requestCount(for path: String) -> Int {
+        requestCounts[path] ?? 0
+    }
+}
+
 private actor MixedSurgeEndpointScript {
     private var requestCounts: [String: Int] = [:]
 
@@ -334,6 +372,271 @@ struct LiveSessionTransactionTests {
         #expect(model.controllerHealth.status(for: .configs).isFailure)
         #expect(await script.requestCount(for: "/version") == 2)
         #expect(await script.requestCount(for: "/configs") == 2)
+    }
+
+    @MainActor
+    @Test func identicalMihomoMediumResponsesAdvanceFreshnessWithoutRepublishingGroups() async throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = makeLiveMihomoModel(profile: profile)
+        let script = MihomoRefreshResponseScript(responseBodies: [
+            "/proxies": [Self.selectorProxyResponse(selected: "Node A")],
+        ])
+        model.sessionMihomoClient = MihomoClient(profile: profile) { request in
+            try await script.load(request)
+        }
+        let generation = model.controllerSession.generation
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .manual
+        )
+        let firstRevision = model.policyGroupCatalogRevision
+        let firstReceipt = try #require(model.controllerSession.latestReceivedAt)
+        let firstLaneSuccess = try #require(
+            model.controllerSession.refreshLanes[.medium]?.lastSuccessAt
+        )
+        let cachedProxies = try #require(model.controllerSession.endpointCache.proxies)
+
+        try await Task.sleep(for: .milliseconds(2))
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+
+        let latestReceipt = try #require(model.controllerSession.latestReceivedAt)
+        let latestLaneSuccess = try #require(
+            model.controllerSession.refreshLanes[.medium]?.lastSuccessAt
+        )
+        #expect(await script.requestCount(for: "/proxies") == 2)
+        #expect(model.controllerSession.endpointCache.proxies == cachedProxies)
+        #expect(model.policyGroupCatalogRevision == firstRevision)
+        #expect(model.controllerHealth.status(for: .proxies).isReady)
+        #expect(latestReceipt > firstReceipt)
+        #expect(latestLaneSuccess > firstLaneSuccess)
+    }
+
+    @MainActor
+    @Test func disappearingSmartGroupsClearWeightsWithOneGroupPublication() async throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = makeLiveMihomoModel(profile: profile)
+        let script = MihomoRefreshResponseScript(responseBodies: [
+            "/proxies": [
+                Self.smartProxyResponse,
+                Self.selectorProxyResponse(selected: "Node A"),
+            ],
+            "/group/weights": [Self.smartWeightsResponse],
+        ])
+        model.sessionMihomoClient = MihomoClient(profile: profile) { request in
+            try await script.load(request)
+        }
+        let generation = model.controllerSession.generation
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .manual
+        )
+        let smartRevision = model.policyGroupCatalogRevision
+        #expect(model.controllerSession.endpointCache.smartWeights != nil)
+        #expect(model.policyGroupCatalog.groups.first?.optionUsageRanks.isEmpty == false)
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+
+        #expect(await script.requestCount(for: "/group/weights") == 1)
+        #expect(model.controllerSession.endpointCache.smartWeights == nil)
+        #expect(model.policyGroupCatalog.groups.first?.optionUsageRanks.isEmpty == true)
+        #expect(model.policyGroupCatalogRevision == smartRevision &+ 1)
+    }
+
+    @MainActor
+    @Test func identicalMediumResponseStillCommitsAnActiveBaseline() async throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let proxyBody = Self.selectorProxyResponse(selected: "Node A")
+        let proxies = try ProxiesResponse.decodePreservingProxyOrder(
+            from: Data(proxyBody.utf8)
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.controllerHealth = .checking(router: profile)
+        model.controllerSession.endpointCache.version = VersionResponse(version: "test")
+        model.controllerSession.endpointCache.config = try JSONDecoder().decode(
+            ConfigResponse.self,
+            from: Data(#"{"mode":"rule"}"#.utf8)
+        )
+        model.controllerSession.endpointCache.proxies = proxies
+        model.controllerSession.endpointCache.connections = ConnectionsResponse(connections: [])
+        let script = MihomoRefreshResponseScript(responseBodies: [
+            "/proxies": [proxyBody],
+        ])
+        model.sessionMihomoClient = MihomoClient(profile: profile) { request in
+            try await script.load(request)
+        }
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: model.controllerSession.generation,
+            source: .manual
+        )
+
+        #expect(model.controllerSession.hasCommittedBaseline)
+        #expect(!model.controllerSession.baselineTransaction.isActive)
+        #expect(model.controllerSession.latestReceivedAt != nil)
+        #expect(model.policyGroupCatalog.groups.first?.selected == "Node A")
+        #expect(model.controllerHealth.status(for: .proxies).isReady)
+    }
+
+    @MainActor
+    @Test func unchangedMediumResponseDoesNotOverwritePausedPendingDashboard() async throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = makeLiveMihomoModel(profile: profile)
+        let script = MihomoRefreshResponseScript(responseBodies: [
+            "/proxies": [
+                Self.selectorProxyResponse(selected: "Node A"),
+                Self.selectorProxyResponse(selected: "Node B"),
+                Self.selectorProxyResponse(selected: "Node B"),
+            ],
+        ])
+        model.sessionMihomoClient = MihomoClient(profile: profile) { request in
+            try await script.load(request)
+        }
+        let generation = model.controllerSession.generation
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .manual
+        )
+        model.dashboardSessionControls.setPresentationPaused(true)
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+        #expect(
+            model.controllerSession.pendingPresentation.dashboard?.groups.first?.selected
+                == "Node B"
+        )
+
+        try await model.performSessionRefreshAttempt(
+            .medium,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+        #expect(
+            model.controllerSession.pendingPresentation.dashboard?.groups.first?.selected
+                == "Node B"
+        )
+
+        model.dashboardSessionControls.setPresentationPaused(false)
+        model.applyPendingSessionPresentation()
+        #expect(model.policyGroupCatalog.groups.first?.selected == "Node B")
+        #expect(model.controllerSession.pendingPresentation.isEmpty)
+    }
+
+    @MainActor
+    @Test func slowRuleAndProviderChangesPublishIndependently() async throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = makeLiveMihomoModel(profile: profile)
+        let script = MihomoRefreshResponseScript(responseBodies: [
+            "/version": [#"{"version":"test"}"#],
+            "/configs": [#"{"mode":"rule"}"#],
+            "/rules": [
+                Self.rulesResponse(payload: "first.example"),
+                Self.rulesResponse(payload: "second.example"),
+                Self.rulesResponse(payload: "second.example"),
+            ],
+            "/providers/proxies": [
+                Self.proxyProvidersResponse(updatedAt: "2026-09-01T00:00:00Z"),
+                Self.proxyProvidersResponse(updatedAt: "2026-09-01T00:00:00Z"),
+                Self.proxyProvidersResponse(updatedAt: "2026-09-02T00:00:00Z"),
+            ],
+            "/providers/rules": [Self.ruleProvidersResponse],
+        ])
+        model.sessionMihomoClient = MihomoClient(profile: profile) { request in
+            try await script.load(request)
+        }
+        let generation = model.controllerSession.generation
+
+        try await model.performSessionRefreshAttempt(
+            .slow,
+            router: profile,
+            generation: generation,
+            source: .manual
+        )
+        let providersInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = model.providersCatalog
+        } onChange: {
+            providersInvalidated.withLock { $0 = true }
+        }
+
+        try await model.performSessionRefreshAttempt(
+            .slow,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+        #expect(model.rulesCatalog.rules.first?.payload == "second.example")
+        #expect(!providersInvalidated.withLock { $0 })
+
+        let rulesInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = model.rulesCatalog
+        } onChange: {
+            rulesInvalidated.withLock { $0 = true }
+        }
+        try await model.performSessionRefreshAttempt(
+            .slow,
+            router: profile,
+            generation: generation,
+            source: .periodic
+        )
+
+        #expect(!rulesInvalidated.withLock { $0 })
+        #expect(
+            model.providersCatalog.providers.first?.updatedAt
+                == "2026-09-02T00:00:00Z"
+        )
     }
 
     @MainActor
@@ -1001,5 +1304,101 @@ struct LiveSessionTransactionTests {
             let storedSecret = try? await secretStore.secret(for: storedSecond.id)
             #expect(storedSecret == "keep-me")
         }
+    }
+
+    private static func selectorProxyResponse(selected: String) -> String {
+        #"""
+        {
+          "proxies": {
+            "Auto": {
+              "type": "Selector",
+              "now": "\#(selected)",
+              "all": ["Node A", "Node B"],
+              "controller-extra": { "nested": { "enabled": true } }
+            },
+            "Node A": { "type": "VLESS", "all": [] },
+            "Node B": { "type": "VLESS", "all": [] }
+          }
+        }
+        """#
+    }
+
+    private static let smartProxyResponse = #"""
+    {
+      "proxies": {
+        "Auto": {
+          "type": "Smart",
+          "now": "Node A",
+          "all": ["Node A", "Node B"]
+        },
+        "Node A": { "type": "VLESS", "all": [] },
+        "Node B": { "type": "VLESS", "all": [] }
+      }
+    }
+    """#
+
+    private static let smartWeightsResponse = #"""
+    {
+      "message": "ok",
+      "weights": {
+        "Auto": [{ "Name": "Node A", "Rank": "MostUsed" }]
+      }
+    }
+    """#
+
+    private static func rulesResponse(payload: String) -> String {
+        #"""
+        {
+          "rules": [{
+            "type": "DOMAIN",
+            "payload": "\#(payload)",
+            "proxy": "DIRECT"
+          }]
+        }
+        """#
+    }
+
+    private static func proxyProvidersResponse(updatedAt: String) -> String {
+        #"""
+        {
+          "providers": {
+            "Remote": {
+              "type": "Proxy",
+              "vehicleType": "HTTP",
+              "updatedAt": "\#(updatedAt)",
+              "proxies": [{ "name": "Node A", "type": "VLESS" }]
+            }
+          }
+        }
+        """#
+    }
+
+    private static let ruleProvidersResponse = #"""
+    {
+      "providers": {
+        "Rules": {
+          "type": "Rule",
+          "behavior": "domain",
+          "vehicleType": "HTTP",
+          "rule-count": 1
+        }
+      }
+    }
+    """#
+
+    @MainActor
+    private func makeLiveMihomoModel(profile: RouterProfile) -> AppModel {
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        model.activeSessionControllerKind = .mihomoCompatible
+        model.controllerHealth = .checking(router: profile)
+        return model
     }
 }

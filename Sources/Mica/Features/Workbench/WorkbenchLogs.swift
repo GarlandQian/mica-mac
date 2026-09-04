@@ -31,6 +31,7 @@ struct WorkbenchLogsView: View {
     @State private var scrollRequest: WorkbenchDataScrollRequest?
     @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
     @State private var isProjectionActive = false
+    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 760,
@@ -56,6 +57,7 @@ struct WorkbenchLogsView: View {
             isProjectionActive = true
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onDisappear {
             workspaceStore.logEntryResolver = nil
@@ -66,15 +68,19 @@ struct WorkbenchLogsView: View {
             projectionCache.reset()
             followCadence.cancel()
             scrollRequest = nil
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onChange(of: appModel.controllerSessionPresentation.generation) {
             projectionCache.reset()
             followCadence.cancel()
             scrollRequest = nil
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onChange(of: appModel.logsCatalog.entriesRevision) {
             rebuildRows(reconcileSelection: true)
@@ -82,11 +88,19 @@ struct WorkbenchLogsView: View {
         .onChange(of: logLevel) {
             persistLogLevel()
             rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
-        .onChange(of: searchText) { rebuildRows(reconcileSelection: true) }
-        .onChange(of: language) { rebuildRows(reconcileSelection: true) }
+        .onChange(of: searchText) {
+            rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
+        }
+        .onChange(of: language) {
+            rebuildRows(reconcileSelection: true)
+            reconcileAccessibilityWindow(revealing: selectedRowID)
+        }
         .onChange(of: followNewest) { _, follows in
             persistFollowNewest(follows)
+            reconcileAccessibilityWindow()
             if !follows {
                 followCadence.cancel()
             }
@@ -95,6 +109,7 @@ struct WorkbenchLogsView: View {
             if selection != nil {
                 followNewest = false
             }
+            reconcileAccessibilityWindow(revealing: selection)
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.log(id: selection))
@@ -110,7 +125,11 @@ struct WorkbenchLogsView: View {
     }
 
     private var commandBar: some View {
-        WorkbenchCommandBar {
+        let commandScope = LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        return WorkbenchCommandBar {
             WorkbenchCommandSummary(
                 symbolName: "text.alignleft",
                 titleKey: "dashboard.tab_logs",
@@ -128,8 +147,9 @@ struct WorkbenchLogsView: View {
                 selection: Binding(
                     get: { logLevel },
                     set: { level in
+                        guard let commandScope else { return }
                         logLevel = level
-                        appModel.setControllerLogLevel(level)
+                        appModel.setControllerLogLevel(level, scope: commandScope)
                     }
                 )
             ) {
@@ -233,6 +253,19 @@ struct WorkbenchLogsView: View {
     private var logStream: some View {
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
+        let localization = MicaStrings.localizationContext(for: language)
+        let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
+            scope: WorkbenchTableAccessibilityScope(
+                controllerID: controllerID,
+                generation: generation
+            ),
+            title: localization.localizedKey("dashboard.tab_logs"),
+            sourceRows: rows,
+            window: accessibilityWindow,
+            selectedRowID: selectedRowID,
+            localization: localization,
+            summary: WorkbenchLogProjection.accessibilitySummary
+        )
         return WorkbenchDataTableViewport(
             generation: generation,
             restorationID: restoredScrollAnchorID,
@@ -270,7 +303,7 @@ struct WorkbenchLogsView: View {
                         TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
                             WorkbenchDataText(
                                 value: row.payloadText,
-                                style: .callout, design: .monospaced
+                                role: .dataLabel
                             )
                         }
                         .width(min: 320, ideal: 720)
@@ -294,6 +327,14 @@ struct WorkbenchLogsView: View {
                         language: language
                     )
                 )
+                .accessibilityHidden(true)
+                .overlay {
+                    WorkbenchTableAccessibilityHost(
+                        payload: accessibilityPayload,
+                        dispatch: dispatchAccessibilityIntent
+                    )
+                    .equatable()
+                }
             }
         }
         .onChange(of: rows.last?.id, initial: true) { _, newestID in
@@ -343,7 +384,7 @@ struct WorkbenchLogsView: View {
             severityRail(row)
             WorkbenchDataText(
                 value: row.receivedTimeText,
-                style: .caption, design: .monospaced
+                role: .dataCaption
             )
         }
         .frame(
@@ -356,7 +397,8 @@ struct WorkbenchLogsView: View {
     private func logLevel(_ row: WorkbenchLogRow) -> some View {
         WorkbenchDataText(
             value: row.levelText,
-            style: .caption, weight: .semibold, design: .monospaced
+            role: .dataCaption,
+            weight: .semibold
         )
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
@@ -376,8 +418,7 @@ struct WorkbenchLogsView: View {
 
             WorkbenchDataText(
                 value: row.typeText,
-                style: .caption,
-                design: .monospaced,
+                role: .dataCaption,
                 tone: row.typeText == row.levelText ? .secondary : .primary
             )
         }
@@ -395,7 +436,7 @@ struct WorkbenchLogsView: View {
 
             WorkbenchDataText(
                 value: row.receivedTimeText,
-                style: .caption, design: .monospaced,
+                role: .dataCaption,
                 tone: .secondary
             )
             .frame(width: 82, alignment: .leading)
@@ -403,12 +444,13 @@ struct WorkbenchLogsView: View {
             VStack(alignment: .leading, spacing: 1) {
                 WorkbenchDataText(
                     value: row.levelText,
-                    style: .caption, weight: .semibold, design: .monospaced
+                    role: .dataCaption,
+                    weight: .semibold
                 )
                 if row.typeText != row.levelText {
                     WorkbenchDataText(
                         value: row.typeText,
-                        style: .caption2, design: .monospaced,
+                        role: .dataCaption,
                         tone: .secondary
                     )
                 }
@@ -417,14 +459,13 @@ struct WorkbenchLogsView: View {
 
             WorkbenchDataText(
                 value: row.payloadText,
-                style: .callout, design: .monospaced
+                role: .dataLabel
             )
         }
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
             maxHeight: WorkbenchDataRowGeometry.height
         )
-        .accessibilityLabel(row.accessibilityText)
     }
 
     private func stackedLogEvent(_ row: WorkbenchLogRow) -> some View {
@@ -456,7 +497,6 @@ struct WorkbenchLogsView: View {
             maxHeight: WorkbenchDataRowGeometry.height,
             alignment: .leading
         )
-        .accessibilityLabel(row.accessibilityText)
     }
 
     private func severityRail(_ row: WorkbenchLogRow) -> some View {
@@ -496,6 +536,19 @@ struct WorkbenchLogsView: View {
                 previousRows: previousRows
             )
         }
+        switch projectionCache.accessibilityOrderChange {
+        case .unchanged:
+            break
+        case .replace:
+            reconcileAccessibilityWindow(revealing: selectedRowID)
+        case .prefixDelta(let droppedCount):
+            accessibilityCursor.applyPrefixDelta(
+                totalCount: rows.count,
+                droppedCount: droppedCount,
+                followsNewest: followNewest,
+                idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
+            )
+        }
     }
 
     private var state: WorkbenchDataState {
@@ -529,6 +582,48 @@ struct WorkbenchLogsView: View {
         guard let id = rows.last?.id else { return }
         followCadence.recordImmediateScroll(to: id)
         scrollRequest = WorkbenchDataScrollRequest(id: id)
+    }
+
+    private var accessibilityWindow: WorkbenchAccessibilityWindow {
+        WorkbenchAccessibilityWindow.resolve(
+            totalCount: rows.count,
+            preferredLowerBound: accessibilityCursor.lowerBound
+        )
+    }
+
+    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
+        accessibilityCursor.reconcile(
+            orderedIDs: rows.map(\.id),
+            revealing: selectionID,
+            followsNewest: followNewest
+        )
+    }
+
+    private func moveAccessibilityWindow(to lowerBound: Int) {
+        followNewest = false
+        accessibilityCursor.move(
+            to: lowerBound,
+            totalCount: rows.count,
+            idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
+        )
+    }
+
+    private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
+        let currentScope = WorkbenchTableAccessibilityScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        guard intent.scope == currentScope else { return }
+
+        switch intent {
+        case .selectRow(let id, _):
+            guard projectionCache.visibleRows.contains(where: { $0.id == id }) else { return }
+            selectedRowID = id
+        case .movePage(let lowerBound, _):
+            moveAccessibilityWindow(to: lowerBound)
+        case .setSort, .performNamedAction:
+            break
+        }
     }
 
     private func requestAutoScroll(to newestID: String?) {

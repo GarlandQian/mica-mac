@@ -25,8 +25,22 @@ struct WorkbenchConnectionNavigationSelection: Equatable, Sendable {
 struct WorkbenchRuleNavigationSelection: Equatable, Sendable {
     let controllerID: RouterProfile.ID
     let generation: UUID
+    let sourceIndex: Int
+    let reportedRuleID: String
     let type: String
     let payload: String
+
+    func matches(
+        sourceIndex: Int,
+        reportedRuleID: String,
+        type: String,
+        payload: String
+    ) -> Bool {
+        self.sourceIndex == sourceIndex
+            && self.reportedRuleID == reportedRuleID
+            && self.type == type
+            && self.payload == payload
+    }
 }
 
 struct WorkbenchProxyNavigationSelection: Equatable, Sendable {

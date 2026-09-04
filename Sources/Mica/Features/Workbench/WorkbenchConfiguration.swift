@@ -206,6 +206,10 @@ struct WorkbenchConfigurationView: View {
         Section {
             let controllerID = appModel.selectedRouterID
             let generation = appModel.controllerSessionPresentation.generation
+            let commandScope = LiveCommandScope(
+                controllerID: controllerID,
+                generation: generation
+            )
             ForEach(
                 Array(reportedPorts.enumerated()),
                 id: \.element.0.id
@@ -219,11 +223,11 @@ struct WorkbenchConfigurationView: View {
                         value: item.1,
                         disabled: configWriteDisabled
                     ) { next in
-                        guard appModel.selectedRouterID == controllerID,
-                              appModel.controllerSessionPresentation.generation == generation else {
-                            return
-                        }
-                        appModel.updateControllerConfig(.port(item.0, next))
+                        guard let commandScope else { return }
+                        appModel.updateControllerConfig(
+                            .port(item.0, next),
+                            scope: commandScope
+                        )
                     }
                     .id("\(controllerID?.uuidString ?? "none"):\(generation.uuidString):\(item.0.rawValue)")
                 }
@@ -237,7 +241,11 @@ struct WorkbenchConfigurationView: View {
     }
 
     private func logLevelRow(_ current: String) -> some View {
-        configurationRow(
+        let commandScope = LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        return configurationRow(
             "overview.config_log_level",
             isBusy: appModel.updatingConfigFieldID == "log-level"
         ) {
@@ -246,8 +254,11 @@ struct WorkbenchConfigurationView: View {
                 selection: Binding(
                     get: { current },
                     set: { next in
-                        guard next != current else { return }
-                        appModel.updateControllerConfig(.logLevel(next))
+                        guard next != current, let commandScope else { return }
+                        appModel.updateControllerConfig(
+                            .logLevel(next),
+                            scope: commandScope
+                        )
                     }
                 )
             ) {
@@ -266,7 +277,11 @@ struct WorkbenchConfigurationView: View {
         value: Bool,
         mutation: @escaping (Bool) -> ControllerConfigMutation
     ) -> some View {
-        configurationRow(
+        let commandScope = LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        return configurationRow(
             titleKey,
             isBusy: appModel.updatingConfigFieldID == mutation(value).id
         ) {
@@ -274,7 +289,13 @@ struct WorkbenchConfigurationView: View {
                 MicaStrings.localizedKey(titleKey, language: language),
                 isOn: Binding(
                     get: { value },
-                    set: { appModel.updateControllerConfig(mutation($0)) }
+                    set: { next in
+                        guard let commandScope else { return }
+                        appModel.updateControllerConfig(
+                            mutation(next),
+                            scope: commandScope
+                        )
+                    }
                 )
             )
             .disabled(configWriteDisabled)
@@ -320,11 +341,16 @@ struct WorkbenchConfigurationView: View {
     }
 
     private var modeBinding: Binding<String> {
-        Binding(
+        let commandScope = LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        return Binding(
             get: { modeSelection },
             set: { next in
-                guard !modesMatch(next, appModel.controllerMetadata.mode) else { return }
-                appModel.setMode(next)
+                guard !modesMatch(next, appModel.controllerMetadata.mode),
+                      let commandScope else { return }
+                appModel.setMode(next, scope: commandScope)
             }
         )
     }

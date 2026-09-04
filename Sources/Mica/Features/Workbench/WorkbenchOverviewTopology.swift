@@ -31,6 +31,15 @@ struct OverviewTopologyRequest: Hashable, Sendable {
     var revision: UInt64 { structure.revision }
 }
 
+enum OverviewTopologyHeightReservation {
+    static func minimumHeight(
+        visibleTopologyIsEmpty: Bool?,
+        requestedMinimum: Int
+    ) -> Int? {
+        visibleTopologyIsEmpty == true ? nil : requestedMinimum
+    }
+}
+
 struct OverviewTopologyPresentation {
     let request: OverviewTopologyRequest
     let topology: ConnectionTopology
@@ -347,13 +356,6 @@ struct OverviewTopologyIndex: Sendable {
         let pathWriteCount: Int
     }
 
-    struct AccessibilityGroup: Identifiable, Equatable, Sendable {
-        let id: Int
-        let pathRange: Range<Int>
-    }
-
-    static let accessibilityGroupCapacity = 32
-
     private let nodeByID: [String: ConnectionTopology.Node]
     private let edgeByID: [String: ConnectionTopology.Edge]
     private let pathByID: [
@@ -361,7 +363,8 @@ struct OverviewTopologyIndex: Sendable {
     ]
     private let pathIndexByID: [ConnectionTopology.ConnectionOccurrenceID: Int]
     private let orderedPathIDs: [ConnectionTopology.ConnectionOccurrenceID]
-    let accessibilityGroups: [AccessibilityGroup]
+    private let accessibilityPolicyNodes: [ConnectionTopology.Node]
+    private let accessibilityPolicyNodeIndexByID: [String: Int]
     let operationCounts: OperationCounts
 
     init(topology: ConnectionTopology) {
@@ -392,24 +395,23 @@ struct OverviewTopologyIndex: Sendable {
             orderedPathIDs.append(path.id)
         }
 
+        var accessibilityPolicyNodes: [ConnectionTopology.Node] = []
+        var accessibilityPolicyNodeIndexByID: [String: Int] = [:]
+        accessibilityPolicyNodes.reserveCapacity(nodes.count)
+        accessibilityPolicyNodeIndexByID.reserveCapacity(nodes.count)
+        for node in nodes {
+            guard case .policyHop = node.columnID else { continue }
+            accessibilityPolicyNodeIndexByID[node.id] = accessibilityPolicyNodes.count
+            accessibilityPolicyNodes.append(node)
+        }
+
         self.nodeByID = nodeByID
         self.edgeByID = edgeByID
         self.pathByID = pathByID
         self.pathIndexByID = pathIndexByID
         self.orderedPathIDs = orderedPathIDs
-        accessibilityGroups = stride(
-            from: topology.paths.startIndex,
-            to: topology.paths.endIndex,
-            by: Self.accessibilityGroupCapacity
-        ).enumerated().map { groupIndex, lowerBound in
-            AccessibilityGroup(
-                id: groupIndex,
-                pathRange: lowerBound..<min(
-                    lowerBound + Self.accessibilityGroupCapacity,
-                    topology.paths.endIndex
-                )
-            )
-        }
+        self.accessibilityPolicyNodes = accessibilityPolicyNodes
+        self.accessibilityPolicyNodeIndexByID = accessibilityPolicyNodeIndexByID
         operationCounts = OperationCounts(
             nodeWriteCount: nodes.count,
             edgeWriteCount: topology.edges.count,
@@ -440,6 +442,34 @@ struct OverviewTopologyIndex: Sendable {
     func pathID(at index: Int) -> ConnectionTopology.ConnectionOccurrenceID? {
         guard orderedPathIDs.indices.contains(index) else { return nil }
         return orderedPathIDs[index]
+    }
+
+    func accessibilityWindow(
+        preferredLowerBound: Int = 0,
+        revealing pathID: ConnectionTopology.ConnectionOccurrenceID? = nil
+    ) -> WorkbenchAccessibilityWindow {
+        WorkbenchAccessibilityWindow.resolve(
+            totalCount: orderedPathIDs.count,
+            preferredLowerBound: preferredLowerBound,
+            revealing: pathID.flatMap { pathIndexByID[$0] }
+        )
+    }
+
+    func accessibilityPolicyNodeWindow(
+        preferredLowerBound: Int = 0,
+        revealing nodeID: String? = nil
+    ) -> WorkbenchAccessibilityWindow {
+        WorkbenchAccessibilityWindow.resolve(
+            totalCount: accessibilityPolicyNodes.count,
+            preferredLowerBound: preferredLowerBound,
+            revealing: nodeID.flatMap { accessibilityPolicyNodeIndexByID[$0] }
+        )
+    }
+
+    func accessibilityPolicyNodes(
+        in range: Range<Int>
+    ) -> ArraySlice<ConnectionTopology.Node> {
+        accessibilityPolicyNodes[range]
     }
 
     func contains(_ selection: OverviewTopologySelection) -> Bool {

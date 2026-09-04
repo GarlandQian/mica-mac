@@ -180,14 +180,16 @@ struct DashboardPublicationDomains: OptionSet, Sendable {
     static let metadata = DashboardPublicationDomains(rawValue: 1 << 0)
     static let policyGroups = DashboardPublicationDomains(rawValue: 1 << 1)
     static let connections = DashboardPublicationDomains(rawValue: 1 << 2)
-    static let routing = DashboardPublicationDomains(rawValue: 1 << 3)
-    static let insight = DashboardPublicationDomains(rawValue: 1 << 4)
+    static let rules = DashboardPublicationDomains(rawValue: 1 << 3)
+    static let providers = DashboardPublicationDomains(rawValue: 1 << 4)
+    static let insight = DashboardPublicationDomains(rawValue: 1 << 5)
 
     static let baseline: DashboardPublicationDomains = [
         .metadata,
         .policyGroups,
         .connections,
-        .routing,
+        .rules,
+        .providers,
         .insight,
     ]
 }
@@ -302,7 +304,7 @@ struct ConnectionsCatalogSnapshot: Equatable {
                 && left.rule == right.rule
                 && left.rulePayload == right.rulePayload
                 && left.metadata == right.metadata
-                && left.fields == right.fields
+                && left.additionalFields == right.additionalFields
         }
     }
 
@@ -412,21 +414,88 @@ struct LogsCatalogSnapshot: Equatable {
     }
 }
 
-/// Per-domain published snapshot for rules + providers (lower frequency, but
-/// still split so a connection frame never invalidates the rules/sources tabs).
-struct RoutingCatalogSnapshot: Equatable {
+/// Rules and providers publish independently so either endpoint can refresh
+/// without invalidating the other data browser.
+struct RulesCatalogSnapshot: Equatable {
     var rules: [RuleViewState]
+
+    static let empty = RulesCatalogSnapshot(rules: [])
+
+    init(rules: [RuleViewState]) {
+        self.rules = rules
+    }
+
+    init(dashboard: DashboardSnapshot) {
+        self.init(rules: dashboard.rules)
+    }
+}
+
+struct RuleMutationTargetResolver {
+    static func resolve(
+        requested: RuleViewState,
+        currentRules: [RuleViewState]
+    ) -> RuleViewState? {
+        guard requested.index != nil, requested.hasMutableExtra else { return nil }
+
+        let matches = currentRules.filter { current in
+            current.id == requested.id
+                && current.index == requested.index
+                && current.type == requested.type
+                && current.payload == requested.payload
+                && current.proxy == requested.proxy
+                && current.hasMutableExtra
+        }
+        guard matches.count == 1 else { return nil }
+        return matches[0]
+    }
+}
+
+struct ConnectionMutationTargetResolver {
+    static func resolve(
+        requested: ConnectionSnapshot,
+        currentConnections: [ConnectionSnapshot]
+    ) -> ConnectionSnapshot? {
+        guard requested.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return nil
+        }
+        let matches = currentConnections.filter { $0.id == requested.id }
+        guard matches.count == 1 else { return nil }
+        return matches[0]
+    }
+
+    static func resolve(
+        requested: [ConnectionSnapshot],
+        currentConnections: [ConnectionSnapshot]
+    ) -> [ConnectionSnapshot]? {
+        guard requested.isEmpty == false else { return [] }
+
+        var resolved: [ConnectionSnapshot] = []
+        resolved.reserveCapacity(requested.count)
+        var resolvedIDs = Set<String>()
+        for connection in requested {
+            guard let current = resolve(
+                requested: connection,
+                currentConnections: currentConnections
+            ), resolvedIDs.insert(current.id).inserted else {
+                return nil
+            }
+            resolved.append(current)
+        }
+        return resolved
+    }
+}
+
+struct ProvidersCatalogSnapshot: Equatable {
     var providers: [ProxyProviderViewState]
 
-    static let empty = RoutingCatalogSnapshot(rules: [], providers: [])
+    static let empty = ProvidersCatalogSnapshot(providers: [])
 
-    init(rules: [RuleViewState], providers: [ProxyProviderViewState]) {
-        self.rules = rules
+    init(providers: [ProxyProviderViewState]) {
         self.providers = providers
     }
 
     init(dashboard: DashboardSnapshot) {
-        self.init(rules: dashboard.rules, providers: dashboard.providers)
+        self.init(providers: dashboard.providers)
     }
 }
 
@@ -1032,6 +1101,32 @@ struct ProxyNodeViewState: Identifiable, Equatable {
             transportNames: transportNames,
             additionalMetadataText: additionalMetadataText
         )
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.name == rhs.name
+            && lhs.type == rhs.type
+            && lhs.alive == rhs.alive
+            && lhs.history == rhs.history
+            && lhs.icon == rhs.icon
+            && lhs.testURL == rhs.testURL
+            && lhs.providerName == rhs.providerName
+            && lhs.fixed == rhs.fixed
+            && lhs.interfaceName == rhs.interfaceName
+            && lhs.hidden == rhs.hidden
+            && lhs.transportCapabilities == rhs.transportCapabilities
+            && reportedMetadataMatches(lhs, rhs)
+    }
+
+    private static func reportedMetadataMatches(_ lhs: Self, _ rhs: Self) -> Bool {
+        // Known fields are compared above; this text already represents every
+        // additional controller field shown by the Workbench.
+        if let left = lhs.additionalMetadataText,
+           let right = rhs.additionalMetadataText,
+           left == right {
+            return true
+        }
+        return lhs.reportedMetadata == rhs.reportedMetadata
     }
 
     private static let knownMetadataKeys: Set<String> = [

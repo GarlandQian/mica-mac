@@ -90,7 +90,7 @@ extension AppModel {
         }
 
         let versionStatus = controllerHealth.status(for: .version)
-        let versionDetail = versionStatus.readyDetail?.lowercased() ?? dashboard.versionLabel.lowercased()
+        let versionDetail = versionStatus.readyDetail?.lowercased() ?? controllerMetadata.versionLabel.lowercased()
         let baseStatuses = controllerHealth.baseEndpoints.map(\.status)
         let enhancedStatuses = controllerHealth.enhancedEndpoints.map(\.status)
         let hasAnyProbe = controllerHealth.checkedAt != nil || baseStatuses.contains(where: { !$0.isIdle })

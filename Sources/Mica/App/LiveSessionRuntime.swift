@@ -692,7 +692,7 @@ actor LiveSessionRuntime {
             && lhs.rule == rhs.rule
             && lhs.rulePayload == rhs.rulePayload
             && lhs.metadata == rhs.metadata
-            && lhs.fields == rhs.fields
+            && lhs.additionalFields == rhs.additionalFields
     }
 
     private static func connectionMetricsEquals(
