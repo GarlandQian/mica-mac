@@ -350,6 +350,13 @@ a split.
   selection header and a controller-derived latency distribution. The page has
   one vertical scroll owner and never adds a horizontal scroll axis, sheet, or
   popover for normal policy browsing.
+- The proxy scroll owner contains exactly one root adaptive `LazyVGrid`.
+  Controller-ordered groups are direct `Section` values: each section header
+  owns the group summary, commands, latency distribution, and expanded filter;
+  expanded node tiles are direct section content. Do not nest a same-axis
+  `LazyVStack` and per-group `LazyVGrid`: the outer container would virtualize
+  a few variable-height groups instead of the actual node tiles and causes
+  expansion-dependent layout work during scrolling.
 - Group and member controller order stays stable. Mihomo catalogs arrive with
   ordinary groups in `GLOBAL.all` configuration order, followed by unlisted
   groups in `/proxies` order; Surge and sing-box keep their reported sequence.
@@ -369,6 +376,16 @@ a split.
   latency, and current-selection state when those values exist. Clicking its
   main body inspects it and invokes the existing capability-gated switch action;
   latency testing remains a visually secondary, separate command.
+- The large proxy visual tree consumes only its page-owned accepted catalog
+  projection. A zero-size, non-hit-testing, accessibility-hidden observation
+  leaf watches `ProxyCatalogObservationRequest` (selected controller ID,
+  presentation generation, and scalar `policyGroupCatalogRevision`) and passes
+  the matching complete snapshot to `receiveCatalog`. `receiveCatalog` rejects
+  a request whose controller/generation is no longer current before creating a
+  revision or changing page state. A session-boundary reset retains only
+  pending navigation/reveal state owned by the new request. Do not observe or
+  compare the complete `policyGroupCatalog` in `WorkbenchPolicyGroupsView`;
+  doing so invalidates the expanded visual tree before scroll deferral runs.
 - The selection-driven node detail renders in the workspace inspector as one
   flat field composition, not a field-card wall. Overview, reported `true` and
   `false` transport states, and testing/latency use adaptive key-value columns.
@@ -585,6 +602,12 @@ struct WorkbenchProxyNavigationSelection: Equatable, Sendable {
     let nodeName: String
 }
 
+struct ProxyCatalogObservationRequest: Equatable, Sendable {
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+    let revision: UInt64
+}
+
 func stageProxyNavigation(_ selection: WorkbenchProxyNavigationSelection)
 func consumeProxyNavigation(
     controllerID: RouterProfile.ID,
@@ -633,6 +656,18 @@ enum ProxyNavigationTargetResolutionStatus: String, Equatable, Sendable {
   exact member ID, and records the token only after that node scroll. Nested
   scroll owners, `scrollPosition`, and member-grid `scrollTargetLayout` are
   forbidden.
+- That scroll reader owns one root adaptive `LazyVGrid`. Each group is a direct
+  source-ordered `Section`, and node tiles are direct section content. Section
+  headers retain group/filter controls and stable group reveal IDs. No group
+  panel owns another lazy grid or disclosure transition over the complete node
+  subtree.
+- Catalog intake is isolated in a nonvisual leaf that observes only
+  `ProxyCatalogObservationRequest`. Initial and session-boundary intake is
+  immediate; same-session scalar revisions use the existing update classifier
+  and latest-wins scroll scheduler. The request and snapshot are captured
+  together without suspension, and both `receiveCatalog` and boundary reset
+  revalidate controller/generation before mutation. A coalesced stale callback
+  cannot clear or commit state for the replacement session.
 - A reveal briefly highlights the exact node and synchronizes the workspace
   inspector. Catalog refresh alone never creates a new reveal token or steals
   scroll position. Reduce Motion keeps a static equivalent.
@@ -651,6 +686,10 @@ enum ProxyNavigationTargetResolutionStatus: String, Equatable, Sendable {
 | Search, group query, and health filter all hide target | One Clear Filters and Locate action clears all three and resumes reveal |
 | New target arrives while an old reveal is running | Cancel old task/token and resolve only the new selection |
 | Deferred catalog commits after scrolling | Consume the newest staged target and re-resolve pending navigation |
+| Same-session catalog revision while scrolling | The observation leaf stages the latest snapshot; the large visual root does not invalidate until idle commit |
+| Controller/generation changes before an older observer callback runs | Reject the older callback before reset, projection, navigation, or reveal mutation |
+| New-generation navigation/reveal arrives before boundary reset | Retain it when owned by the new observation request; discard only old-session intents |
+| Several large groups are expanded | One root grid virtualizes node tiles directly; preserve every source-ordered member and one vertical scroll owner |
 | Search has no visible match but arranged groups exist | Show no-match state |
 | Only hidden groups remain before search projection | Show hidden-by-preference state |
 | Delay is zero or negative | Compact value unavailable; health unavailable; raw inspector value retained |
@@ -661,13 +700,17 @@ enum ProxyNavigationTargetResolutionStatus: String, Equatable, Sendable {
 - Good: a duplicate-named group's occurrence is staged from the inspector,
   filters are cleared once, the distant lazy group materializes, and the exact
   member is centered and highlighted.
+- Good: several 1,000-member groups remain open as root-grid sections; only
+  visible node tiles materialize, and a same-session catalog revision remains
+  pending until scrolling becomes idle.
 - Base: the controller reports an empty policy catalog; the page explains the
   empty target and resolves it automatically if the same generation later
   publishes the group.
 - Bad: destination changes without staging, raw group name chooses the first
   match, hidden GLOBAL silently changes a preference, a deferred catalog leaves
-  a target permanently unresolved, or a nested scroll target cannot materialize
-  the node.
+  a target permanently unresolved, a same-axis group/grid nesting makes each
+  expanded group one giant lazy child, the visual root observes the complete
+  catalog, or a nested scroll target cannot materialize the node.
 
 ### 6. Tests Required
 
@@ -675,6 +718,10 @@ enum ProxyNavigationTargetResolutionStatus: String, Equatable, Sendable {
   non-positive compact delay plus raw inspector value, stable group/member
   occurrence resolution, hidden GLOBAL, empty catalog, obstruction sets,
   workspace consume/generation rejection, and reveal identity rejection.
+- `WorkbenchProxyWorkspaceTests`: exactly one root visual lazy grid, direct
+  source-ordered sections and member tiles, no group-owned lazy grid, scalar
+  observation leaf, request/session ownership, initial/boundary force behavior,
+  and visual/AX member activation ordering.
 - Source contract: every Overview entry stages before navigation; the page
   observes pending workspace selection, accepts a new selection by cancelling
   the old reveal, accepted catalogs consume then resolve, and Current excludes
@@ -709,6 +756,35 @@ try await Task.sleep(for: .milliseconds(16))
 guard reveal.isCurrent(controllerID: controllerID, generation: generation) else { return }
 proxy.scrollTo(reveal.targetID, anchor: .center)
 lastScrolledRevealToken = reveal.token
+```
+
+```swift
+// Wrong: the root virtualizes giant groups and observes the complete catalog.
+ScrollView {
+    LazyVStack {
+        ForEach(groups) { group in
+            LazyVGrid(columns: columns) { /* every expanded member */ }
+        }
+    }
+}
+.onChange(of: appModel.policyGroupCatalog) { _, catalog in
+    receiveCatalog(catalog)
+}
+
+// Correct: one root grid owns sections; a nonvisual leaf observes a scalar request.
+ScrollView {
+    LazyVGrid(columns: columns) {
+        ForEach(groups) { group in
+            Section { /* direct expanded member tiles */ } header: { /* group/filter */ }
+        }
+    }
+}
+.overlay {
+    ProxyPolicyCatalogObserver(
+        onSessionBoundary: resetCatalogPresentationForSessionBoundary,
+        onCatalog: receiveCatalog
+    )
+}
 ```
 
 ## Scenario: Exact Connection Reveal
@@ -1247,6 +1323,14 @@ cursor.applyPrefixDelta(
   caches. Structure/query/sort/language inputs and high-frequency metrics have
   separate invalidation paths; an inactive destination performs no expensive
   row, chart, topology, or search-index projection.
+- Proxies has one root adaptive lazy grid whose direct sections own every
+  expanded node tile. The large visual root reads only accepted page state;
+  complete policy-catalog intake lives in a zero-size leaf keyed by selected
+  controller ID, presentation generation, and scalar catalog revision. Scroll
+  deferral therefore prevents both projection commits and expanded-tree
+  invalidation until idle. The Release `proxy-expanded-groups-projection` case
+  covers index/cache work only; it does not claim SwiftUI layout or frame-pacing
+  coverage, which remains a user-authorized runtime check.
 - Connections, Rules, Sources, and Logs each construct one native `Table`.
   Resolve one discrete width mode at the page root and conditionally provide
   columns within that Table; do not retain eager full/compact/stacked Table

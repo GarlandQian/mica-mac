@@ -434,7 +434,7 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(root.contains("groupProjection.visibleGroups.isEmpty"))
         #expect(!root.contains(".scrollPosition(id: $scrollAnchorID"))
         #expect(!panels.contains(".scrollTargetLayout()"))
-        #expect(panels.contains(".id(\n                            ProxyProjection.revealTargetID("))
+        #expect(root.contains("ProxyProjection.revealTargetID("))
         #expect(topology.contains("workspaceStore.stageProxyNavigation("))
         #expect(topology.contains("groupOccurrenceID:"))
         #expect(inspection.contains("groupOccurrenceID:"))
@@ -492,6 +492,136 @@ struct WorkbenchProxyWorkspaceTests {
         )
         #expect(!currentSelection.contains("inspectorSelection"))
         #expect(currentSelection.contains("visibility: .alwaysShow"))
+    }
+
+    @Test func proxyExpandedWorkspaceUsesOneRootLazyGridAndNarrowCatalogObserver() throws {
+        let root = try Self.source(named: "WorkbenchProxies.swift")
+        let panels = try Self.source(named: "WorkbenchProxyGroupPanels.swift")
+        let content = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private var content:",
+                endingAt: "private var noMatchingGroupsState"
+            )
+        )
+        let visualRoot = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "struct WorkbenchPolicyGroupsView",
+                endingAt: "private struct ProxyPolicyCatalogObserver"
+            )
+        )
+        let observer = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private struct ProxyPolicyCatalogObserver",
+                endingAt: "private struct WorkbenchProxyRevealObstructionNotice"
+            )
+        )
+        let sectionHeader = try #require(
+            Self.sourceSection(
+                in: panels,
+                startingAt: "struct ProxyPolicyGroupSectionHeader",
+                endingAt: "private struct ProxyLatencyDistributionView"
+            )
+        )
+        let sessionReset = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private func resetCatalogPresentationForSessionBoundary",
+                endingAt: "private func applyCatalogUpdate"
+            )
+        )
+        let memberSelection = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private func selectMember",
+                endingAt: "private func testMember"
+            )
+        )
+
+        #expect(String(content).components(separatedBy: "LazyVGrid(").count == 2)
+        #expect(content.contains("Section {"))
+        #expect(content.contains("ProxyPolicyGroupSectionHeader("))
+        #expect(content.contains("ProxyPolicyNodeTile("))
+        #expect(!content.contains("LazyVStack"))
+        #expect(!sectionHeader.contains("LazyVGrid"))
+        #expect(!sectionHeader.contains("ProxyPolicyNodeTile("))
+        #expect(sectionHeader.contains("private var groupFilter"))
+        #expect(!visualRoot.contains("appModel.policyGroupCatalog"))
+        #expect(observer.contains("appModel.policyGroupCatalogRevision"))
+        #expect(observer.contains("let current = currentObservation"))
+        #expect(observer.contains("onCatalog(appModel.policyGroupCatalog, current, true)"))
+        #expect(observer.contains("onSessionBoundary(current)"))
+        #expect(observer.contains(".frame(width: 0, height: 0)"))
+        #expect(observer.contains(".allowsHitTesting(false)"))
+        #expect(observer.contains(".accessibilityHidden(true)"))
+        #expect(sessionReset.contains("retainedPendingNavigation"))
+        #expect(sessionReset.contains("retainedReveal"))
+        #expect(memberSelection.contains("index.recordsByID[memberID]?.row"))
+
+        let scopeAdmission = try #require(
+            memberSelection.range(of: "appModel.matchesCurrentCommandScope(scope)")
+        )
+        let workspaceSelection = try #require(
+            memberSelection.range(of: "workspaceStore.update(")
+        )
+        let inspectorSelection = try #require(
+            memberSelection.range(of: "workspaceStore.selectInspector(")
+        )
+        let mutationResolution = try #require(
+            memberSelection.range(of: "ProxyProjection.currentMemberMutationTarget(")
+        )
+        #expect(scopeAdmission.lowerBound < workspaceSelection.lowerBound)
+        #expect(workspaceSelection.lowerBound < inspectorSelection.lowerBound)
+        #expect(inspectorSelection.lowerBound < mutationResolution.lowerBound)
+    }
+
+    @Test func catalogObservationClassifiesSessionBoundariesAndOwnsCurrentIntents() {
+        let controllerID = UUID()
+        let generation = UUID()
+        let initial = ProxyCatalogObservationRequest(
+            controllerID: controllerID,
+            generation: generation,
+            revision: 1
+        )
+        let nextRevision = ProxyCatalogObservationRequest(
+            controllerID: controllerID,
+            generation: generation,
+            revision: 2
+        )
+        let nextGeneration = ProxyCatalogObservationRequest(
+            controllerID: controllerID,
+            generation: UUID(),
+            revision: 2
+        )
+        let nextController = ProxyCatalogObservationRequest(
+            controllerID: UUID(),
+            generation: generation,
+            revision: 2
+        )
+        let currentSelection = WorkbenchProxyNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            groupOccurrenceID: "group:0",
+            nodeName: "Node"
+        )
+        let currentReveal = WorkbenchProxyNavigationReveal(
+            controllerID: controllerID,
+            generation: generation,
+            groupID: "group:0",
+            memberID: "member:0",
+            nodeName: "Node",
+            token: UUID()
+        )
+
+        #expect(nextRevision.belongsToSameSession(as: initial))
+        #expect(!nextGeneration.belongsToSameSession(as: initial))
+        #expect(!nextController.belongsToSameSession(as: initial))
+        #expect(nextRevision.owns(currentSelection))
+        #expect(nextRevision.owns(currentReveal))
+        #expect(!nextGeneration.owns(currentSelection))
+        #expect(!nextGeneration.owns(currentReveal))
     }
 
     @Test func revealIdentityRejectsObsoleteControllerAndGeneration() {

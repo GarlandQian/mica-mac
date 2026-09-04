@@ -49,6 +49,31 @@ enum WorkbenchProxyScrollTarget {
     }
 }
 
+struct ProxyCatalogObservationRequest: Equatable, Sendable {
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+    let revision: UInt64
+
+    func belongsToSameSession(as other: Self) -> Bool {
+        controllerID == other.controllerID && generation == other.generation
+    }
+
+    func matches(controllerID: RouterProfile.ID?, generation: UUID) -> Bool {
+        self.controllerID == controllerID && self.generation == generation
+    }
+
+    func owns(_ selection: WorkbenchProxyNavigationSelection) -> Bool {
+        matches(
+            controllerID: selection.controllerID,
+            generation: selection.generation
+        )
+    }
+
+    func owns(_ reveal: WorkbenchProxyNavigationReveal) -> Bool {
+        matches(controllerID: reveal.controllerID, generation: reveal.generation)
+    }
+}
+
 struct WorkbenchPolicyGroupsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
@@ -85,23 +110,17 @@ struct WorkbenchPolicyGroupsView: View {
         } content: {
             content
         }
+        .overlay(alignment: .topLeading) {
+            ProxyPolicyCatalogObserver(
+                onSessionBoundary: resetCatalogPresentationForSessionBoundary,
+                onCatalog: receiveCatalog
+            )
+        }
         .onAppear {
-            receiveCatalog(appModel.policyGroupCatalog, forceImmediate: true)
             consumePendingProxyNavigation()
         }
         .onDisappear {
             presentationCoordinator.reset()
-        }
-        .onChange(of: appModel.selectedRouterID) { _, _ in
-            resetCatalogPresentationForSessionBoundary()
-        }
-        .onChange(of: appModel.controllerSessionPresentation.generation) { _, _ in
-            resetCatalogPresentationForSessionBoundary()
-        }
-        .onChange(of: appModel.policyGroupCatalog) { _, catalog in
-            receiveCatalog(catalog)
-            consumePendingProxyNavigation()
-            resolveReveal()
         }
         .onChange(of: preferences.globalGroupVisibility) { _, _ in
             rebuildCatalogIndex()
@@ -197,57 +216,110 @@ struct WorkbenchPolicyGroupsView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: MicaTheme.Spacing.space4) {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(
+                                    .adaptive(minimum: 340, maximum: 460),
+                                    spacing: MicaTheme.Spacing.space2,
+                                    alignment: .top
+                                ),
+                            ],
+                            alignment: .leading,
+                            spacing: MicaTheme.Spacing.space2
+                        ) {
                             ForEach(groupPresentations) { presentation in
-                                ProxyPolicyGroupPanel(
-                                    presentation: presentation,
-                                    scrollInteractionTracker: scrollInteractionTracker,
-                                    highlightedGroupID: reveal?.groupID,
-                                    highlightedMemberID: reveal?.memberID,
-                                    commandsEnabled: liveCommandsAvailable,
-                                    canSelect: canSelectMember,
-                                    canTestGroup: canTestGroup,
-                                    canTestNode: canTestNode,
-                                    measuringNode: appModel.measuringDelayNode,
-                                    onToggle: { toggleGroup(presentation.id) },
-                                    onFilterChange: {
-                                        setGroupFilter($0, for: presentation.id)
-                                    },
-                                    onSelectMember: {
-                                        guard let commandScope else { return }
-                                        selectMember(
-                                            $0,
-                                            in: presentation.id,
-                                            scope: commandScope
-                                        )
-                                    },
-                                    onTestMember: {
-                                        guard let commandScope else { return }
-                                        testMember(
-                                            $0,
-                                            in: presentation.id,
-                                            scope: commandScope
-                                        )
-                                    },
-                                    onTestGroup: {
-                                        guard let commandScope else { return }
-                                        testGroup(
-                                            presentation.id,
-                                            scope: commandScope
-                                        )
-                                    },
-                                    onClearFixed: {
-                                        guard let commandScope else { return }
-                                        clearFixedSelection(
-                                            in: presentation.id,
-                                            scope: commandScope
-                                        )
-                                    },
-                                    onLocateCurrent: {
-                                        locateCurrentNode(in: presentation.id)
+                                Section {
+                                    if presentation.isExpanded {
+                                        ForEach(presentation.members) { member in
+                                            ProxyPolicyNodeTile(
+                                                member: member,
+                                                scrollInteractionTracker: scrollInteractionTracker,
+                                                isInspected: presentation.inspectedMemberID
+                                                    == member.id,
+                                                isHighlighted: reveal?.groupID
+                                                    == presentation.id
+                                                    && reveal?.memberID == member.id,
+                                                commandsEnabled: liveCommandsAvailable,
+                                                canSelect: canSelectMember
+                                                    && presentation.occurrence.group.selectable,
+                                                canTest: canTestNode,
+                                                isSwitching: presentation.isSwitching,
+                                                isMeasuring: appModel.measuringDelayNode?.groupID
+                                                    == presentation.occurrence.group.id
+                                                    && appModel.measuringDelayNode?.nodeName
+                                                        == member.name,
+                                                onSelect: {
+                                                    guard let commandScope else { return }
+                                                    selectMember(
+                                                        member.id,
+                                                        in: presentation.id,
+                                                        scope: commandScope
+                                                    )
+                                                },
+                                                onTest: {
+                                                    guard let commandScope else { return }
+                                                    testMember(
+                                                        member.id,
+                                                        in: presentation.id,
+                                                        scope: commandScope
+                                                    )
+                                                }
+                                            )
+                                            .id(
+                                                ProxyProjection.revealTargetID(
+                                                    groupID: presentation.id,
+                                                    memberID: member.id
+                                                )
+                                            )
+                                        }
                                     }
-                                )
-                                .id(WorkbenchProxyScrollTarget.group(presentation.id))
+                                } header: {
+                                    ProxyPolicyGroupSectionHeader(
+                                        presentation: presentation,
+                                        commandsEnabled: liveCommandsAvailable,
+                                        canTestGroup: canTestGroup,
+                                        onToggle: {
+                                            guard let commandScope else { return }
+                                            toggleAccessibilityGroup(
+                                                presentation.id,
+                                                scope: commandScope
+                                            )
+                                        },
+                                        onFilterChange: {
+                                            guard let commandScope,
+                                                  appModel.matchesCurrentCommandScope(
+                                                      commandScope
+                                                  ) else { return }
+                                            setGroupFilter($0, for: presentation.id)
+                                        },
+                                        onTestGroup: {
+                                            guard let commandScope else { return }
+                                            testGroup(
+                                                presentation.id,
+                                                scope: commandScope
+                                            )
+                                        },
+                                        onClearFixed: {
+                                            guard let commandScope else { return }
+                                            clearFixedSelection(
+                                                in: presentation.id,
+                                                scope: commandScope
+                                            )
+                                        },
+                                        onLocateCurrent: {
+                                            guard let commandScope else { return }
+                                            locateAccessibilityCurrentNode(
+                                                in: presentation.id,
+                                                scope: commandScope
+                                            )
+                                        }
+                                    )
+                                    .id(
+                                        WorkbenchProxyScrollTarget.group(
+                                            presentation.id
+                                        )
+                                    )
+                                }
                             }
                         }
                         .padding(MicaTheme.Spacing.space4)
@@ -497,13 +569,18 @@ struct WorkbenchPolicyGroupsView: View {
 
     private func receiveCatalog(
         _ catalog: PolicyGroupCatalogSnapshot,
+        request: ProxyCatalogObservationRequest,
         forceImmediate: Bool = false
     ) {
+        guard request.matches(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        ) else { return }
         catalogRevisionSequence &+= 1
         let update = ProxyCatalogUpdate(
             revision: ProxyCatalogRevision(
-                controllerID: appModel.selectedRouterID,
-                generation: appModel.controllerSessionPresentation.generation,
+                controllerID: request.controllerID,
+                generation: request.generation,
                 value: catalogRevisionSequence
             ),
             catalog: catalog
@@ -524,7 +601,22 @@ struct WorkbenchPolicyGroupsView: View {
         applyCatalogUpdate(update)
     }
 
-    private func resetCatalogPresentationForSessionBoundary() {
+    private func resetCatalogPresentationForSessionBoundary(
+        _ request: ProxyCatalogObservationRequest
+    ) {
+        guard request.matches(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        ) else { return }
+
+        let retainedPendingNavigation = pendingNavigation.flatMap {
+            request.owns($0) ? $0 : nil
+        }
+        let retainedReveal = reveal.flatMap { request.owns($0) ? $0 : nil }
+        let retainedScrolledToken = retainedReveal?.token == lastScrolledRevealToken
+            ? lastScrolledRevealToken
+            : nil
+
         scrollInteractionTracker.end(
             in: .nodes,
             coordinator: presentationCoordinator
@@ -536,12 +628,11 @@ struct WorkbenchPolicyGroupsView: View {
         groupProjection = .empty
         expandedProjections = [:]
         accessibilityIndex = .empty
-        reveal = nil
-        lastScrolledRevealToken = nil
-        pendingNavigation = nil
+        reveal = retainedReveal
+        lastScrolledRevealToken = retainedScrolledToken
+        pendingNavigation = retainedPendingNavigation
         revealObstruction = nil
         unresolvedReason = nil
-        receiveCatalog(appModel.policyGroupCatalog, forceImmediate: true)
     }
 
     private func applyCatalogUpdate(
@@ -709,8 +800,11 @@ struct WorkbenchPolicyGroupsView: View {
         in groupID: String,
         scope: LiveCommandScope
     ) {
+        let index = projectionCache.expandedGroupIndex(for: groupID)
         guard appModel.matchesCurrentCommandScope(scope),
-              hasCurrentGroupProjection(groupID) else { return }
+              hasCurrentGroupProjection(groupID),
+              let occurrence = index.occurrence,
+              let member = index.recordsByID[memberID]?.row else { return }
 
         workspaceStore.update(
             controllerID: appModel.selectedRouterID,
@@ -719,11 +813,18 @@ struct WorkbenchPolicyGroupsView: View {
             stored.activeGroupID = groupID
             stored.selectedGroupMemberIDs[groupID] = memberID
         }
+        workspaceStore.selectInspector(
+            .proxyNode(
+                groupName: occurrence.group.id,
+                groupOccurrenceID: occurrence.id,
+                nodeName: member.name
+            )
+        )
 
         guard let target = ProxyProjection.currentMemberMutationTarget(
             groupID: groupID,
             memberID: memberID,
-            index: projectionCache.expandedGroupIndex(for: groupID),
+            index: index,
             selectedControllerID: appModel.selectedRouterID,
             sessionControllerID: appModel.controllerSessionPresentation.controllerID,
             generation: appModel.controllerSessionPresentation.generation,
@@ -733,8 +834,7 @@ struct WorkbenchPolicyGroupsView: View {
             requiresSelectableGroup: true
         ) else { return }
 
-        guard projectionCache.expandedGroupIndex(for: groupID)
-            .occurrence?.group.selected != target.memberName else {
+        guard occurrence.group.selected != target.memberName else {
             return
         }
         prioritizeUserOperationResult()
@@ -1179,6 +1279,51 @@ struct WorkbenchPolicyGroupsView: View {
         return MicaStrings.localized(
             "routing.mode_current \(mode)",
             language: language
+        )
+    }
+}
+
+private struct ProxyPolicyCatalogObserver: View {
+    @Environment(AppModel.self) private var appModel
+
+    let onSessionBoundary: (ProxyCatalogObservationRequest) -> Void
+    let onCatalog: (
+        PolicyGroupCatalogSnapshot,
+        ProxyCatalogObservationRequest,
+        Bool
+    ) -> Void
+
+    var body: some View {
+        let observation = currentObservation
+
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onAppear {
+                let current = currentObservation
+                onCatalog(appModel.policyGroupCatalog, current, true)
+            }
+            .onChange(of: observation) { previous, current in
+                let crossedSessionBoundary = !current.belongsToSameSession(
+                    as: previous
+                )
+                if crossedSessionBoundary {
+                    onSessionBoundary(current)
+                }
+                onCatalog(
+                    appModel.policyGroupCatalog,
+                    current,
+                    crossedSessionBoundary
+                )
+            }
+    }
+
+    private var currentObservation: ProxyCatalogObservationRequest {
+        ProxyCatalogObservationRequest(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation,
+            revision: appModel.policyGroupCatalogRevision
         )
     }
 }
