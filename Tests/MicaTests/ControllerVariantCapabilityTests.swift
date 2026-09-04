@@ -32,7 +32,10 @@ struct ControllerVariantCapabilityTests {
         connectingModel.controllerSession.begin(controllerID: connecting.id)
 
         connectingModel.performDiagnosticsRuntimeOperation("dns-flush")
-        connectingModel.updateControllerConfig(.allowLAN(true))
+        connectingModel.updateControllerConfig(
+            .allowLAN(true),
+            scope: commandScope(for: connectingModel)
+        )
 
         #expect(connectingModel.runtimeOperationTask == nil)
         #expect(connectingModel.runningRuntimeOperationID == nil)

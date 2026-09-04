@@ -497,7 +497,7 @@ struct WorkbenchControllerInspector: View {
                         .locale(language.resolvedLocale)
                 )
             } ?? MicaStrings.localizedKey("settings.never", language: language),
-            style: .caption, design: .monospaced,
+            role: .dataCaption,
             tone: .secondary
         )
     }

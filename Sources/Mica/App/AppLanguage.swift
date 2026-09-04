@@ -153,6 +153,22 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum MicaStrings {
+    struct LocalizationContext: Equatable, Sendable {
+        fileprivate let languageCode: String
+
+        func localizedKey(_ key: String) -> String {
+            XCStringsResolver.string(forKey: key, languageCode: languageCode)
+        }
+
+        func localized(_ key: String, arguments: [String]) -> String {
+            XCStringsResolver.string(
+                forKey: key,
+                languageCode: languageCode,
+                stringArguments: arguments
+            )
+        }
+    }
+
     static var appLanguage: AppLanguage {
         let rawValue = UserDefaults.standard.string(forKey: "appLanguage") ?? AppLanguage.system.rawValue
         return AppLanguage.stored(rawValue)
@@ -178,6 +194,10 @@ enum MicaStrings {
         case .system:
             normalizedLanguageCode(from: AppLanguage.systemLocale.identifier)
         }
+    }
+
+    static func localizationContext(for language: AppLanguage) -> LocalizationContext {
+        LocalizationContext(languageCode: resolvedLanguageCode(for: language))
     }
 
     private static func normalizedLanguageCode(from identifier: String) -> String {

@@ -492,36 +492,288 @@ public struct ProxySnapshot: Identifiable, Codable, Equatable, Sendable {
 }
 
 private struct RawProxySnapshot: Decodable {
+    var type: String
+    var now: String?
+    var all: [String]
+    var alive: Bool?
+    var history: [ProxyDelayHistorySnapshot]
+    var icon: String?
+    var testURL: String?
+    var providerName: String?
+    var fixed: String?
+    var interfaceName: String?
+    var udp: Bool?
+    var uot: Bool?
+    var xudp: Bool?
+    var tfo: Bool?
+    var mptcp: Bool?
+    var smux: Bool?
+    var hidden: Bool?
     var metadata: [String: MihomoJSONValue]
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
-        metadata = try container.allKeys.reduce(into: [:]) { values, key in
-            values[key.stringValue] = try container.decode(MihomoJSONValue.self, forKey: key)
+        var decodedType: String?
+        var decodedNow: String?
+        var decodedAll: [String]?
+        var decodedAlive: Bool?
+        var decodedHistory: [ProxyDelayHistorySnapshot]?
+        var decodedIcon: String?
+        var decodedTestURL: String?
+        var decodedTester: String?
+        var decodedProviderName: String?
+        var decodedFixed: String?
+        var decodedInterfaceName: String?
+        var decodedUDP: Bool?
+        var decodedUOT: Bool?
+        var decodedXUDP: Bool?
+        var decodedTFO: Bool?
+        var decodedMPTCP: Bool?
+        var decodedSMUX: Bool?
+        var decodedHidden: Bool?
+        var metadata: [String: MihomoJSONValue] = [:]
+        metadata.reserveCapacity(container.allKeys.count)
+
+        for key in container.allKeys {
+            let fieldName = key.stringValue
+            switch fieldName {
+            case "type":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedType = field.value
+                metadata[fieldName] = field.rawValue
+            case "now":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedNow = field.value
+                metadata[fieldName] = field.rawValue
+            case "all":
+                let field = try container.decodeProxyStringArray(forKey: key)
+                decodedAll = field.value
+                metadata[fieldName] = field.rawValue
+            case "alive":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedAlive = field.value
+                metadata[fieldName] = field.rawValue
+            case "history":
+                let field = try container.decodeProxyHistory(forKey: key)
+                decodedHistory = field.value
+                metadata[fieldName] = field.rawValue
+            case "icon":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedIcon = field.value
+                metadata[fieldName] = field.rawValue
+            case "testUrl":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedTestURL = field.value
+                metadata[fieldName] = field.rawValue
+            case "tester":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedTester = field.value
+                metadata[fieldName] = field.rawValue
+            case "provider-name":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedProviderName = field.value
+                metadata[fieldName] = field.rawValue
+            case "fixed":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedFixed = field.value
+                metadata[fieldName] = field.rawValue
+            case "interface":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedInterfaceName = field.value
+                metadata[fieldName] = field.rawValue
+            case "udp":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedUDP = field.value
+                metadata[fieldName] = field.rawValue
+            case "uot":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedUOT = field.value
+                metadata[fieldName] = field.rawValue
+            case "xudp":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedXUDP = field.value
+                metadata[fieldName] = field.rawValue
+            case "tfo":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedTFO = field.value
+                metadata[fieldName] = field.rawValue
+            case "mptcp":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedMPTCP = field.value
+                metadata[fieldName] = field.rawValue
+            case "smux":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedSMUX = field.value
+                metadata[fieldName] = field.rawValue
+            case "hidden":
+                let field = try container.decodeProxyBool(forKey: key)
+                decodedHidden = field.value
+                metadata[fieldName] = field.rawValue
+            default:
+                metadata[fieldName] = try container.decode(
+                    MihomoJSONValue.self,
+                    forKey: key
+                )
+            }
         }
+
+        type = decodedType ?? "Proxy"
+        now = decodedNow
+        all = decodedAll ?? []
+        alive = decodedAlive
+        history = decodedHistory ?? []
+        icon = decodedIcon
+        testURL = decodedTestURL ?? decodedTester
+        providerName = decodedProviderName
+        fixed = decodedFixed
+        interfaceName = decodedInterfaceName
+        udp = decodedUDP
+        uot = decodedUOT
+        xudp = decodedXUDP
+        tfo = decodedTFO
+        mptcp = decodedMPTCP
+        smux = decodedSMUX
+        hidden = decodedHidden
+        self.metadata = metadata
+    }
+}
+
+private struct RawProxyDecodedField<Value> {
+    var value: Value?
+    var rawValue: MihomoJSONValue
+}
+
+private struct RawProxyHistoryEntry: Decodable {
+    var snapshot: ProxyDelayHistorySnapshot
+    var rawValue: MihomoJSONValue
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        var decodedTime: String?
+        var decodedDelay: Int?
+        var decodedMeanDelay: Int?
+        var decodedLegacyMeanDelay: Int?
+        var metadata: [String: MihomoJSONValue] = [:]
+        metadata.reserveCapacity(container.allKeys.count)
+
+        for key in container.allKeys {
+            let fieldName = key.stringValue
+            switch fieldName {
+            case "time":
+                let field = try container.decodeProxyString(forKey: key)
+                decodedTime = field.value
+                metadata[fieldName] = field.rawValue
+            case "delay":
+                let field = try container.decodeProxyInt(forKey: key)
+                decodedDelay = field.value
+                metadata[fieldName] = field.rawValue
+            case "meanDelay":
+                let field = try container.decodeProxyInt(forKey: key)
+                decodedMeanDelay = field.value
+                metadata[fieldName] = field.rawValue
+            case "mean-delay":
+                let field = try container.decodeProxyInt(forKey: key)
+                decodedLegacyMeanDelay = field.value
+                metadata[fieldName] = field.rawValue
+            default:
+                metadata[fieldName] = try container.decode(
+                    MihomoJSONValue.self,
+                    forKey: key
+                )
+            }
+        }
+
+        snapshot = ProxyDelayHistorySnapshot(
+            time: decodedTime,
+            delay: decodedDelay,
+            meanDelay: decodedMeanDelay ?? decodedLegacyMeanDelay
+        )
+        rawValue = .object(metadata)
+    }
+}
+
+private extension KeyedDecodingContainer where Key == DynamicCodingKey {
+    func decodeProxyString(forKey key: Key) throws -> RawProxyDecodedField<String> {
+        if try decodeNil(forKey: key) {
+            return RawProxyDecodedField(value: nil, rawValue: .null)
+        }
+        if let value = try? decode(String.self, forKey: key) {
+            return RawProxyDecodedField(value: value, rawValue: .string(value))
+        }
+
+        let rawValue = try decode(MihomoJSONValue.self, forKey: key)
+        return RawProxyDecodedField(value: rawValue.stringValue, rawValue: rawValue)
     }
 
-    var type: String { metadata["type"]?.stringValue ?? "Proxy" }
-    var now: String? { metadata["now"]?.stringValue }
-    var all: [String] { metadata["all"]?.stringArrayValue ?? [] }
-    var alive: Bool? { metadata["alive"]?.boolValue }
-    var history: [ProxyDelayHistorySnapshot] {
-        metadata["history"]?.arrayValue?.compactMap(ProxyDelayHistorySnapshot.init(rawValue:)) ?? []
+    func decodeProxyBool(forKey key: Key) throws -> RawProxyDecodedField<Bool> {
+        if try decodeNil(forKey: key) {
+            return RawProxyDecodedField(value: nil, rawValue: .null)
+        }
+        if let value = try? decode(Bool.self, forKey: key) {
+            return RawProxyDecodedField(value: value, rawValue: .bool(value))
+        }
+
+        let rawValue = try decode(MihomoJSONValue.self, forKey: key)
+        return RawProxyDecodedField(value: rawValue.boolValue, rawValue: rawValue)
     }
-    var icon: String? { metadata["icon"]?.stringValue }
-    var testURL: String? {
-        metadata["testUrl"]?.stringValue ?? metadata["tester"]?.stringValue
+
+    func decodeProxyInt(forKey key: Key) throws -> RawProxyDecodedField<Int> {
+        if try decodeNil(forKey: key) {
+            return RawProxyDecodedField(value: nil, rawValue: .null)
+        }
+        if let value = try? decode(Double.self, forKey: key) {
+            let rawValue = MihomoJSONValue.number(value)
+            return RawProxyDecodedField(value: rawValue.intValue, rawValue: rawValue)
+        }
+        if let value = try? decode(String.self, forKey: key) {
+            return RawProxyDecodedField(value: Int(value), rawValue: .string(value))
+        }
+
+        let rawValue = try decode(MihomoJSONValue.self, forKey: key)
+        return RawProxyDecodedField(value: rawValue.intValue, rawValue: rawValue)
     }
-    var providerName: String? { metadata["provider-name"]?.stringValue }
-    var fixed: String? { metadata["fixed"]?.stringValue }
-    var interfaceName: String? { metadata["interface"]?.stringValue }
-    var udp: Bool? { metadata["udp"]?.boolValue }
-    var uot: Bool? { metadata["uot"]?.boolValue }
-    var xudp: Bool? { metadata["xudp"]?.boolValue }
-    var tfo: Bool? { metadata["tfo"]?.boolValue }
-    var mptcp: Bool? { metadata["mptcp"]?.boolValue }
-    var smux: Bool? { metadata["smux"]?.boolValue }
-    var hidden: Bool? { metadata["hidden"]?.boolValue }
+
+    func decodeProxyStringArray(
+        forKey key: Key
+    ) throws -> RawProxyDecodedField<[String]> {
+        if try decodeNil(forKey: key) {
+            return RawProxyDecodedField(value: nil, rawValue: .null)
+        }
+        if let value = try? decode([String].self, forKey: key) {
+            return RawProxyDecodedField(
+                value: value,
+                rawValue: .array(value.map(MihomoJSONValue.string))
+            )
+        }
+
+        let rawValue = try decode(MihomoJSONValue.self, forKey: key)
+        return RawProxyDecodedField(
+            value: rawValue.stringArrayValue,
+            rawValue: rawValue
+        )
+    }
+
+    func decodeProxyHistory(
+        forKey key: Key
+    ) throws -> RawProxyDecodedField<[ProxyDelayHistorySnapshot]> {
+        if try decodeNil(forKey: key) {
+            return RawProxyDecodedField(value: nil, rawValue: .null)
+        }
+        if let value = try? decode([RawProxyHistoryEntry].self, forKey: key) {
+            return RawProxyDecodedField(
+                value: value.map(\.snapshot),
+                rawValue: .array(value.map(\.rawValue))
+            )
+        }
+
+        let rawValue = try decode(MihomoJSONValue.self, forKey: key)
+        return RawProxyDecodedField(
+            value: rawValue.arrayValue?.compactMap(
+                ProxyDelayHistorySnapshot.init(rawValue:)
+            ),
+            rawValue: rawValue
+        )
+    }
 }
 
 public struct ProxyDelayHistorySnapshot: Codable, Equatable, Sendable {

@@ -522,7 +522,9 @@ enum OverviewTimelineProjection {
 }
 
 struct OverviewLatencyAnomaly: Identifiable, Equatable {
-    let id: String
+    var id: String { groupOccurrenceID }
+
+    let groupOccurrenceID: String
     let groupName: String
     let nodeName: String
     let delay: Int
@@ -530,6 +532,10 @@ struct OverviewLatencyAnomaly: Identifiable, Equatable {
 
 struct OverviewRuleHitSummary: Identifiable, Equatable {
     let id: String
+    let sourceIndex: Int
+    let reportedRuleID: String
+    let type: String
+    let payload: String
     let label: String
     let proxy: String
     let hits: Int?
@@ -542,7 +548,7 @@ struct OverviewRuleHitSummary: Identifiable, Equatable {
     }
 }
 
-struct OverviewActiveConnection: Identifiable, Equatable {
+struct OverviewActiveConnection: Identifiable, Equatable, Sendable {
     let id: String
     let sourceIndex: Int
     let connectionID: String
@@ -593,7 +599,10 @@ enum OverviewProjection {
             }
             return (
                 OverviewLatencyAnomaly(
-                    id: "\(group.id.utf8.count):\(group.id):\(occurrence)",
+                    groupOccurrenceID: ProxyGroupKey(
+                        groupID: group.id,
+                        occurrence: occurrence
+                    ).rawValue,
                     groupName: group.id,
                     nodeName: group.selected,
                     delay: delay
@@ -623,6 +632,10 @@ enum OverviewProjection {
             occurrences[baseID] = occurrence + 1
             let row = OverviewRuleHitSummary(
                 id: "\(baseID.utf8.count):\(baseID):\(occurrence)",
+                sourceIndex: sourceIndex,
+                reportedRuleID: rule.id,
+                type: rule.type,
+                payload: rule.payload,
                 label: nonBlank(rule.payload) ?? rule.type,
                 proxy: rule.proxy,
                 hits: rule.hitCount.map { max($0, 0) },
@@ -648,30 +661,37 @@ enum OverviewProjection {
     ) -> (rows: [OverviewActiveConnection], operationCounts: OverviewTopKOperationCounts) {
         var occurrences: [String: Int] = [:]
         return boundedTopK(from: connections, maximumCount: maximumCount) { sourceIndex, connection in
-            let baseID = nonBlank(connection.id) ?? "__unreported_connection__"
-            let occurrence = occurrences[baseID, default: 0]
-            occurrences[baseID] = occurrence + 1
-            let upload = connection.upload.map { max($0, 0) }
-            let download = connection.download.map { max($0, 0) }
-            let total = reportedTotal(upload: upload, download: download)
-            let label = nonBlank(connection.metadata?.host)
-                ?? nonBlank(connection.metadata?.remoteDestination)
-                ?? nonBlank(connection.metadata?.process)
-                ?? nonBlank(connection.metadata?.destinationIP)
-                ?? nonBlank(connection.id)
-                ?? ""
-            return (
-                OverviewActiveConnection(
-                    id: "\(baseID.utf8.count):\(baseID):\(occurrence)",
-                    sourceIndex: sourceIndex,
-                    connectionID: connection.id,
-                    label: label,
-                    totalTraffic: total
-                ),
-                total ?? -1,
-                sourceIndex
+            activeConnectionCandidate(
+                sourceIndex: sourceIndex,
+                connection: connection,
+                occurrences: &occurrences
             )
         }
+    }
+
+    @concurrent
+    static func topActiveConnectionsCancellable(
+        from connections: [ConnectionSnapshot],
+        maximumCount: Int
+    ) async throws -> [OverviewActiveConnection] {
+        try Task.checkCancellation()
+        var occurrences: [String: Int] = [:]
+        guard let projection = boundedTopK(
+            from: connections,
+            maximumCount: maximumCount,
+            checksCancellation: true,
+            candidate: { sourceIndex, connection in
+                activeConnectionCandidate(
+                    sourceIndex: sourceIndex,
+                    connection: connection,
+                    occurrences: &occurrences
+                )
+            }
+        ) else {
+            throw CancellationError()
+        }
+        try Task.checkCancellation()
+        return projection.rows
     }
 
     static func networkFacts(
@@ -765,6 +785,20 @@ enum OverviewProjection {
         maximumCount: Int,
         candidate: (Int, Input) -> (value: Output, score: Int, sourceIndex: Int)?
     ) -> (rows: [Output], operationCounts: OverviewTopKOperationCounts) {
+        boundedTopK(
+            from: input,
+            maximumCount: maximumCount,
+            checksCancellation: false,
+            candidate: candidate
+        )!
+    }
+
+    private static func boundedTopK<Input, Output>(
+        from input: [Input],
+        maximumCount: Int,
+        checksCancellation: Bool,
+        candidate: (Int, Input) -> (value: Output, score: Int, sourceIndex: Int)?
+    ) -> (rows: [Output], operationCounts: OverviewTopKOperationCounts)? {
         let limit = max(maximumCount, 0)
         var counts = OverviewTopKOperationCounts()
         guard limit > 0 else { return ([], counts) }
@@ -773,6 +807,11 @@ enum OverviewProjection {
         retained.reserveCapacity(min(limit, input.count))
 
         for (sourceIndex, item) in input.enumerated() {
+            if checksCancellation,
+               sourceIndex.isMultiple(of: 64),
+               Task<Never, Never>.isCancelled {
+                return nil
+            }
             counts.scannedCount += 1
             guard let candidate = candidate(sourceIndex, item) else { continue }
             counts.candidateCount += 1
@@ -801,6 +840,36 @@ enum OverviewProjection {
         }
 
         return (retained.map(\.value), counts)
+    }
+
+    private static func activeConnectionCandidate(
+        sourceIndex: Int,
+        connection: ConnectionSnapshot,
+        occurrences: inout [String: Int]
+    ) -> (value: OverviewActiveConnection, score: Int, sourceIndex: Int) {
+        let baseID = nonBlank(connection.id) ?? "__unreported_connection__"
+        let occurrence = occurrences[baseID, default: 0]
+        occurrences[baseID] = occurrence + 1
+        let upload = connection.upload.map { max($0, 0) }
+        let download = connection.download.map { max($0, 0) }
+        let total = reportedTotal(upload: upload, download: download)
+        let label = nonBlank(connection.metadata?.host)
+            ?? nonBlank(connection.metadata?.remoteDestination)
+            ?? nonBlank(connection.metadata?.process)
+            ?? nonBlank(connection.metadata?.destinationIP)
+            ?? nonBlank(connection.id)
+            ?? ""
+        return (
+            OverviewActiveConnection(
+                id: "\(baseID.utf8.count):\(baseID):\(occurrence)",
+                sourceIndex: sourceIndex,
+                connectionID: connection.id,
+                label: label,
+                totalTraffic: total
+            ),
+            total ?? -1,
+            sourceIndex
+        )
     }
 
     private static func append(

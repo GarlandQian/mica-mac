@@ -168,6 +168,36 @@ enum WorkbenchSourceProjection {
     ) -> [ProxyProviderViewState] {
         sources.filter(\.updatable)
     }
+
+    static func accessibilitySummary(
+        for row: WorkbenchSourceRow,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        [
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_provider", value: row.source.name, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_type", value: row.kindText, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.source_section_configuration",
+                value: row.compactConfigurationText,
+                localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.provider_items", value: row.itemCountText, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.updated_at", value: row.updatedText, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "traffic.source_section_status",
+                value: row.statusAccessibilityText,
+                localization: localization
+            ),
+        ].joined(separator: ", ")
+    }
 }
 
 struct WorkbenchSourceFocusProjection: Equatable {

@@ -17,6 +17,7 @@ struct WorkbenchSourcesView: View {
     @State private var restoredScrollAnchorID: String?
     @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
     @State private var isProjectionActive = false
+    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 960,
@@ -71,15 +72,17 @@ struct WorkbenchSourcesView: View {
         }
         .onChange(of: appModel.selectedRouterID) {
             projectionCache.reset()
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true, update: .source)
         }
         .onChange(of: appModel.controllerSessionPresentation.generation) {
             projectionCache.reset()
+            accessibilityCursor.reset()
             restoreWorkspace()
             rebuildRows(reconcileSelection: true, update: .source)
         }
-        .onChange(of: appModel.routingCatalog.providers) {
+        .onChange(of: appModel.providersCatalog.providers) {
             rebuildRows(reconcileSelection: true, update: .source)
         }
         .onChange(of: kind) {
@@ -97,6 +100,7 @@ struct WorkbenchSourcesView: View {
             rebuildRows(reconcileSelection: true, update: .source)
         }
         .onChange(of: selectedRowID) { _, selection in
+            reconcileAccessibilityWindow(revealing: selection)
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.source(id: selection))
@@ -216,6 +220,24 @@ struct WorkbenchSourcesView: View {
     private var sourceTable: some View {
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
+        let accessibilityWindow = WorkbenchAccessibilityWindow.resolve(
+            totalCount: rows.count,
+            preferredLowerBound: accessibilityCursor.lowerBound
+        )
+        let localization = MicaStrings.localizationContext(for: language)
+        let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
+            scope: WorkbenchTableAccessibilityScope(
+                controllerID: controllerID,
+                generation: generation
+            ),
+            title: localization.localizedKey("dashboard.tab_providers"),
+            sourceRows: rows,
+            window: accessibilityWindow,
+            selectedRowID: selectedRowID,
+            localization: localization,
+            sortOptions: accessibilitySortOptions,
+            summary: WorkbenchSourceProjection.accessibilitySummary
+        )
         return WorkbenchDataTableViewport(
             generation: generation,
             restorationID: restoredScrollAnchorID,
@@ -259,7 +281,7 @@ struct WorkbenchSourcesView: View {
                         TableColumn(MicaStrings.localizedKey("traffic.updated_at", language: language)) { row in
                             WorkbenchDataText(
                                 value: row.updatedText,
-                                style: .caption, design: .monospaced,
+                                role: .dataCaption,
                                 tone: .secondary
                             )
                         }
@@ -301,6 +323,14 @@ struct WorkbenchSourcesView: View {
                         language: language
                     )
                 )
+                .accessibilityHidden(true)
+                .overlay {
+                    WorkbenchTableAccessibilityHost(
+                        payload: accessibilityPayload,
+                        dispatch: dispatchAccessibilityIntent
+                    )
+                    .equatable()
+                }
             }
         }
     }
@@ -319,13 +349,14 @@ struct WorkbenchSourcesView: View {
         VStack(alignment: .leading, spacing: 1) {
             WorkbenchDataText(
                 value: row.typeText,
-                style: .callout, weight: .semibold, design: .monospaced,
+                role: .dataLabel,
+                weight: .semibold,
                 maximumLineCount: 1
             )
             if let configurationDetailText = row.configurationDetailText {
                 WorkbenchDataText(
                     value: configurationDetailText,
-                    style: .caption, design: .monospaced,
+                    role: .dataCaption,
                     tone: .secondary,
                     maximumLineCount: 1
                 )
@@ -357,8 +388,7 @@ struct WorkbenchSourcesView: View {
             HStack(spacing: MicaTheme.Spacing.space2) {
                 WorkbenchDataText(
                     value: row.compactConfigurationText,
-                    style: .caption,
-                    design: .monospaced
+                    role: .dataCaption
                 )
                 Spacer(minLength: MicaTheme.Spacing.space1)
                 sourceUpdateState(row)
@@ -367,8 +397,7 @@ struct WorkbenchSourcesView: View {
 
             WorkbenchDataText(
                 value: row.compactStatusText,
-                style: .caption,
-                design: .monospaced,
+                role: .dataCaption,
                 tone: .secondary
             )
         }
@@ -396,8 +425,7 @@ struct WorkbenchSourcesView: View {
 
                 WorkbenchDataText(
                     value: row.stackedSummaryText,
-                    style: .caption,
-                    design: .monospaced,
+                    role: .dataCaption,
                     tone: .secondary,
                     alignment: .trailing
                 )
@@ -450,7 +478,7 @@ struct WorkbenchSourcesView: View {
         let previousSelection = selectedRowID
         projectionCache.project(
             update: update,
-            sources: appModel.routingCatalog.providers,
+            sources: appModel.providersCatalog.providers,
             kind: kind,
             query: searchText,
             sortOrder: sortOrder,
@@ -466,6 +494,7 @@ struct WorkbenchSourcesView: View {
                 identityFamily: \.identityFamily
             )
         }
+        reconcileAccessibilityWindow(revealing: selectedRowID)
     }
 
     private var state: WorkbenchDataState {
@@ -596,6 +625,71 @@ struct WorkbenchSourcesView: View {
             default: return nil
             }
         }
+    }
+
+    private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
+        [
+            accessibilitySortOption("name", titleKey: "dashboard.col_provider"),
+            accessibilitySortOption("type", titleKey: "dashboard.col_provider_type"),
+            accessibilitySortOption("itemCount", titleKey: "traffic.provider_items"),
+        ]
+    }
+
+    private func accessibilitySortOption(
+        _ field: String,
+        titleKey: String
+    ) -> WorkbenchAccessibilitySortOption {
+        let stored = sortOrder
+            .compactMap(Self.sourceWorkspaceSort)
+            .first { $0.field == field }
+        return WorkbenchAccessibilitySortOption(
+            id: field,
+            title: MicaStrings.localizedKey(titleKey, language: language),
+            direction: stored.map { $0.ascending ? .ascending : .descending }
+        )
+    }
+
+    private func activateAccessibilitySort(_ field: String, ascending: Bool) {
+        sortOrder = Self.sourceSortOrder(from: [
+            WorkbenchWorkspaceSort(
+                field: field,
+                ascending: ascending
+            ),
+        ])
+    }
+
+    private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
+        let currentScope = WorkbenchTableAccessibilityScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+        guard intent.scope == currentScope else { return }
+
+        switch intent {
+        case .selectRow(let id, _):
+            guard projectionCache.visibleRows.contains(where: { $0.id == id }) else { return }
+            selectedRowID = id
+        case .movePage(let lowerBound, _):
+            moveAccessibilityWindow(to: lowerBound)
+        case .setSort(let id, let ascending, _):
+            activateAccessibilitySort(id, ascending: ascending)
+        case .performNamedAction:
+            break
+        }
+    }
+
+    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
+        accessibilityCursor.reconcile(
+            orderedIDs: rows.map(\.id),
+            revealing: selectionID
+        )
+    }
+
+    private func moveAccessibilityWindow(to lowerBound: Int) {
+        accessibilityCursor.move(
+            to: lowerBound,
+            orderedIDs: rows.map(\.id)
+        )
     }
 
     private static func sourceWorkspaceSort(

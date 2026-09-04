@@ -34,8 +34,335 @@ struct MicaPerformanceBenchmarkTests {
         var revision: UInt64
     }
 
+    private struct DecodedConnectionMetricFrames {
+        let initial: [ConnectionSnapshot]
+        let updated: [ConnectionSnapshot]
+        let changedIndex: Int
+    }
+
     private enum BenchmarkError: Error {
         case missingOutputPath
+    }
+
+    private static func decodedConnectionMetricFrames(
+        connectionCount: Int
+    ) throws -> DecodedConnectionMetricFrames {
+        precondition(connectionCount > 0)
+
+        var source = MicaPerformanceFixtures.connections(count: connectionCount)
+        for index in source.indices {
+            source[index].fields["controller-extra"] = .object([
+                "sequence": .number(Double(index)),
+                "stable": .bool(true),
+            ])
+        }
+
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let initial = try decoder.decode(
+            [ConnectionSnapshot].self,
+            from: encoder.encode(source)
+        )
+        let changedIndex = connectionCount / 2
+        var updatedSource = initial
+        updatedSource[changedIndex].upload = (updatedSource[changedIndex].upload ?? 0) + 101
+        updatedSource[changedIndex].download = (updatedSource[changedIndex].download ?? 0) + 103
+        updatedSource[changedIndex].uploadSpeed =
+            (updatedSource[changedIndex].uploadSpeed ?? 0) + 107
+        updatedSource[changedIndex].downloadSpeed =
+            (updatedSource[changedIndex].downloadSpeed ?? 0) + 109
+        let updated = try decoder.decode(
+            [ConnectionSnapshot].self,
+            from: encoder.encode(updatedSource)
+        )
+
+        return DecodedConnectionMetricFrames(
+            initial: initial,
+            updated: updated,
+            changedIndex: changedIndex
+        )
+    }
+
+    private static func projectDecodedConnectionMetricFrame(
+        _ frames: DecodedConnectionMetricFrames,
+        connectionCount: Int
+    ) async -> (checksum: Int, workUnits: Int) {
+        let identity = LiveSessionRuntimeIdentity(
+            controllerID: UUID(),
+            generation: UUID()
+        )
+        let runtime = LiveSessionRuntime(
+            controllerKind: .mihomoCompatible,
+            initialPresentationDemand: LiveSessionPresentationDemand(
+                identity: identity,
+                revision: 0,
+                observedDomains: [.connections],
+                presentationPaused: false,
+                logsPresentationPaused: false,
+                baselinePublicationRequired: false
+            )
+        )
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: connectionCount,
+                downloadTotal: connectionCount * 2,
+                memory: 128 * 1_024 * 1_024,
+                connections: frames.initial
+            )
+        )
+        guard case .connections(let initialPublication) =
+            await runtime.publication(for: .connections, force: true)?.payload,
+              case .mihomo(let initialResponse) = initialPublication.source
+        else {
+            return (0, 0)
+        }
+
+        var cache = WorkbenchConnectionProjectionCache()
+        cache.project(
+            activeConnections: initialResponse.connections,
+            closedConnections: [],
+            scope: .active,
+            structureRevision: initialPublication.revisions.structure,
+            metricsRevision: initialPublication.revisions.metrics,
+            closedRevision: 0,
+            query: "",
+            sortOrder: [],
+            language: .english,
+            change: ConnectionsCatalogChange(
+                structureChanged: initialPublication.revisions.structure > 0,
+                metricsChanged: initialPublication.revisions.metrics > 0,
+                changedMetricIndices: initialPublication.changedMetricIndices,
+                trafficChanged: initialPublication.revisions.traffic > 0
+            )
+        )
+        let initialStaticRows = cache.staticRowProjectionCount
+        let initialMetricCandidates = cache.metricsCandidateProjectionCount
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: connectionCount,
+                downloadTotal: connectionCount * 2,
+                memory: 128 * 1_024 * 1_024,
+                connections: frames.updated
+            )
+        )
+        guard case .connections(let updatedPublication) =
+            await runtime.publication(for: .connections, force: true)?.payload,
+              case .mihomo(let updatedResponse) = updatedPublication.source
+        else {
+            return (0, 0)
+        }
+
+        cache.project(
+            activeConnections: updatedResponse.connections,
+            closedConnections: [],
+            scope: .active,
+            structureRevision: updatedPublication.revisions.structure,
+            metricsRevision: updatedPublication.revisions.metrics,
+            closedRevision: 0,
+            query: "",
+            sortOrder: [],
+            language: .english,
+            change: ConnectionsCatalogChange(
+                structureChanged: updatedPublication.revisions.structure
+                    != initialPublication.revisions.structure,
+                metricsChanged: updatedPublication.revisions.metrics
+                    != initialPublication.revisions.metrics,
+                changedMetricIndices: updatedPublication.changedMetricIndices,
+                trafficChanged: updatedPublication.revisions.traffic
+                    != initialPublication.revisions.traffic
+            )
+        )
+
+        let staticWork = cache.staticRowProjectionCount - initialStaticRows
+        let metricCandidateWork = cache.metricsCandidateProjectionCount
+            - initialMetricCandidates
+        let workUnits = staticWork + metricCandidateWork
+        let classifiedRows = updatedPublication.changedMetricIndices?.count
+            ?? connectionCount
+        let firstChangedIndex = updatedPublication.changedMetricIndices?.first
+            ?? connectionCount
+        let projectedUpload = cache.allRows[frames.changedIndex].connection.upload ?? 0
+        let checksum = Int(updatedPublication.revisions.structure) * 100_000_000
+            &+ Int(updatedPublication.revisions.metrics) * 10_000_000
+            &+ classifiedRows * 10_000
+            &+ firstChangedIndex
+            &+ workUnits
+            &+ projectedUpload
+        return (checksum, workUnits)
+    }
+
+    private static func largeProxyResponseFixture(entryCount: Int) throws -> Data {
+        precondition(entryCount > 0)
+
+        var proxies: [String: Any] = [:]
+        proxies.reserveCapacity(entryCount)
+        for index in 0..<entryCount {
+            let isGroup = index.isMultiple(of: 20)
+            let name = isGroup ? "Group \(index)" : "Node \(index)"
+            let nextNode = "Node \(min(index + 1, entryCount - 1))"
+            let history: [[String: Any]] = [
+                [
+                    "time": "2026-09-02T12:00:00Z",
+                    "delay": 20 + index % 180,
+                    "meanDelay": 25 + index % 180,
+                    "controller-detail": [
+                        "samples": [1, true, NSNull(), "ok"] as [Any],
+                    ],
+                ],
+            ]
+            let controllerMetadata: [String: Any] = [
+                "nested": [
+                    "enabled": true,
+                    "weight": index,
+                    "empty": NSNull(),
+                ],
+                "values": [
+                    "alpha",
+                    42,
+                    false,
+                    NSNull(),
+                    ["depth": [1, 2, 3]],
+                ] as [Any],
+            ]
+
+            proxies[name] = [
+                "type": isGroup ? "Selector" : "VLESS",
+                "now": nextNode,
+                "all": isGroup ? [nextNode, "DIRECT"] : [],
+                "alive": index.isMultiple(of: 3),
+                "history": history,
+                "icon": "https://controller.example/icons/node.png",
+                "testUrl": "https://controller.example/generate_204",
+                "provider-name": "Provider A",
+                "fixed": nextNode,
+                "interface": "utun7",
+                "udp": true,
+                "uot": false,
+                "xudp": true,
+                "tfo": false,
+                "mptcp": true,
+                "smux": false,
+                "hidden": false,
+                "controller-meta": controllerMetadata,
+                "scalar-number": index,
+                "scalar-bool": true,
+                "scalar-null": NSNull(),
+            ]
+        }
+
+        return try JSONSerialization.data(
+            withJSONObject: ["proxies": proxies],
+            options: [.sortedKeys]
+        )
+    }
+
+    private static func metadataRichPolicyCatalog(nodeCount: Int) -> PolicyGroupCatalogSnapshot {
+        let names = (0..<nodeCount).map { "Node \($0)" }
+        let details = Dictionary(uniqueKeysWithValues: names.enumerated().map { index, name in
+            let snapshot = ProxySnapshot(
+                name: name,
+                type: "VLESS",
+                alive: !index.isMultiple(of: 3),
+                history: [
+                    ProxyDelayHistorySnapshot(
+                        time: "2026-09-03T00:00:\(String(format: "%02d", index % 60))Z",
+                        delay: 20 + index % 1_200,
+                        meanDelay: 25 + index % 1_200
+                    ),
+                ],
+                providerName: "Provider \(index % 11)",
+                interfaceName: "utun\(index % 8)",
+                udp: true,
+                xudp: index.isMultiple(of: 2),
+                metadata: [
+                    "controller-meta": .object([
+                        "index": .number(Double(index)),
+                        "nested": .object([
+                            "enabled": .bool(true),
+                            "values": .array([
+                                .string("alpha"),
+                                .number(Double(index % 97)),
+                                .bool(index.isMultiple(of: 2)),
+                                .null,
+                            ]),
+                        ]),
+                    ]),
+                    "reported-sequence": .number(Double(index)),
+                ]
+            )
+            return (name, ProxyNodeViewState(snapshot: snapshot))
+        })
+        let selected = names.first ?? ""
+        return PolicyGroupCatalogSnapshot(
+            mode: "Rule",
+            groups: [
+                ProxyGroupViewState(
+                    id: "Metadata Rich",
+                    type: "Selector",
+                    selected: selected,
+                    options: names,
+                    details: details[selected],
+                    optionDetails: details
+                ),
+            ]
+        )
+    }
+
+    @Test func largeProxyResponseFixtureIsValid() throws {
+        let entryCount = 2_000
+        let data = try Self.largeProxyResponseFixture(entryCount: entryCount)
+        let response = try ProxiesResponse.decodePreservingProxyOrder(from: data)
+        let node = try #require(response.proxies["Node 1999"])
+
+        #expect(response.proxies.count == entryCount)
+        #expect(response.proxyOrder.count == entryCount)
+        #expect(response.policyGroups.count == entryCount / 20)
+        #expect(node.metadata["scalar-number"] == .number(1_999))
+        #expect(node.metadata["scalar-bool"] == .bool(true))
+        #expect(node.metadata["scalar-null"] == .null)
+        #expect(
+            node.metadata["controller-meta"] == .object([
+                "nested": .object([
+                    "enabled": .bool(true),
+                    "weight": .number(1_999),
+                    "empty": .null,
+                ]),
+                "values": .array([
+                    .string("alpha"),
+                    .number(42),
+                    .bool(false),
+                    .null,
+                    .object(["depth": .array([.number(1), .number(2), .number(3)])]),
+                ]),
+            ])
+        )
+    }
+
+    @Test func decodedConnectionMetricFrameFixturePreservesAdditionalFields() async throws {
+        let connectionCount = 2_000
+        let frames = try Self.decodedConnectionMetricFrames(
+            connectionCount: connectionCount
+        )
+        let initial = frames.initial[frames.changedIndex]
+        let updated = frames.updated[frames.changedIndex]
+
+        #expect(initial.fields["upload"] != updated.fields["upload"])
+        #expect(initial.fields["download"] != updated.fields["download"])
+        #expect(initial.fields["uploadSpeed"] != updated.fields["uploadSpeed"])
+        #expect(initial.fields["downloadSpeed"] != updated.fields["downloadSpeed"])
+        #expect(initial.additionalFields == updated.additionalFields)
+        #expect(
+            ConnectionsCatalogSnapshot.changedMetricIndices(
+                frames.initial,
+                frames.updated
+            ) == [frames.changedIndex]
+        )
+        let projection = await Self.projectDecodedConnectionMetricFrame(
+            frames,
+            connectionCount: connectionCount
+        )
+        #expect(projection.workUnits == 1)
     }
 
     @Test func offlineReleaseBaseline() async throws {
@@ -418,6 +745,90 @@ struct MicaPerformanceBenchmarkTests {
                 return index.records.count &+ index.directoryItems.count
             }
         )
+
+        let proxyDecodeCount = 2_000
+        let proxyResponseData = try Self.largeProxyResponseFixture(
+            entryCount: proxyDecodeCount
+        )
+        cases.append(
+            measure(
+                name: "proxy-response-decode",
+                fixtureCount: proxyDecodeCount,
+                sampleCount: 7,
+                reportedWorkUnits: proxyDecodeCount
+            ) {
+                let response = try! ProxiesResponse.decodePreservingProxyOrder(
+                    from: proxyResponseData
+                )
+                return response.proxyOrder.count
+                    &+ response.policyGroups.count
+                    &+ (response.proxies["Node 1999"]?.metadata.count ?? 0)
+            }
+        )
+        let cachedMediumProxies = try ProxiesResponse.decodePreservingProxyOrder(
+            from: proxyResponseData
+        )
+        let unchangedMediumProxies = try ProxiesResponse.decodePreservingProxyOrder(
+            from: proxyResponseData
+        )
+        var unchangedMediumCache = SessionEndpointCache()
+        unchangedMediumCache.proxies = cachedMediumProxies
+        cases.append(
+            measure(
+                name: "mihomo-medium-unchanged-change-plan",
+                fixtureCount: proxyDecodeCount,
+                sampleCount: 7,
+                reportedWorkUnits: proxyDecodeCount
+            ) {
+                let plan = MihomoEndpointChangePlan.medium(
+                    cache: unchangedMediumCache,
+                    proxies: unchangedMediumProxies
+                )
+                guard plan.cacheWriteCount == 0,
+                      plan.policyGroupProjectionWorkUnits == 0,
+                      !plan.shouldRebuildUnifiedSnapshot else {
+                    return 0
+                }
+                return unchangedMediumProxies.proxies.count
+            }
+        )
+        let metadataComparisonCount = 2_000
+        let metadataCatalogLeft = Self.metadataRichPolicyCatalog(
+            nodeCount: metadataComparisonCount
+        )
+        let metadataCatalogRight = Self.metadataRichPolicyCatalog(
+            nodeCount: metadataComparisonCount
+        )
+        cases.append(
+            measure(
+                name: "policy-catalog-equality",
+                fixtureCount: metadataComparisonCount,
+                sampleCount: 7,
+                reportedWorkUnits: metadataComparisonCount
+            ) {
+                metadataCatalogLeft == metadataCatalogRight
+                    ? metadataComparisonCount
+                    : 0
+            }
+        )
+        cases.append(
+            measure(
+                name: "policy-catalog-projection-and-equality",
+                fixtureCount: metadataComparisonCount,
+                sampleCount: 5,
+                reportedWorkUnits: metadataComparisonCount * 2
+            ) {
+                let left = Self.metadataRichPolicyCatalog(
+                    nodeCount: metadataComparisonCount
+                )
+                let right = Self.metadataRichPolicyCatalog(
+                    nodeCount: metadataComparisonCount
+                )
+                guard left == right else { return 0 }
+                return left.groups.reduce(0) { $0 &+ $1.optionDetails.count }
+                    &+ right.groups.reduce(0) { $0 &+ $1.optionDetails.count }
+            }
+        )
         cases.append(
             measurePrepared(
                 name: "proxy-expanded-groups-projection",
@@ -515,6 +926,28 @@ struct MicaPerformanceBenchmarkTests {
                 }
             )
         }
+
+        let decodedMetricFrameCount = 2_000
+        let decodedMetricFrames = try Self.decodedConnectionMetricFrames(
+            connectionCount: decodedMetricFrameCount
+        )
+        let decodedMetricProbe = await Self.projectDecodedConnectionMetricFrame(
+            decodedMetricFrames,
+            connectionCount: decodedMetricFrameCount
+        )
+        cases.append(
+            await measureAsync(
+                name: "runtime-decoded-connection-metric-frame",
+                fixtureCount: decodedMetricFrameCount,
+                sampleCount: 7,
+                reportedWorkUnits: decodedMetricProbe.workUnits
+            ) {
+                await Self.projectDecodedConnectionMetricFrame(
+                    decodedMetricFrames,
+                    connectionCount: decodedMetricFrameCount
+                ).checksum
+            }
+        )
 
         for shape in [MicaPerformanceFixtures.TopologyShape.shared, .unique] {
             for count in [1_000, 2_000] {

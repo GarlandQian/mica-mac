@@ -193,7 +193,7 @@ extension AppModel {
             return "surge=[\(surgeSnapshotDiagnostics)]; unified=[\(unifiedSnapshot.diagnosticsSummary)]; session=[\(controllerSession.diagnosticsSummary)]"
         }
 
-        return "groups=\(dashboard.groups.count); connections=\(dashboard.connections.count); rules=\(dashboard.rules.count); providers=\(dashboard.providers.count); config=[\(dashboard.config.diagnosticsSummary)]; insight=[\(dashboard.insight.diagnosticsStats)]; unified=[\(unifiedSnapshot.diagnosticsSummary)]; session=[\(controllerSession.diagnosticsSummary)]"
+        return "groups=\(policyGroupCatalog.groups.count); connections=\(connectionsCatalog.connections.count); rules=\(rulesCatalog.rules.count); providers=\(providersCatalog.providers.count); config=[\(controllerMetadata.config.diagnosticsSummary)]; insight=[\(insightCatalog.diagnosticsStats)]; unified=[\(unifiedSnapshot.diagnosticsSummary)]; session=[\(controllerSession.diagnosticsSummary)]"
     }
 
     func trialSession(for router: RouterProfile) -> TrialSessionSnapshot {
@@ -218,6 +218,7 @@ extension AppModel {
                 || checkingProviderName != nil
                 || providerUpdateAllProgress?.isRunning == true
                 || isRefreshingDashboard
+                || isTestingSelectedRouter
                 || reloadingRules
                 || updatingRuleID != nil
                 || reloadingProviders
@@ -230,6 +231,59 @@ extension AppModel {
                 || reloadingSurgeProfile
                 || changingControllerLogLevel
         }
+    }
+
+    var hasSwitchOperationInFlight: Bool {
+        switchingGroupID != nil || clearingFixedGroupID != nil
+    }
+
+    var hasDelayOperationInFlight: Bool {
+        measuringDelayGroupID != nil || measuringDelayNode != nil
+    }
+
+    var hasConnectionOperationInFlight: Bool {
+        closingConnectionID != nil
+            || closingConnectionGroupID != nil
+            || closingAllConnections
+    }
+
+    var hasProviderOperationInFlight: Bool {
+        updatingProviderName != nil
+            || checkingProviderName != nil
+            || providerUpdateAllProgress?.isRunning == true
+            || reloadingProviders
+    }
+
+    var hasRuleOperationInFlight: Bool {
+        reloadingRules || updatingRuleID != nil
+    }
+
+    var hasSurgeOperationInFlight: Bool {
+        changingSurgeOutbound
+            || testingSurgePolicyGroup != nil
+            || switchingSurgePolicyGroup != nil
+            || killingSurgeRequestID != nil
+            || killingSurgeProjectedConnectionID != nil
+            || reloadingSurgeProfile
+            || changingControllerLogLevel
+            || reloadingRules
+    }
+
+    func canBeginLiveAction(
+        _ action: UnifiedControllerAction,
+        router: RouterProfile,
+        familyInFlight: Bool,
+        requiresUnpausedPresentation: Bool = false
+    ) -> Bool {
+        guard !familyInFlight,
+              selectedRouterID == router.id,
+              controllerSessionPresentation.controllerID == router.id,
+              controllerSessionPresentation.state.allowsLiveCommands,
+              !requiresUnpausedPresentation
+                || !controllerSessionPresentation.controls.dashboardUpdatesPaused else {
+            return false
+        }
+        return effectiveUnifiedCapabilities(for: router).supports(action)
     }
 
     func cancelControllerOperationTasks() {
@@ -268,6 +322,9 @@ extension AppModel {
         updatingProviderName = nil
         checkingProviderName = nil
         isRefreshingDashboard = false
+        isTestingSelectedRouter = false
+        selectedRouterRefreshOperationID = nil
+        selectedRouterTestOperationID = nil
         reloadingRules = false
         updatingRuleID = nil
         ruleUpdateFailures = [:]
@@ -335,6 +392,9 @@ extension AppModel {
         updatingProviderName = nil
         checkingProviderName = nil
         isRefreshingDashboard = false
+        isTestingSelectedRouter = false
+        selectedRouterRefreshOperationID = nil
+        selectedRouterTestOperationID = nil
         reloadingRules = false
         updatingRuleID = nil
         ruleUpdateFailures = [:]
@@ -404,8 +464,12 @@ extension AppModel {
         noteSessionPublicationDirty(.logs, immediate: true)
     }
 
-    func setControllerLogLevel(_ level: LogSessionLevel) {
-        guard controllerLogLevel != level else { return }
+    func setControllerLogLevel(
+        _ level: LogSessionLevel,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              controllerLogLevel != level else { return }
 
         guard let router = selectedRouter,
               runtimeControllerKind(for: router) == .surgeCompatible else {
@@ -414,15 +478,14 @@ extension AppModel {
             return
         }
 
-        guard controllerSupportsLiveAction(
+        guard surgeTask == nil,
+              canBeginLiveAction(
             .setLogLevel,
             router: router,
-            action: TrialCommandAction.surgeLogLevel.title(language: presentationLanguage)
-        ), !isBusy else {
-            return
-        }
+            familyInFlight: hasSurgeOperationInFlight,
+            requiresUnpausedPresentation: true
+        ) else { return }
 
-        surgeTask?.cancel()
         let previousLevel = controllerLogLevel
         controllerLogLevel = level
         changingControllerLogLevel = true
@@ -449,6 +512,7 @@ extension AppModel {
                 }
 
                 changingControllerLogLevel = false
+                surgeTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -468,6 +532,7 @@ extension AppModel {
 
                 controllerLogLevel = previousLevel
                 changingControllerLogLevel = false
+                surgeTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,

@@ -1,3 +1,4 @@
+import Foundation
 import MicaCore
 import SwiftUI
 
@@ -17,6 +18,280 @@ struct ProxyExpandedGroupPresentation: Identifiable, Equatable {
     let canClearFixed: Bool
 
     var id: String { occurrence.id }
+}
+
+struct ProxyBoundedAccessibilityCatalog: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let index: ProxyAccessibilityIndex
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+    let selectedElementID: String?
+    let activeGroupID: String?
+    let inspectedMemberIDs: [String: String]
+    let commandsEnabled: Bool
+    let canSelectMember: Bool
+    let canTestGroup: Bool
+    let canTestNode: Bool
+    let canClearFixedSelection: Bool
+    let activity: ProxyOperationActivity
+    let onToggleGroup: (String, LiveCommandScope) -> Void
+    let onLocateCurrent: (String, LiveCommandScope) -> Void
+    let onTestGroup: (String, LiveCommandScope) -> Void
+    let onClearFixed: (String, LiveCommandScope) -> Void
+    let onSelectMember: (String, String, LiveCommandScope) -> Void
+    let onTestMember: (String, String, LiveCommandScope) -> Void
+
+    @State private var cursor = WorkbenchAccessibilityWindowCursor()
+
+    var body: some View {
+        let localization = MicaStrings.localizationContext(for: language)
+        let window = currentWindow
+
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            WorkbenchAccessibilityPageControls(
+                window: window,
+                moveToLowerBound: move(to:)
+            )
+
+            ForEach(index.elements(in: window.range)) { element in
+                elementRow(element, localization: localization)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            MicaStrings.localizedKey("routing.group_catalog", language: language)
+        )
+        .onAppear {
+            reconcile(revealing: selectedElementID)
+        }
+        .onChange(of: controllerID) { _, _ in
+            resetForSession()
+        }
+        .onChange(of: generation) { _, _ in
+            resetForSession()
+        }
+        .onChange(of: index.orderedIDs) { _, _ in
+            reconcile(revealing: nil)
+        }
+        .onChange(of: selectedElementID) { _, selectedElementID in
+            guard let selectedElementID else { return }
+            reconcile(revealing: selectedElementID)
+        }
+    }
+
+    private var currentWindow: WorkbenchAccessibilityWindow {
+        WorkbenchAccessibilityWindow.resolve(
+            totalCount: index.totalCount,
+            preferredLowerBound: cursor.lowerBound
+        )
+    }
+
+    @ViewBuilder
+    private func elementRow(
+        _ element: ProxyAccessibilityIndex.Element,
+        localization: MicaStrings.LocalizationContext
+    ) -> some View {
+        switch element {
+        case .group(let group):
+            groupRow(group, localization: localization)
+        case .member(let member):
+            memberRow(member, localization: localization)
+        }
+    }
+
+    private func groupRow(
+        _ group: ProxyAccessibilityIndex.GroupElement,
+        localization: MicaStrings.LocalizationContext
+    ) -> some View {
+        let groupID = group.occurrence.id
+        let reportedGroupID = group.occurrence.group.id
+        let isSwitching = activity.isSwitching(groupID: reportedGroupID)
+        let isTesting = activity.isTesting(groupID: reportedGroupID)
+        let isClearing = activity.clearingFixedGroupID == reportedGroupID
+        let canLocate = group.item.selected.proxyNonBlank != nil
+        let canRunTest = canTestGroup
+            && commandsEnabled
+            && !isSwitching
+            && !isTesting
+            && !isClearing
+        let canClear = canClearFixedSelection
+            && group.item.hasFixedSelection
+            && commandsEnabled
+            && !isSwitching
+            && !isTesting
+            && !isClearing
+
+        return Button {
+            guard let commandScope else { return }
+            onToggleGroup(groupID, commandScope)
+        } label: {
+            Text(verbatim: groupSummary(group, localization: localization))
+        }
+        .accessibilityAddTraits(activeGroupID == groupID ? .isSelected : [])
+        .accessibilityHint(
+            localization.localizedKey(
+                group.isExpanded ? "routing.close_group" : "routing.open_group"
+            )
+        )
+        .accessibilityActions {
+            if canLocate {
+                Button(localization.localizedKey("routing.locate_current_node")) {
+                    guard let commandScope else { return }
+                    onLocateCurrent(groupID, commandScope)
+                }
+            }
+            if canRunTest {
+                Button(localization.localizedKey("routing.test_group")) {
+                    guard let commandScope else { return }
+                    onTestGroup(groupID, commandScope)
+                }
+            }
+            if canClear {
+                Button(localization.localizedKey("routing.clear_fixed_selection")) {
+                    guard let commandScope else { return }
+                    onClearFixed(groupID, commandScope)
+                }
+            }
+        }
+    }
+
+    private func memberRow(
+        _ element: ProxyAccessibilityIndex.MemberElement,
+        localization: MicaStrings.LocalizationContext
+    ) -> some View {
+        let member = element.member
+        let isSwitching = activity.isSwitching(groupID: element.groupName)
+        let isMeasuring = activity.isMeasuring(
+            groupID: element.groupName,
+            nodeName: member.name
+        )
+        let canRunTest = canTestNode
+            && commandsEnabled
+            && !isSwitching
+            && !isMeasuring
+        let canSwitch = canSelectMember
+            && element.groupSelectable
+            && commandsEnabled
+
+        return Button {
+            guard let commandScope else { return }
+            onSelectMember(
+                element.groupOccurrenceID,
+                member.id,
+                commandScope
+            )
+        } label: {
+            Text(verbatim: memberSummary(element, localization: localization))
+        }
+        .accessibilityAddTraits(
+            inspectedMemberIDs[element.groupOccurrenceID] == member.id
+                ? .isSelected
+                : []
+        )
+        .accessibilityHint(
+            canSwitch
+                ? localization.localizedKey("dashboard.switch_node")
+                : ""
+        )
+        .accessibilityActions {
+            if canRunTest {
+                Button(
+                    localization.localized(
+                        "routing.test_node %@",
+                        arguments: [member.name]
+                    )
+                ) {
+                    guard let commandScope else { return }
+                    onTestMember(
+                        element.groupOccurrenceID,
+                        member.id,
+                        commandScope
+                    )
+                }
+            }
+        }
+    }
+
+    private var commandScope: LiveCommandScope? {
+        LiveCommandScope(controllerID: controllerID, generation: generation)
+    }
+
+    private func groupSummary(
+        _ group: ProxyAccessibilityIndex.GroupElement,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        let health = localization.localizedKey(group.item.health.status.titleKey)
+        let availability = localization.localized(
+            "routing.available_nodes_count %lld %lld",
+            arguments: [
+                String(group.item.availableMemberCount),
+                String(group.item.memberCount),
+            ]
+        )
+        let counts = localization.localized(
+            "routing.health_counts %lld %lld %lld %lld",
+            arguments: [
+                String(group.item.health.availableCount),
+                String(group.item.health.unavailableCount),
+                String(group.item.health.unknownCount),
+                String(group.item.health.slowCount),
+            ]
+        )
+        let current = "\(localization.localizedKey("dashboard.current_node")): \(group.item.selected)"
+        return [
+            group.item.groupID,
+            group.item.type,
+            current,
+            health,
+            availability,
+            counts,
+        ].joined(separator: "  ·  ")
+    }
+
+    private func memberSummary(
+        _ element: ProxyAccessibilityIndex.MemberElement,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        let member = element.member
+        let health = localization.localizedKey(member.health.titleKey)
+        let latency = member.delay.flatMap { delay in
+            delay > 0 ? OverviewFormat.latency(delay) : nil
+        } ?? localization.localizedKey("overview.config_not_reported")
+        var values = [element.groupName, member.name, health, latency]
+        if let descriptor = member.descriptor {
+            values.append(descriptor)
+        }
+        if let usageRank = member.usageRank {
+            values.append(usageRank.label(language: language))
+        }
+        if member.isControllerSelected {
+            values.append(localization.localizedKey("dashboard.inspector_current"))
+        }
+        return values.joined(separator: "  ·  ")
+    }
+
+    private func move(to lowerBound: Int) {
+        cursor.move(
+            to: lowerBound,
+            totalCount: index.totalCount,
+            idAt: index.id(at:)
+        )
+    }
+
+    private func reconcile(revealing selectedElementID: String?) {
+        cursor.reconcile(
+            totalCount: index.totalCount,
+            revealing: selectedElementID,
+            indexOf: index.index(of:),
+            idAt: index.id(at:)
+        )
+    }
+
+    private func resetForSession() {
+        cursor.reset()
+        reconcile(revealing: selectedElementID)
+    }
 }
 
 struct ProxyPolicyGroupPanel: View {

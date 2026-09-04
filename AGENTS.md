@@ -19,7 +19,7 @@
 ## Detailed Context
 
 - Project skill: `.agents/skills/mica-controller-development/SKILL.md`
-- Controller/session contract: `.trellis/spec/backend/controller-data-contract.md` and `.trellis/spec/frontend/live-session-controller-contract.md`
+- Controller/session contract: `.trellis/spec/backend/controller-data-contract.md`, `.trellis/spec/frontend/live-session-controller-contract.md`, and `.trellis/spec/frontend/live-command-scope-contract.md`
 - Workbench UI/performance contract: `.trellis/spec/frontend/workbench-ui-contract.md`
 - Durable project documentation and verification commands: `docs/README.md`
 

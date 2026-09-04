@@ -15,6 +15,177 @@ extension View {
     }
 }
 
+/// Owns bounded table semantics without exposing the native `NSTableView`
+/// accessibility subtree or participating in pointer interaction.
+struct WorkbenchTableAccessibilityHost: View, @MainActor Equatable {
+    let payload: WorkbenchTableAccessibilityPayload
+    let dispatch: (WorkbenchTableAccessibilityIntent) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.payload == rhs.payload
+    }
+
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityRepresentation {
+                WorkbenchResolvedTableAccessibilityRepresentation(
+                    payload: payload,
+                    dispatch: dispatch
+                )
+            }
+    }
+}
+
+struct WorkbenchAccessibilityPageControls: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let window: WorkbenchAccessibilityWindow
+    let moveToLowerBound: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            Text(pageLabel)
+            Text(rangeLabel)
+
+            HStack {
+                if let previousLowerBound = window.previousLowerBound {
+                    Button(
+                        MicaStrings.localizedKey("traffic.previous_page", language: language)
+                    ) {
+                        moveToLowerBound(previousLowerBound)
+                    }
+                }
+
+                if let nextLowerBound = window.nextLowerBound {
+                    Button(
+                        MicaStrings.localizedKey("traffic.next_page", language: language)
+                    ) {
+                        moveToLowerBound(nextLowerBound)
+                    }
+                }
+            }
+        }
+    }
+
+    private var pageLabel: String {
+        MicaStrings.localized(
+            "traffic.page_label \(window.pageNumber) \(window.pageCount) \(window.totalCount)",
+            language: language
+        )
+    }
+
+    private var rangeLabel: String {
+        let first = window.range.isEmpty ? 0 : window.lowerBound + 1
+        return MicaStrings.localized(
+            "traffic.range_label \(first) \(window.upperBound) \(window.totalCount)",
+            language: language
+        )
+    }
+}
+
+private struct WorkbenchResolvedTableAccessibilityRepresentation: View {
+    let payload: WorkbenchTableAccessibilityPayload
+    let dispatch: (WorkbenchTableAccessibilityIntent) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            WorkbenchResolvedTableAccessibilityPageControls(
+                payload: payload,
+                dispatch: dispatch
+            )
+
+            if !payload.sortControls.isEmpty {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                    ForEach(payload.sortControls) { control in
+                        Button {
+                            dispatch(
+                                .setSort(
+                                    id: control.id,
+                                    ascending: control.targetAscending,
+                                    scope: payload.scope
+                                )
+                            )
+                        } label: {
+                            Text(verbatim: control.title)
+                        }
+                        .accessibilityValue(Text(verbatim: control.value ?? ""))
+                        .accessibilityHint(Text(verbatim: control.hint))
+                        .accessibilityAddTraits(control.isSelected ? .isSelected : [])
+                    }
+                }
+            }
+
+            ForEach(payload.rows) { row in
+                accessibleRow(row)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(verbatim: payload.title))
+    }
+
+    @ViewBuilder
+    private func accessibleRow(_ row: WorkbenchTableAccessibilityPayload.Row) -> some View {
+        let rowButton = Button {
+            dispatch(.selectRow(id: row.id, scope: payload.scope))
+        } label: {
+            Text(verbatim: row.summary)
+        }
+        .accessibilityAddTraits(row.isSelected ? .isSelected : [])
+
+        if let action = row.namedAction {
+            rowButton.accessibilityAction(named: Text(verbatim: action.title)) {
+                dispatch(
+                    .performNamedAction(
+                        rowID: row.id,
+                        actionID: action.id,
+                        scope: payload.scope
+                    )
+                )
+            }
+        } else {
+            rowButton
+        }
+    }
+}
+
+private struct WorkbenchResolvedTableAccessibilityPageControls: View {
+    let payload: WorkbenchTableAccessibilityPayload
+    let dispatch: (WorkbenchTableAccessibilityIntent) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            Text(verbatim: payload.pageLabel)
+            Text(verbatim: payload.rangeLabel)
+
+            HStack {
+                if let previousPage = payload.previousPage {
+                    pageButton(previousPage)
+                }
+
+                if let nextPage = payload.nextPage {
+                    pageButton(nextPage)
+                }
+            }
+        }
+    }
+
+    private func pageButton(
+        _ action: WorkbenchTableAccessibilityPayload.PageAction
+    ) -> some View {
+        Button {
+            dispatch(
+                .movePage(
+                    lowerBound: action.lowerBound,
+                    scope: payload.scope
+                )
+            )
+        } label: {
+            Text(verbatim: action.title)
+        }
+    }
+}
+
 struct WorkbenchDataActivityIndicator: View {
     @Environment(\.micaAppLanguage) private var language
 
@@ -123,66 +294,22 @@ struct WorkbenchDataPrimaryCell: View {
     }
 }
 
-/// Text-style input for `WorkbenchDataText` (task 08-17 Phase 7): the roles
-/// map by point size onto `MicaTheme.TextRole` inside the view, keeping the
-/// long-standing call sites (`style: .caption, design: .monospaced`) stable
-/// while the superseded design-system file is deleted.
-enum MicaTextStyle: Sendable, Equatable {
-    case largeTitle
-    case title
-    case title2
-    case title3
-    case headline
-    case body
-    case callout
-    case subheadline
-    case footnote
-    case caption
-    case caption2
-}
-
 struct WorkbenchDataText: View {
     let value: String
-    var style: MicaTextStyle = .callout
+    var role: MicaTheme.TextRole = .label
     var weight: Font.Weight?
-    var design: Font.Design = .default
     var tone: HierarchicalShapeStyle = .primary
     var alignment: Alignment = .leading
     var maximumLineCount = 1
 
     var body: some View {
         Text(verbatim: value)
-            .micaThemeFont(Self.themeRole(for: style, design: design), weight: weight)
+            .micaThemeFont(role, weight: weight)
             .foregroundStyle(tone)
             .lineLimit(maximumLineCount)
             .truncationMode(.tail)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: alignment)
-    }
-
-    /// Transitional bridge from the superseded text-style enum to MicaTheme
-    /// roles by point size; removed with the old design system in Phase 7.3
-    /// (task 08-17 Phase 4C).
-    private static func themeRole(for style: MicaTextStyle, design: Font.Design) -> MicaTheme.TextRole {
-        if design == .monospaced {
-            switch style {
-            case .largeTitle: return .dataHeroLarge
-            case .title: return .dataHero
-            case .title2, .title3: return .dataTitle
-            case .headline, .body: return .dataBody
-            case .callout: return .dataLabel
-            case .subheadline, .footnote, .caption, .caption2: return .dataCaption
-            }
-        }
-        switch style {
-        case .largeTitle: return .heroLarge
-        case .title: return .hero
-        case .title2: return .title
-        case .title3: return .title3
-        case .headline, .body: return .body
-        case .callout: return .label
-        case .subheadline, .footnote, .caption, .caption2: return .caption
-        }
     }
 }
 
@@ -193,8 +320,7 @@ struct WorkbenchDataMetric: View {
     var body: some View {
         WorkbenchDataText(
             value: value,
-            style: .caption,
-            design: .monospaced,
+            role: .dataCaption,
             tone: tone,
             alignment: .trailing
         )

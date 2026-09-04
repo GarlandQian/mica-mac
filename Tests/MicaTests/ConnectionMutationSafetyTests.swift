@@ -44,6 +44,59 @@ struct ConnectionMutationSafetyTests {
     }
 
     @MainActor
+    @Test func staleOrAmbiguousConnectionCannotReachTheCloseTransport() async {
+        let harness = ConnectionMutationHarness()
+        let current = ConnectionSnapshot(id: "connection-1", upload: 10, download: 20)
+        let (staleModel, _) = makeConnectionModel(
+            connections: [current],
+            harness: harness
+        )
+
+        staleModel.closeConnection(ConnectionSnapshot(id: "removed-connection"))
+
+        #expect(staleModel.connectionTask == nil)
+        #expect(staleModel.closingConnectionID == nil)
+        #expect(staleModel.operationState == nil)
+        #expect(await harness.record.closeIDs.isEmpty)
+
+        let duplicateHarness = ConnectionMutationHarness()
+        let duplicate = ConnectionSnapshot(id: "duplicate")
+        let (duplicateModel, _) = makeConnectionModel(
+            connections: [duplicate, duplicate],
+            harness: duplicateHarness
+        )
+
+        duplicateModel.closeConnection(duplicate)
+
+        #expect(duplicateModel.connectionTask == nil)
+        #expect(duplicateModel.closingConnectionID == nil)
+        #expect(duplicateModel.operationState == nil)
+        #expect(await duplicateHarness.record.closeIDs.isEmpty)
+    }
+
+    @Test func connectionGroupResolverPreservesCallerOrderUsingCurrentValues() throws {
+        let first = ConnectionSnapshot(id: "first", upload: 1)
+        let second = ConnectionSnapshot(id: "second", upload: 2)
+        let resolved = try #require(
+            ConnectionMutationTargetResolver.resolve(
+                requested: [
+                    ConnectionSnapshot(id: "second", upload: 20),
+                    ConnectionSnapshot(id: "first", upload: 10),
+                ],
+                currentConnections: [first, second]
+            )
+        )
+
+        #expect(resolved == [second, first])
+        #expect(
+            ConnectionMutationTargetResolver.resolve(
+                requested: [first, first],
+                currentConnections: [first, second]
+            ) == nil
+        )
+    }
+
+    @MainActor
     @Test func confirmedCloseAllRemainsPartialWhenAuthoritativeRefreshFails() async throws {
         let harness = ConnectionMutationHarness(snapshotFailure: true)
         let connections = [
@@ -79,7 +132,11 @@ struct ConnectionMutationSafetyTests {
         )
         let (model, _) = makeConnectionModel(groups: [group])
 
-        model.selectNode("Node B", in: group.id)
+        model.selectNode(
+            "Node B",
+            in: group.id,
+            scope: commandScope(for: model)
+        )
 
         #expect(model.switchTask == nil)
         #expect(model.dashboard.groups.first?.selected == "Node A")
@@ -96,7 +153,11 @@ struct ConnectionMutationSafetyTests {
         )
         let (model, _) = makeConnectionModel(groups: [group])
 
-        model.selectNode("Removed Node", in: group.id)
+        model.selectNode(
+            "Removed Node",
+            in: group.id,
+            scope: commandScope(for: model)
+        )
 
         #expect(model.switchTask == nil)
         #expect(model.dashboard.groups.first?.selected == "Node A")

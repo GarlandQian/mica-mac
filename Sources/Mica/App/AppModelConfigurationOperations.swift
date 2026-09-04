@@ -1,31 +1,20 @@
 import MicaCore
 
 extension AppModel {
-    func updateControllerConfig(_ mutation: ControllerConfigMutation) {
-        configTask?.cancel()
-
-        guard let router = selectedRouter else {
-            operationState = .error(localized("operation.select_router_config"))
-            return
-        }
-
-        guard !dashboardSessionControls.dashboardUpdatesPaused else {
-            operationState = .partial(
-                localized("operation.dashboard_updates_paused"),
-                action: TrialCommandAction.setConfig.title(language: presentationLanguage),
-                target: router.displayName,
-                nextStep: localized("action.resume")
-            )
-            return
-        }
-
-        guard controllerSupportsLiveAction(
+    func updateControllerConfig(
+        _ mutation: ControllerConfigMutation,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              updatingConfigFieldID == nil,
+              configTask == nil,
+              canBeginLiveAction(
             mutation.action,
             router: router,
-            action: mutation.action.micaLabel(language: presentationLanguage)
-        ) else {
-            return
-        }
+            familyInFlight: false,
+            requiresUnpausedPresentation: true
+        ) else { return }
 
         let commandID = beginCommand(
             .setConfig,
@@ -44,25 +33,36 @@ extension AppModel {
         let generation = controllerSession.generation
         let secret = controllerSecrets[router.id]
         configTask = Task {
-            let client = MihomoClient(profile: router, secret: secret)
-
             do {
-                try await client.updateConfigs(mutation.patch)
+                try await updateMihomoConfig(
+                    profile: router,
+                    credential: secret,
+                    patch: mutation.patch
+                )
                 guard isCurrentSession(routerID: router.id, generation: generation),
                       !Task.isCancelled else {
                     return
                 }
 
                 do {
-                    let config = try await client.configs()
+                    let config = try await loadMihomoConfig(
+                        profile: router,
+                        credential: secret
+                    )
                     guard isCurrentSession(routerID: router.id, generation: generation),
                           !Task.isCancelled else {
                         return
                     }
                     controllerSession.endpointCache.config = config
+                    let previousMode = dashboard.mode
                     dashboard.replaceConfig(with: config)
-                    synchronizeDomainCatalogs()
+                    var publicationDomains: DashboardPublicationDomains = [.metadata]
+                    if dashboard.mode != previousMode {
+                        publicationDomains.insert(.policyGroups)
+                    }
+                    publishDashboardDomains(publicationDomains)
                     updatingConfigFieldID = nil
+                    configTask = nil
                     finishCommand(
                         commandID,
                         routerID: router.id,
@@ -80,6 +80,7 @@ extension AppModel {
                         return
                     }
                     updatingConfigFieldID = nil
+                    configTask = nil
                     finishCommand(
                         commandID,
                         routerID: router.id,
@@ -101,6 +102,7 @@ extension AppModel {
 
                 dashboard.config = previousConfig
                 updatingConfigFieldID = nil
+                configTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,

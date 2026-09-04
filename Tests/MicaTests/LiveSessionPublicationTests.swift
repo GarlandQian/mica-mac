@@ -1,5 +1,7 @@
 import Foundation
 import MicaCore
+import Observation
+import Synchronization
 import Testing
 @testable import Mica
 
@@ -33,6 +35,62 @@ private actor PublicationSleepGate {
     }
 }
 
+struct DecodedConnectionFrameFixture {
+    struct Frames {
+        let initial: [ConnectionSnapshot]
+        let metricUpdated: [ConnectionSnapshot]
+        let additionalFieldUpdated: [ConnectionSnapshot]
+        let changedIndex: Int
+    }
+
+    static func make(connectionCount: Int = 3) throws -> Frames {
+        precondition(connectionCount > 1)
+
+        var source = MicaPerformanceFixtures.connections(count: connectionCount)
+        for index in source.indices {
+            source[index].fields["controller-extra"] = .object([
+                "sequence": .number(Double(index)),
+                "stable": .bool(true),
+            ])
+        }
+
+        let changedIndex = connectionCount / 2
+        let initial = try roundTrip(source)
+
+        var metricUpdatedSource = initial
+        metricUpdatedSource[changedIndex].upload =
+            (metricUpdatedSource[changedIndex].upload ?? 0) + 101
+        metricUpdatedSource[changedIndex].download =
+            (metricUpdatedSource[changedIndex].download ?? 0) + 103
+        metricUpdatedSource[changedIndex].uploadSpeed =
+            (metricUpdatedSource[changedIndex].uploadSpeed ?? 0) + 107
+        metricUpdatedSource[changedIndex].downloadSpeed =
+            (metricUpdatedSource[changedIndex].downloadSpeed ?? 0) + 109
+        let metricUpdated = try roundTrip(metricUpdatedSource)
+
+        var additionalFieldUpdatedSource = initial
+        additionalFieldUpdatedSource[changedIndex].fields["controller-extra"] = .object([
+            "sequence": .number(Double(changedIndex)),
+            "stable": .bool(false),
+        ])
+        let additionalFieldUpdated = try roundTrip(additionalFieldUpdatedSource)
+
+        return Frames(
+            initial: initial,
+            metricUpdated: metricUpdated,
+            additionalFieldUpdated: additionalFieldUpdated,
+            changedIndex: changedIndex
+        )
+    }
+
+    private static func roundTrip(
+        _ connections: [ConnectionSnapshot]
+    ) throws -> [ConnectionSnapshot] {
+        let data = try JSONEncoder().encode(connections)
+        return try JSONDecoder().decode([ConnectionSnapshot].self, from: data)
+    }
+}
+
 struct LiveSessionPublicationTests {
     @Test func publicationCadencesMatchTheVisibleDomainBudgets() {
         #expect(LiveSessionPublicationDomain.logs.cadence == .milliseconds(200))
@@ -50,6 +108,33 @@ struct LiveSessionPublicationTests {
         #expect(LiveSessionVisibleDestination.connections.observedDomains == [.connections])
         #expect(LiveSessionVisibleDestination.logs.observedDomains == [.logs])
         #expect(LiveSessionVisibleDestination.other.observedDomains.isEmpty)
+    }
+
+    @MainActor
+    @Test func dashboardAssemblyCacheIsNotObservedButDomainCatalogPublicationInvalidates() {
+        let model = makeModel()
+        let dashboardInvalidated = Mutex(false)
+        let catalogInvalidated = Mutex(false)
+
+        withObservationTracking {
+            _ = model.dashboard
+        } onChange: {
+            dashboardInvalidated.withLock { $0 = true }
+        }
+        withObservationTracking {
+            _ = model.policyGroupCatalog
+        } onChange: {
+            catalogInvalidated.withLock { $0 = true }
+        }
+
+        var next = DashboardSnapshot.empty
+        next.mode = "Rule"
+        model.replaceDashboard(next)
+
+        #expect(!dashboardInvalidated.withLock { $0 })
+        #expect(catalogInvalidated.withLock { $0 })
+        #expect(model.dashboard.mode == "Rule")
+        #expect(model.policyGroupCatalog.mode == "Rule")
     }
 
     @Test func windowDemandRegistryUnionsDestinationsAndUnregistersOnlyItsToken() throws {
@@ -268,7 +353,7 @@ struct LiveSessionPublicationTests {
         let initialConnections = model.connectionsCatalog
         let initialLogs = model.logsCatalog
 
-        model.mutateSessionDashboard(publishing: [.routing, .insight]) { dashboard in
+        model.mutateSessionDashboard(publishing: [.rules, .providers, .insight]) { dashboard in
             dashboard.rules = [rule]
             dashboard.providers = [provider]
             dashboard.insight = InsightSummarySnapshot(snapshot: dashboard)
@@ -279,21 +364,82 @@ struct LiveSessionPublicationTests {
         #expect(model.policyGroupCatalogRevision == initialGroupRevision)
         #expect(model.connectionsCatalog == initialConnections)
         #expect(model.logsCatalog == initialLogs)
-        #expect(model.routingCatalog == RoutingCatalogSnapshot(dashboard: model.dashboard))
+        #expect(model.rulesCatalog == RulesCatalogSnapshot(dashboard: model.dashboard))
+        #expect(model.providersCatalog == ProvidersCatalogSnapshot(dashboard: model.dashboard))
         #expect(model.insightCatalog == model.dashboard.insight)
         #expect(model.insightCatalog.ruleCount == 1)
         #expect(model.insightCatalog.providerCount == 1)
     }
 
     @MainActor
+    @Test func ruleAndProviderCatalogObservationsInvalidateIndependently() {
+        let model = makeModel()
+        let rule = RuleViewState(
+            id: "rule-1",
+            type: "DOMAIN",
+            payload: "example.com",
+            proxy: "Proxy"
+        )
+        let provider = ProxyProviderViewState(
+            kind: .proxy,
+            name: "Provider",
+            type: "Proxy",
+            itemCount: 1
+        )
+        let rulesInvalidated = Mutex(false)
+
+        withObservationTracking {
+            _ = model.rulesCatalog
+        } onChange: {
+            rulesInvalidated.withLock { $0 = true }
+        }
+
+        model.mutateSessionDashboard(publishing: [.providers]) { dashboard in
+            dashboard.providers = [provider]
+        }
+
+        #expect(!rulesInvalidated.withLock { $0 })
+        #expect(model.rulesCatalog == .empty)
+        #expect(model.providersCatalog.providers == [provider])
+
+        let providersInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = model.providersCatalog
+        } onChange: {
+            providersInvalidated.withLock { $0 = true }
+        }
+
+        model.mutateSessionDashboard(publishing: [.rules]) { dashboard in
+            dashboard.rules = [rule]
+        }
+
+        #expect(!providersInvalidated.withLock { $0 })
+        #expect(model.rulesCatalog.rules == [rule])
+        #expect(model.providersCatalog.providers == [provider])
+    }
+
+    @MainActor
     @Test func policyCatalogRevisionChangesOnlyWithPublishedCatalogData() {
         let model = makeModel()
         let initialRevision = model.policyGroupCatalogRevision
+        let node = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Tokyo",
+                type: "VLESS",
+                metadata: [
+                    "controller-meta": .object([
+                        "nested": .object(["enabled": .bool(true)]),
+                    ]),
+                ]
+            )
+        )
         let group = ProxyGroupViewState(
             id: "Auto",
             type: "URLTest",
             selected: "Tokyo",
-            options: ["Tokyo"]
+            options: ["Tokyo"],
+            details: node,
+            optionDetails: ["Tokyo": node]
         )
 
         model.mutateSessionDashboard(publishing: [.policyGroups]) { dashboard in
@@ -305,6 +451,183 @@ struct LiveSessionPublicationTests {
             dashboard.groups = [group]
         }
         #expect(model.policyGroupCatalogRevision == initialRevision &+ 1)
+
+        let changedNode = ProxyNodeViewState(
+            snapshot: ProxySnapshot(
+                name: "Tokyo",
+                type: "VLESS",
+                metadata: [
+                    "controller-meta": .object([
+                        "nested": .object(["enabled": .bool(false)]),
+                    ]),
+                ]
+            )
+        )
+        let changedGroup = ProxyGroupViewState(
+            id: "Auto",
+            type: "URLTest",
+            selected: "Tokyo",
+            options: ["Tokyo"],
+            details: changedNode,
+            optionDetails: ["Tokyo": changedNode]
+        )
+        model.mutateSessionDashboard(publishing: [.policyGroups]) { dashboard in
+            dashboard.groups = [changedGroup]
+        }
+        #expect(model.policyGroupCatalogRevision == initialRevision &+ 2)
+        #expect(
+            model.dashboard.groups.first?.optionDetails["Tokyo"]?.metadata
+                == changedNode.metadata
+        )
+        #expect(
+            model.policyGroupCatalog.groups.first?.optionDetails["Tokyo"]?.metadata
+                == changedNode.metadata
+        )
+    }
+
+    @Test func mihomoMediumChangePlanUsesExactRawProxyAndWeightEquality() {
+        let group = ProxySnapshot(
+            name: "Auto",
+            type: "Smart",
+            now: "Node A",
+            all: ["Node A", "Node B"],
+            metadata: [
+                "controller-extra": .object([
+                    "nested": .object(["enabled": .bool(true)]),
+                ]),
+            ]
+        )
+        let nodeA = ProxySnapshot(name: "Node A", type: "VLESS")
+        let nodeB = ProxySnapshot(name: "Node B", type: "VLESS")
+        let proxies = ProxiesResponse(
+            proxies: ["Auto": group, "Node A": nodeA, "Node B": nodeB],
+            proxyOrder: ["Auto", "Node A", "Node B"]
+        )
+        let weights = SmartWeightsResponse(
+            message: "ok",
+            weights: [
+                "Auto": [SmartNodeRankSnapshot(name: "Node A", rank: "MostUsed")],
+            ]
+        )
+        var cache = SessionEndpointCache()
+        cache.proxies = proxies
+        cache.smartWeights = weights
+
+        let unchanged = MihomoEndpointChangePlan.medium(
+            cache: cache,
+            proxies: proxies,
+            smartWeights: .replace(weights)
+        )
+        #expect(unchanged.cacheWriteCount == 0)
+        #expect(unchanged.policyGroupProjectionWorkUnits == 0)
+        #expect(unchanged.domains.isEmpty)
+        #expect(!unchanged.shouldRebuildUnifiedSnapshot)
+
+        var reordered = proxies
+        reordered.proxyOrder.swapAt(1, 2)
+        let reorderedPlan = MihomoEndpointChangePlan.medium(
+            cache: cache,
+            proxies: reordered
+        )
+        #expect(reorderedPlan.shouldWriteProxies)
+        #expect(reorderedPlan.policyGroupProjectionWorkUnits == 1)
+        #expect(reorderedPlan.shouldRebuildUnifiedSnapshot)
+
+        var metadataChanged = proxies
+        var changedGroup = group
+        changedGroup.metadata["controller-extra"] = .object([
+            "nested": .object(["enabled": .bool(false)]),
+        ])
+        metadataChanged.proxies[group.name] = changedGroup
+        let metadataPlan = MihomoEndpointChangePlan.medium(
+            cache: cache,
+            proxies: metadataChanged
+        )
+        #expect(metadataPlan.shouldWriteProxies)
+        #expect(metadataPlan.domains == [.policyGroups, .insight])
+
+        var changedWeights = weights
+        changedWeights.weights["Auto"] = [
+            SmartNodeRankSnapshot(name: "Node A", rank: "RarelyUsed"),
+        ]
+        let weightsPlan = MihomoEndpointChangePlan.medium(
+            cache: cache,
+            smartWeights: .replace(changedWeights)
+        )
+        #expect(weightsPlan.shouldWriteSmartWeights)
+        #expect(weightsPlan.policyGroupProjectionWorkUnits == 1)
+        #expect(!weightsPlan.shouldRebuildUnifiedSnapshot)
+
+        let clearWeightsPlan = MihomoEndpointChangePlan.medium(
+            cache: cache,
+            proxies: proxies,
+            smartWeights: .replace(nil)
+        )
+        #expect(!clearWeightsPlan.shouldWriteProxies)
+        #expect(clearWeightsPlan.shouldWriteSmartWeights)
+        #expect(clearWeightsPlan.policyGroupProjectionWorkUnits == 1)
+    }
+
+    @Test func mihomoSlowChangePlanKeepsRuleAndProviderDomainsIndependent() {
+        let firstRules = RulesResponse(rules: [
+            RuleSnapshot(type: "DOMAIN", payload: "first.example", proxy: "DIRECT"),
+        ])
+        let secondRules = RulesResponse(rules: [
+            RuleSnapshot(type: "DOMAIN", payload: "second.example", proxy: "DIRECT"),
+        ])
+        let firstProviders = ProxyProvidersResponse(
+            providers: [
+                "Remote": ProxyProviderSnapshot(
+                    name: "Remote",
+                    type: "Proxy",
+                    vehicleType: "HTTP",
+                    updatedAt: "2026-09-01T00:00:00Z"
+                ),
+            ],
+            providerOrder: ["Remote"]
+        )
+        let secondProviders = ProxyProvidersResponse(
+            providers: [
+                "Remote": ProxyProviderSnapshot(
+                    name: "Remote",
+                    type: "Proxy",
+                    vehicleType: "HTTP",
+                    updatedAt: "2026-09-02T00:00:00Z"
+                ),
+            ],
+            providerOrder: ["Remote"]
+        )
+        let ruleProviders = RuleProvidersResponse(providers: [:], providerOrder: [])
+        var cache = SessionEndpointCache()
+        cache.rules = firstRules
+        cache.proxyProviders = firstProviders
+        cache.ruleProviders = ruleProviders
+
+        let ruleOnly = MihomoEndpointChangePlan.slow(
+            cache: cache,
+            version: nil,
+            config: nil,
+            rules: secondRules,
+            proxyProviders: firstProviders,
+            ruleProviders: ruleProviders
+        )
+        #expect(ruleOnly.shouldWriteRules)
+        #expect(!ruleOnly.shouldWriteProxyProviders)
+        #expect(!ruleOnly.shouldWriteRuleProviders)
+        #expect(ruleOnly.domains == [.rules, .insight])
+
+        let providerOnly = MihomoEndpointChangePlan.slow(
+            cache: cache,
+            version: nil,
+            config: nil,
+            rules: firstRules,
+            proxyProviders: secondProviders,
+            ruleProviders: ruleProviders
+        )
+        #expect(!providerOnly.shouldWriteRules)
+        #expect(providerOnly.shouldWriteProxyProviders)
+        #expect(!providerOnly.shouldWriteRuleProviders)
+        #expect(providerOnly.domains == [.providers, .insight])
     }
 
     @MainActor
@@ -775,6 +1098,161 @@ struct LiveSessionPublicationTests {
     }
 
     @MainActor
+    @Test func decodedMetricOnlyConnectionFrameKeepsCatalogStructureRevisionStable() throws {
+        let frames = try DecodedConnectionFrameFixture.make()
+        let dashboard = DashboardSnapshot(
+            versionLabel: "1.0",
+            mode: "Rule",
+            traffic: TrafficSnapshot(upload: 10, download: 20),
+            groups: [],
+            connections: frames.initial
+        )
+        let model = makeModel(dashboard: dashboard)
+        let initialStructureRevision = model.connectionsCatalog.structureRevision
+        let initialStructureToken = model.connectionsStructureRevision
+        let initialMetricsRevision = model.connectionsCatalog.metricsRevision
+        let initialMetricsToken = model.connectionsMetricsRevision
+        let structureTokenInvalidated = Mutex(false)
+        let metricsTokenInvalidated = Mutex(false)
+
+        withObservationTracking {
+            _ = model.connectionsStructureRevision
+        } onChange: {
+            structureTokenInvalidated.withLock { $0 = true }
+        }
+        withObservationTracking {
+            _ = model.connectionsMetricsRevision
+        } onChange: {
+            metricsTokenInvalidated.withLock { $0 = true }
+        }
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections = frames.metricUpdated
+        }
+
+        let initial = frames.initial[frames.changedIndex]
+        let updated = frames.metricUpdated[frames.changedIndex]
+        #expect(initial.fields["upload"] != updated.fields["upload"])
+        #expect(initial.fields["download"] != updated.fields["download"])
+        #expect(initial.fields["uploadSpeed"] != updated.fields["uploadSpeed"])
+        #expect(initial.fields["downloadSpeed"] != updated.fields["downloadSpeed"])
+        #expect(initial.additionalFields == updated.additionalFields)
+        #expect(model.connectionsCatalog.structureRevision == initialStructureRevision)
+        #expect(model.connectionsStructureRevision == initialStructureToken)
+        #expect(!structureTokenInvalidated.withLock { $0 })
+        #expect(model.connectionsCatalog.metricsRevision == initialMetricsRevision &+ 1)
+        #expect(model.connectionsMetricsRevision == initialMetricsToken &+ 1)
+        #expect(metricsTokenInvalidated.withLock { $0 })
+        #expect(!model.connectionsCatalog.lastChange.structureChanged)
+        #expect(model.connectionsCatalog.lastChange.metricsChanged)
+        #expect(
+            model.connectionsCatalog.lastChange.changedMetricIndices
+                == [frames.changedIndex]
+        )
+    }
+
+    @MainActor
+    @Test func runtimeMetricOnlyConnectionPublicationKeepsStructureTokenUnobserved() async throws {
+        let frames = try DecodedConnectionFrameFixture.make()
+        let gate = PublicationSleepGate()
+        let (model, profile) = makeLiveModel(gate: gate)
+        model.liveStreamRequested = true
+        model.registerLiveSessionWindowDemand(
+            LiveSessionWindowDemandID(),
+            destination: .connections
+        )
+        model.installLiveSessionRuntime(
+            for: profile,
+            generation: model.controllerSession.generation
+        )
+        let runtime = try #require(model.liveSessionRuntime)
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: 10,
+                downloadTotal: 20,
+                memory: 30,
+                connections: frames.initial
+            ),
+            receivedAt: Date(timeIntervalSince1970: 1)
+        )
+        let initialPublication = try #require(
+            await runtime.publication(for: .connections, force: true)
+        )
+        model.applyLiveSessionRuntimePublication(initialPublication, runtime: runtime)
+        let initialStructureToken = model.connectionsStructureRevision
+        let initialMetricsToken = model.connectionsMetricsRevision
+        let structureTokenInvalidated = Mutex(false)
+        let metricsTokenInvalidated = Mutex(false)
+
+        withObservationTracking {
+            _ = model.connectionsStructureRevision
+        } onChange: {
+            structureTokenInvalidated.withLock { $0 = true }
+        }
+        withObservationTracking {
+            _ = model.connectionsMetricsRevision
+        } onChange: {
+            metricsTokenInvalidated.withLock { $0 = true }
+        }
+
+        _ = await runtime.ingestMihomoConnections(
+            ConnectionsResponse(
+                uploadTotal: 10,
+                downloadTotal: 20,
+                memory: 30,
+                connections: frames.metricUpdated
+            ),
+            receivedAt: Date(timeIntervalSince1970: 2)
+        )
+        let metricPublication = try #require(
+            await runtime.publication(for: .connections, force: true)
+        )
+        model.applyLiveSessionRuntimePublication(metricPublication, runtime: runtime)
+
+        #expect(model.connectionsStructureRevision == initialStructureToken)
+        #expect(!structureTokenInvalidated.withLock { $0 })
+        #expect(model.connectionsMetricsRevision == initialMetricsToken &+ 1)
+        #expect(metricsTokenInvalidated.withLock { $0 })
+        #expect(model.connectionsCatalog.lastChange.metricsChanged)
+        #expect(!model.connectionsCatalog.lastChange.structureChanged)
+        model.leaveLiveSession()
+    }
+
+    @MainActor
+    @Test func decodedAdditionalConnectionFieldChangeAdvancesCatalogStructureRevision() throws {
+        let frames = try DecodedConnectionFrameFixture.make()
+        let dashboard = DashboardSnapshot(
+            versionLabel: "1.0",
+            mode: "Rule",
+            traffic: TrafficSnapshot(upload: 10, download: 20),
+            groups: [],
+            connections: frames.initial
+        )
+        let model = makeModel(dashboard: dashboard)
+        let initialStructureRevision = model.connectionsCatalog.structureRevision
+        let initialStructureToken = model.connectionsStructureRevision
+        let initialMetricsRevision = model.connectionsCatalog.metricsRevision
+        let initialMetricsToken = model.connectionsMetricsRevision
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections = frames.additionalFieldUpdated
+        }
+
+        #expect(
+            frames.initial[frames.changedIndex].additionalFields
+                != frames.additionalFieldUpdated[frames.changedIndex].additionalFields
+        )
+        #expect(model.connectionsCatalog.structureRevision == initialStructureRevision &+ 1)
+        #expect(model.connectionsStructureRevision == initialStructureToken &+ 1)
+        #expect(model.connectionsCatalog.metricsRevision == initialMetricsRevision &+ 1)
+        #expect(model.connectionsMetricsRevision == initialMetricsToken &+ 1)
+        #expect(model.connectionsCatalog.lastChange.structureChanged)
+        #expect(model.connectionsCatalog.lastChange.metricsChanged)
+        #expect(model.connectionsCatalog.lastChange.changedMetricIndices == nil)
+    }
+
+    @MainActor
     @Test func identicalConnectionPublicationDoesNotReplaceObservableCatalog() {
         let dashboard = DashboardSnapshot(
             versionLabel: "1.0",
@@ -838,6 +1316,73 @@ struct LiveSessionPublicationTests {
     }
 
     @MainActor
+    @Test func refreshGateObservesOnlySessionPresentationLifecycleAndControls() {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .mihomoCompatible
+        )
+        let model = makeModel(routers: [profile], selectedRouterID: profile.id)
+        model.controllerSession.begin(controllerID: profile.id)
+        model.controllerSession.commitBaseline(at: Date(timeIntervalSince1970: 1))
+        model.controllerSession.state = .live
+        #expect(model.canRefreshSelectedRouter)
+
+        let controlInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = model.canRefreshSelectedRouter
+        } onChange: {
+            controlInvalidated.withLock { $0 = true }
+        }
+
+        model.controllerSession.latestReceivedAt = Date(timeIntervalSince1970: 2)
+        model.controllerSession.lastSuccessAt = Date(timeIntervalSince1970: 2)
+        model.controllerSession.trafficTimeline.append(
+            upload: 10,
+            download: 20,
+            receivedAt: Date(timeIntervalSince1970: 2)
+        )
+        model.controllerSession.logBuffer.append(
+            ControllerLogEntry(
+                receivedAt: Date(timeIntervalSince1970: 2),
+                message: LogMessage(type: "info", payload: "retained")
+            )
+        )
+        model.controllerSession.endpointCache.version = VersionResponse(version: "1.0")
+
+        #expect(!controlInvalidated.withLock { $0 })
+        #expect(model.canRefreshSelectedRouter)
+
+        model.dashboardSessionControls.setPresentationPaused(true)
+        #expect(controlInvalidated.withLock { $0 })
+        #expect(!model.canRefreshSelectedRouter)
+
+        model.dashboardSessionControls.setPresentationPaused(false)
+        let stateInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = model.canRefreshSelectedRouter
+        } onChange: {
+            stateInvalidated.withLock { $0 = true }
+        }
+
+        model.controllerSession.state = .staleReconnecting("unavailable")
+        #expect(stateInvalidated.withLock { $0 })
+        #expect(!model.canRefreshSelectedRouter)
+
+        model.controllerSession.state = .live
+        let identityInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = model.canRefreshSelectedRouter
+        } onChange: {
+            identityInvalidated.withLock { $0 = true }
+        }
+
+        model.controllerSession.controllerID = nil
+        #expect(identityInvalidated.withLock { $0 })
+        #expect(!model.canRefreshSelectedRouter)
+    }
+
+    @MainActor
     @Test func explicitSessionEndClearsEveryPublishedOperationalDomain() {
         let profile = RouterProfile(
             displayName: "Controller",
@@ -871,6 +1416,7 @@ struct LiveSessionPublicationTests {
         model.memoryTimeline.append(inUseBytes: 1_024, receivedAt: Date())
         model.connectionCountTimeline.append(activeCount: 1, receivedAt: Date())
         model.liveStreamUpdatedAt = Date()
+        let structureTokenBeforeEnd = model.connectionsStructureRevision
 
         model.leaveLiveSession(reason: .sessionEnd)
 
@@ -880,8 +1426,10 @@ struct LiveSessionPublicationTests {
         #expect(model.controllerMetadata == .empty)
         #expect(model.policyGroupCatalog == .empty)
         #expect(model.connectionsCatalog == .empty)
+        #expect(model.connectionsStructureRevision == structureTokenBeforeEnd &+ 1)
         #expect(model.logsCatalog == .empty)
-        #expect(model.routingCatalog == .empty)
+        #expect(model.rulesCatalog == .empty)
+        #expect(model.providersCatalog == .empty)
         #expect(model.insightCatalog == .empty)
         #expect(model.dashboardSessionControls.closedConnections.isEmpty)
         #expect(model.controllerSession.logBuffer.entries.isEmpty)

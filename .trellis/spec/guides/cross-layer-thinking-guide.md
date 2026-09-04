@@ -22,6 +22,7 @@ generation gates. A view is the final renderer, not a second data contract.
 | Runtime -> presentation | Does publication use the correct cadence and retain stale/error state truthfully? |
 | Presentation -> projection/cache | Are order, semantic units, source identity, and invalidation rules preserved? |
 | Projection -> SwiftUI | Does the view use the shared primitive, localization, accessibility value, and correct empty state? |
+| SwiftUI intent -> AppModel | Does a retained handler carry its originating controller/generation through every local and remote effect? |
 
 ## Required Checks
 
@@ -43,6 +44,10 @@ generation gates. A view is the final renderer, not a second data contract.
   generation before mutating observable state.
 - Trace the revision that drives the visible event. Structure revisions must
   not substitute for traffic, metric, log, or timeline revisions.
+- Observation attaches to the stored property read, not to nested-value
+  equality. If a consumer should react only to structure or metrics, give that
+  domain its own AppModel scalar token and read the complete catalog only after
+  a cancellable task yields and revalidates the token.
 - Preserve cadence and stale markers. Hidden domains may defer publication,
   but resume must catch up to the latest real frame without fake samples.
 - Check that timeline values retain their semantic unit: rates, cumulative
@@ -62,6 +67,18 @@ generation gates. A view is the final renderer, not a second data contract.
   capability path. Do not create a page-level inspector or a second action
   owner.
 
+### Command intent
+
+- Classify each handler as activation-time or retained. Test/Refresh target the
+  controller current at activation; a Binding, confirmation, inspector, or AX
+  action carrying an entity/edit value retains its originating identity.
+- For retained handlers, trace controller ID and generation into the final
+  AppModel or typed intent guard. Reject an old identity before workspace state,
+  optimistic data, owner markers, tasks, or clients change.
+- After identity admission, resolve the exact current entity and preserve the
+  existing family owner. A raw ID/index or a newly read current generation must
+  not make an old intent valid.
+
 ## Before and After Checklist
 
 Before implementation:
@@ -76,5 +93,9 @@ After implementation:
       cache invalidation, and the final visible value.
 - [ ] Covered empty, missing, invalid, stale, cancelled, and unsupported cases.
 - [ ] Confirmed async results cannot cross controller or generation boundaries.
+- [ ] Exercised the same-controller/new-generation case for every retained or
+      accessibility handler, including local workspace effects.
+- [ ] Verified narrow observers read standalone semantic tokens rather than an
+      aggregate catalog property with an unchanged nested revision.
 - [ ] Confirmed consumers use shared decoders/projections instead of local casts.
 - [ ] Confirmed localization, accessibility, export privacy, and offline tests.

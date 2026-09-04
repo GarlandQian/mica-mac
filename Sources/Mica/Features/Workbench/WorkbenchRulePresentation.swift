@@ -270,6 +270,7 @@ enum WorkbenchRuleProjection {
         language: AppLanguage
     ) -> WorkbenchRuleRow {
         guard row.activeConnections != activeConnections else { return row }
+        let activeConnectionsAccessibilityText = "\(MicaStrings.localizedKey("dashboard.active_sessions", language: language)): \(activeConnections)"
         return WorkbenchRuleRow(
             id: row.id,
             identityFamily: row.identityFamily,
@@ -286,11 +287,36 @@ enum WorkbenchRuleProjection {
             activeConnectionsText: String(activeConnections),
             hitCountText: row.hitCountText,
             activityText: "\(activeConnections) · \(row.hitCountText)",
-            activityAccessibilityText: "\(MicaStrings.localizedKey("dashboard.active_sessions", language: language)): \(activeConnections), \(row.hitCountAccessibilityText)",
-            activeConnectionsAccessibilityText: "\(MicaStrings.localizedKey("dashboard.active_sessions", language: language)): \(activeConnections)",
+            activityAccessibilityText: "\(activeConnectionsAccessibilityText), \(row.hitCountAccessibilityText)",
+            activeConnectionsAccessibilityText: activeConnectionsAccessibilityText,
             hitCountAccessibilityText: row.hitCountAccessibilityText,
             searchText: row.searchText
         )
+    }
+
+    static func accessibilitySummary(
+        for row: WorkbenchRuleRow,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        [
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_index", value: row.indexText, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_type", value: row.rule.type, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_payload", value: row.rule.payload, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_proxy", value: row.rule.proxy, localization: localization
+            ),
+            WorkbenchAccessibilitySummary.field(
+                "dashboard.col_status", value: row.statusText, localization: localization
+            ),
+            row.activeConnectionsAccessibilityText,
+            row.hitCountAccessibilityText,
+        ].joined(separator: ", ")
     }
 
 }
@@ -327,20 +353,30 @@ enum WorkbenchRulePolicyTargetResolver {
 
 enum WorkbenchRuleNavigationResolver {
     static func resolve(
-        type: String,
-        payload: String,
-        in rules: [RuleViewState]
-    ) -> RuleViewState? {
-        guard type.dataNonEmpty != nil, payload.dataNonEmpty != nil else {
+        _ selection: WorkbenchRuleNavigationSelection,
+        controllerID: RouterProfile.ID,
+        generation: UUID,
+        in rows: [WorkbenchRuleRow]
+    ) -> WorkbenchRuleRow? {
+        guard selection.controllerID == controllerID,
+              selection.generation == generation,
+              rows.indices.contains(selection.sourceIndex) else {
             return nil
         }
-
-        let matches = rules.filter {
-            $0.type == type && $0.payload == payload
+        let row = rows[selection.sourceIndex]
+        guard selection.matches(
+            sourceIndex: row.sourceIndex,
+            reportedRuleID: row.rule.id,
+            type: row.rule.type,
+            payload: row.rule.payload
+        ) else {
+            return nil
         }
-        return matches.count == 1 ? matches[0] : nil
+        return row
     }
+}
 
+enum WorkbenchRuleInspectorResolver {
     static func resolve(
         type: String,
         payload: String,

@@ -2,6 +2,49 @@ import Testing
 @testable import Mica
 
 struct XCStringsResolverTests {
+    @Test func localizationContextMatchesDirectLookupAndKeepsItsResolvedLanguage() {
+        let english = MicaStrings.localizationContext(for: .english)
+        let simplifiedChinese = MicaStrings.localizationContext(for: .simplifiedChinese)
+        let keys = [
+            "traffic.connection_host",
+            "traffic.log_received_time",
+            "dashboard.col_status",
+            "traffic.source_section_configuration",
+            "endpoint.active_count %lld",
+            "missing.accessibility.summary.key",
+        ]
+
+        for key in keys {
+            #expect(
+                english.localizedKey(key)
+                    == MicaStrings.localizedKey(key, language: .english)
+            )
+            #expect(
+                simplifiedChinese.localizedKey(key)
+                    == MicaStrings.localizedKey(key, language: .simplifiedChinese)
+            )
+        }
+
+        #expect(english.localizedKey("dashboard.col_status") == "STATUS")
+        #expect(simplifiedChinese.localizedKey("dashboard.col_status") == "状态")
+        #expect(
+            english.localized(
+                "routing.available_nodes_count %lld %lld",
+                arguments: ["2", "3"]
+            ) == "2 of 3 available"
+        )
+        #expect(
+            simplifiedChinese.localized(
+                "routing.available_nodes_count %lld %lld",
+                arguments: ["2", "3"]
+            ) == "可用 2 / 3"
+        )
+        #expect(
+            english.localizedKey("missing.accessibility.summary.key")
+                == "missing.accessibility.summary.key"
+        )
+    }
+
     @Test func diagnosticLabelsNeverExposeFormatTokens() {
         let keys = [
             "diagnostics.active_controller",

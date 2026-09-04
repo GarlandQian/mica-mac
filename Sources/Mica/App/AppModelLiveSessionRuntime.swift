@@ -489,6 +489,12 @@ extension AppModel {
                     trafficChanged: trafficChanged
                 )
             )
+            if structureChanged {
+                advanceConnectionsStructureRevision()
+            }
+            if metricsChanged {
+                advanceConnectionsMetricsRevision()
+            }
             synchronizeInsightCatalog()
         }
 

@@ -420,6 +420,8 @@ struct WorkbenchNavigationTests {
             WorkbenchRuleNavigationSelection(
                 controllerID: controllerID,
                 generation: generation,
+                sourceIndex: 7,
+                reportedRuleID: "rule-id",
                 type: "DOMAIN",
                 payload: "example.com"
             )
@@ -427,7 +429,32 @@ struct WorkbenchNavigationTests {
 
         #expect(
             store.workspace(controllerID: controllerID, destination: .rules)
-                .pendingRuleSelection?.payload == "example.com"
+                .pendingRuleSelection?.matches(
+                    sourceIndex: 7,
+                    reportedRuleID: "rule-id",
+                    type: "DOMAIN",
+                    payload: "example.com"
+                ) == true
+        )
+        #expect(
+            store.consumeRuleNavigation(
+                controllerID: UUID(),
+                generation: generation
+            ) == nil
+        )
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection != nil
+        )
+        #expect(
+            store.consumeRuleNavigation(
+                controllerID: controllerID,
+                generation: UUID()
+            ) == nil
+        )
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection != nil
         )
 
         store.activateSession(controllerID: controllerID, generation: UUID())
@@ -441,6 +468,80 @@ struct WorkbenchNavigationTests {
                 controllerID: controllerID,
                 generation: generation
             ) == nil
+        )
+    }
+
+    @MainActor
+    @Test func ruleNavigationRemainsPendingUntilItsExactCatalogRowResolves() throws {
+        let fixture = makeWorkspaceStore()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        let store = fixture.store
+        let controllerID = UUID()
+        let generation = UUID()
+        let selection = WorkbenchRuleNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            sourceIndex: 1,
+            reportedRuleID: "target",
+            type: "DOMAIN",
+            payload: "example.com"
+        )
+
+        store.activateSession(controllerID: controllerID, generation: generation)
+        store.stageRuleNavigation(selection)
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                selection,
+                controllerID: controllerID,
+                generation: generation,
+                in: []
+            ) == nil
+        )
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection == selection
+        )
+
+        let rows = WorkbenchRuleProjection.rows(
+            from: [
+                RuleViewState(
+                    id: "other",
+                    type: "DOMAIN",
+                    payload: "other.example",
+                    proxy: "DIRECT"
+                ),
+                RuleViewState(
+                    id: "target",
+                    type: "DOMAIN",
+                    payload: "example.com",
+                    proxy: "Policy"
+                ),
+            ],
+            connections: [],
+            language: .english
+        )
+        let resolved = try #require(
+            WorkbenchRuleNavigationResolver.resolve(
+                selection,
+                controllerID: controllerID,
+                generation: generation,
+                in: rows
+            )
+        )
+        #expect(resolved.id == rows[1].id)
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection == selection
+        )
+        #expect(
+            store.consumeRuleNavigation(
+                controllerID: controllerID,
+                generation: generation
+            ) == selection
+        )
+        #expect(
+            store.workspace(controllerID: controllerID, destination: .rules)
+                .pendingRuleSelection == nil
         )
     }
 

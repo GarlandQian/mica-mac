@@ -1,9 +1,309 @@
 import Foundation
 import MicaCore
+import Observation
+import Synchronization
 import Testing
 @testable import Mica
 
 struct WorkbenchOverviewPerformanceTests {
+    @MainActor
+    @Test func connectionHighlightsScopeIgnoresConnectionFrames() {
+        let dashboard = DashboardSnapshot(
+            versionLabel: "1.0",
+            mode: "Rule",
+            traffic: TrafficSnapshot(upload: 10, download: 20),
+            groups: [],
+            connections: [ConnectionSnapshot(id: "first", upload: 30, download: 40)]
+        )
+        let model = AppModel(
+            dashboard: dashboard,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        let invalidated = Mutex(false)
+        let initialScope = OverviewConnectionHighlightsScope.observing(model)
+
+        withObservationTracking {
+            _ = OverviewConnectionHighlightsScope.observing(model)
+        } onChange: {
+            invalidated.withLock { $0 = true }
+        }
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections[0].upload = 300
+            dashboard.connections[0].download = 400
+        }
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.traffic = TrafficSnapshot(upload: 100, download: 200)
+        }
+
+        #expect(!invalidated.withLock { $0 })
+        #expect(OverviewConnectionHighlightsScope.observing(model) == initialScope)
+    }
+
+    @MainActor
+    @Test func connectionHighlightsRequestTracksMetricsButNotAggregateTraffic() {
+        let dashboard = DashboardSnapshot(
+            versionLabel: "1.0",
+            mode: "Rule",
+            traffic: TrafficSnapshot(upload: 10, download: 20),
+            groups: [],
+            connections: [ConnectionSnapshot(id: "first", upload: 30, download: 40)]
+        )
+        let model = AppModel(
+            dashboard: dashboard,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        let initial = OverviewConnectionHighlightsRequest.observing(
+            model,
+            maximumCount: 3
+        )
+        let trafficInvalidationCount = Mutex(0)
+        withObservationTracking {
+            _ = OverviewConnectionHighlightsRequest.observing(
+                model,
+                maximumCount: 3
+            )
+        } onChange: {
+            trafficInvalidationCount.withLock { $0 += 1 }
+        }
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.traffic = TrafficSnapshot(upload: 100, download: 200)
+        }
+        #expect(trafficInvalidationCount.withLock { $0 } == 0)
+        #expect(
+            OverviewConnectionHighlightsRequest.observing(
+                model,
+                maximumCount: 3
+            ) == initial
+        )
+
+        let metricsInvalidationCount = Mutex(0)
+        withObservationTracking {
+            _ = OverviewConnectionHighlightsRequest.observing(
+                model,
+                maximumCount: 3
+            )
+        } onChange: {
+            metricsInvalidationCount.withLock { $0 += 1 }
+        }
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections[0].upload = 300
+        }
+        #expect(metricsInvalidationCount.withLock { $0 } == 1)
+        let metricUpdate = OverviewConnectionHighlightsRequest.observing(
+            model,
+            maximumCount: 3
+        )
+        #expect(metricUpdate.scope == initial.scope)
+        #expect(metricUpdate.metricsRevision == initial.metricsRevision &+ 1)
+        #expect(metricUpdate != initial)
+
+        let structureInvalidationCount = Mutex(0)
+        withObservationTracking {
+            _ = OverviewConnectionHighlightsRequest.observing(
+                model,
+                maximumCount: 3
+            )
+        } onChange: {
+            structureInvalidationCount.withLock { $0 += 1 }
+        }
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections.append(ConnectionSnapshot(id: "second"))
+        }
+        #expect(structureInvalidationCount.withLock { $0 } == 1)
+        #expect(
+            OverviewConnectionHighlightsRequest.observing(
+                model,
+                maximumCount: 3
+            ).metricsRevision == metricUpdate.metricsRevision &+ 1
+        )
+    }
+
+    @Test func connectionHighlightsPresentationRetainsOnlyTheCurrentSession() {
+        let controllerID = UUID(uuidString: "00000000-0000-0000-0000-000000000061")!
+        let generation = UUID(uuidString: "00000000-0000-0000-0000-000000000062")!
+        let scope = OverviewConnectionHighlightsScope(
+            controllerID: controllerID,
+            generation: generation
+        )
+        let presentation = OverviewConnectionHighlightsPresentation(
+            scope: scope,
+            rows: [
+                OverviewActiveConnection(
+                    id: "row",
+                    sourceIndex: 4,
+                    connectionID: "connection",
+                    label: "example.test",
+                    totalTraffic: 300
+                ),
+            ]
+        )
+
+        #expect(presentation.visible(for: scope) == presentation)
+        #expect(
+            presentation.visible(for: OverviewConnectionHighlightsScope(
+                controllerID: UUID(),
+                generation: generation
+            )) == nil
+        )
+        #expect(
+            presentation.visible(for: OverviewConnectionHighlightsScope(
+                controllerID: controllerID,
+                generation: UUID()
+            )) == nil
+        )
+    }
+
+    @Test func connectionHighlightNavigationRequiresTheVisibleSessionScope() throws {
+        let controllerID = UUID(uuidString: "00000000-0000-0000-0000-000000000063")!
+        let generation = UUID(uuidString: "00000000-0000-0000-0000-000000000064")!
+        let scope = OverviewConnectionHighlightsScope(
+            controllerID: controllerID,
+            generation: generation
+        )
+        let row = OverviewActiveConnection(
+            id: "presentation-row",
+            sourceIndex: 17,
+            connectionID: "",
+            label: "example.test",
+            totalTraffic: 300
+        )
+
+        let selection = try #require(
+            scope.navigationSelection(for: row, currentScope: scope)
+        )
+        #expect(selection.controllerID == controllerID)
+        #expect(selection.generation == generation)
+        #expect(selection.sourceIndex == 17)
+        #expect(selection.reportedConnectionID.isEmpty)
+        #expect(
+            scope.navigationSelection(
+                for: row,
+                currentScope: OverviewConnectionHighlightsScope(
+                    controllerID: controllerID,
+                    generation: UUID()
+                )
+            ) == nil
+        )
+        #expect(
+            scope.navigationSelection(
+                for: row,
+                currentScope: OverviewConnectionHighlightsScope(
+                    controllerID: UUID(),
+                    generation: generation
+                )
+            ) == nil
+        )
+        #expect(
+            OverviewConnectionHighlightsScope(
+                controllerID: nil,
+                generation: generation
+            ).navigationSelection(
+                for: row,
+                currentScope: OverviewConnectionHighlightsScope(
+                    controllerID: nil,
+                    generation: generation
+                )
+            ) == nil
+        )
+    }
+
+    @MainActor
+    @Test func topologyStructureObservationIgnoresMetricsAndTraffic() {
+        let dashboard = DashboardSnapshot(
+            versionLabel: "1.0",
+            mode: "Rule",
+            traffic: TrafficSnapshot(upload: 10, download: 20),
+            groups: [],
+            connections: [
+                ConnectionSnapshot(
+                    id: "first",
+                    upload: 30,
+                    download: 40,
+                    chains: ["Policy", "Node"]
+                ),
+            ]
+        )
+        let model = AppModel(
+            dashboard: dashboard,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        let invalidationCount = Mutex(0)
+        let initialRequest = OverviewTopologyCatalogRequest.observing(model)
+
+        withObservationTracking {
+            _ = OverviewTopologyCatalogRequest.observing(model)
+        } onChange: {
+            invalidationCount.withLock { $0 += 1 }
+        }
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections[0].upload = 300
+            dashboard.connections[0].download = 400
+        }
+        #expect(invalidationCount.withLock { $0 } == 0)
+        #expect(OverviewTopologyCatalogRequest.observing(model) == initialRequest)
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.traffic = TrafficSnapshot(upload: 100, download: 200)
+        }
+        #expect(invalidationCount.withLock { $0 } == 0)
+        #expect(OverviewTopologyCatalogRequest.observing(model) == initialRequest)
+
+        model.mutateSessionDashboard(publishing: [.connections]) { dashboard in
+            dashboard.connections.append(
+                ConnectionSnapshot(id: "second", chains: ["Policy", "Other"])
+            )
+        }
+        #expect(invalidationCount.withLock { $0 } == 1)
+        #expect(
+            OverviewTopologyCatalogRequest.observing(model).structureRevision
+                == initialRequest.structureRevision &+ 1
+        )
+    }
+
+    @Test func topologyStructureInputRetainsOnlyTheCurrentSession() {
+        let controllerID = UUID(uuidString: "00000000-0000-0000-0000-000000000051")!
+        let generation = UUID(uuidString: "00000000-0000-0000-0000-000000000052")!
+        let request = OverviewTopologyCatalogRequest(
+            controllerID: controllerID,
+            generation: generation,
+            structureRevision: 4
+        )
+        let input = OverviewTopologyCatalogInput(
+            request: request,
+            catalogRevision: 3,
+            connections: [ConnectionSnapshot(id: "connection")]
+        )
+
+        #expect(input.visible(for: request) == input)
+        #expect(
+            input.visible(for: OverviewTopologyCatalogRequest(
+                controllerID: controllerID,
+                generation: generation,
+                structureRevision: 5
+            )) == input
+        )
+        #expect(
+            input.visible(for: OverviewTopologyCatalogRequest(
+                controllerID: UUID(),
+                generation: generation,
+                structureRevision: 4
+            )) == nil
+        )
+        #expect(
+            input.visible(for: OverviewTopologyCatalogRequest(
+                controllerID: controllerID,
+                generation: UUID(),
+                structureRevision: 4
+            )) == nil
+        )
+    }
+
     @Test func timelineProjectionCacheRecomputesOnlyChangedSourcesAndWindow() {
         let generation = UUID(uuidString: "59D8645A-5DC9-4B3F-9D3B-DC6370D0809A")!
         let traffic = (0..<150).map { index in
@@ -435,6 +735,49 @@ struct WorkbenchOverviewPerformanceTests {
         )
     }
 
+    @Test func connectionHighlightsCancellableProjectionMatchesBoundedTopK() async throws {
+        var connections = MicaPerformanceFixtures.connections(count: 2_048)
+        connections[2_046].id = ""
+        connections[2_047].id = ""
+        let expected = OverviewProjection.topActiveConnections(
+            from: connections,
+            maximumCount: 5
+        )
+
+        let rows = try await OverviewProjection.topActiveConnectionsCancellable(
+            from: connections,
+            maximumCount: 5
+        )
+
+        #expect(rows == expected)
+        #expect(rows.count == 5)
+        #expect(rows[0].sourceIndex == 2_047)
+        #expect(rows[1].sourceIndex == 2_046)
+        #expect(rows[0].id != rows[1].id)
+    }
+
+    @Test func connectionHighlightsCancellableProjectionRejectsCancelledWork() async {
+        let connections = MicaPerformanceFixtures.connections(count: 2_048)
+        let projectionTask = Task {
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+            return try await OverviewProjection.topActiveConnectionsCancellable(
+                from: connections,
+                maximumCount: 5
+            )
+        }
+
+        do {
+            _ = try await projectionTask.value
+            Issue.record("Expected the cancelled projection to stop")
+        } catch is CancellationError {
+            // Expected control flow.
+        } catch {
+            Issue.record("Unexpected projection cancellation error: \(error)")
+        }
+    }
+
     @Test func topologyHighlightWorkScalesWithSelectedPathsInsteadOfWholeGraph() throws {
         let topology = ConnectionTopologyBuilder.build(
             from: MicaPerformanceFixtures.connections(count: 2_048)
@@ -616,9 +959,16 @@ struct WorkbenchOverviewPerformanceTests {
             request: initialRequest,
             connections: metricsOnlyFrame
         )
+        let initialAccessibilityWindow = initial.index.accessibilityWindow(
+            preferredLowerBound: 1_984
+        )
+        let metricsOnlyAccessibilityWindow = metricsOnly.index.accessibilityWindow(
+            preferredLowerBound: initialAccessibilityWindow.lowerBound
+        )
 
         #expect(metricsOnly.topology == initial.topology)
         #expect(metricsOnly.topology.paths.count == connections.count)
+        #expect(metricsOnlyAccessibilityWindow == initialAccessibilityWindow)
         #expect(cache.statistics == OverviewTopologyPresentationCache.Statistics(
             topologyBuildCount: 1,
             topologyIndexBuildCount: 1,
@@ -716,6 +1066,27 @@ struct WorkbenchOverviewPerformanceTests {
                     availableWidth: 608
                 )
             )
+        )
+    }
+
+    @Test func topologyHeightReservationCollapsesOnlyResolvedEmptyContent() {
+        #expect(
+            OverviewTopologyHeightReservation.minimumHeight(
+                visibleTopologyIsEmpty: nil,
+                requestedMinimum: 920
+            ) == 920
+        )
+        #expect(
+            OverviewTopologyHeightReservation.minimumHeight(
+                visibleTopologyIsEmpty: false,
+                requestedMinimum: 920
+            ) == 920
+        )
+        #expect(
+            OverviewTopologyHeightReservation.minimumHeight(
+                visibleTopologyIsEmpty: true,
+                requestedMinimum: 920
+            ) == nil
         )
     }
 
@@ -1040,21 +1411,95 @@ struct WorkbenchOverviewPerformanceTests {
                 == layout.renderBands.reduce(0) { $0 + $1.edges.count }
         )
 
-        let accessiblePathIndices = index.accessibilityGroups.flatMap {
-            Array($0.pathRange)
+        var accessiblePathIndices: [Int] = []
+        var accessibilityWindow = index.accessibilityWindow()
+        while true {
+            #expect(accessibilityWindow.range.count <= WorkbenchAccessibilityWindow.capacity)
+            accessiblePathIndices.append(contentsOf: accessibilityWindow.range)
+            guard let nextLowerBound = accessibilityWindow.nextLowerBound else { break }
+            accessibilityWindow = index.accessibilityWindow(
+                preferredLowerBound: nextLowerBound
+            )
         }
         #expect(accessiblePathIndices == Array(topology.paths.indices))
-        #expect(
-            index.accessibilityGroups.allSatisfy {
-                $0.pathRange.count <= OverviewTopologyIndex.accessibilityGroupCapacity
-            }
+        #expect(accessibilityWindow.pageNumber == accessibilityWindow.pageCount)
+
+        while let previousLowerBound = accessibilityWindow.previousLowerBound {
+            accessibilityWindow = index.accessibilityWindow(
+                preferredLowerBound: previousLowerBound
+            )
+        }
+        #expect(accessibilityWindow.range == 0..<WorkbenchAccessibilityWindow.capacity)
+
+        let selectedPath = try #require(topology.paths.last)
+        let selectedWindow = index.accessibilityWindow(
+            revealing: selectedPath.id
         )
+        let selectedIndex = try #require(index.pathIndex(id: selectedPath.id))
+        #expect(selectedWindow.range.contains(selectedIndex))
+        #expect(selectedWindow.range.count <= WorkbenchAccessibilityWindow.capacity)
 
         let edge = try #require(layout.edges.first)
         let hit = layout.hitTestWithOperationCounts(at: edge.point(at: 0.5))
         #expect(hit.selection != nil)
         #expect(hit.operationCounts.shapeCheckCount <= hit.operationCounts.indexedTargetCount)
         #expect(hit.operationCounts.indexedTargetCount < connections.count)
+    }
+
+    @Test func topologyAccessibilityPolicyNodeWindowTraversesAndRevealsSelection() throws {
+        let connections = (0..<96).map { index in
+            ConnectionSnapshot(
+                id: "accessibility-policy-\(index)",
+                chains: ["outbound-\(index)", "policy-\(index)"],
+                metadata: ConnectionMetadataSnapshot(
+                    sourceIP: "192.0.2.\((index % 250) + 1)"
+                )
+            )
+        }
+        let topology = ConnectionTopologyBuilder.build(
+            from: connections
+        )
+        let index = OverviewTopologyIndex(topology: topology)
+        let expectedPolicyNodes = topology.nodes.filter { node in
+            if case .policyHop = node.columnID {
+                true
+            } else {
+                false
+            }
+        }
+        #expect(expectedPolicyNodes.count > WorkbenchAccessibilityWindow.capacity)
+
+        var accessibleNodeIDs: [String] = []
+        var window = index.accessibilityPolicyNodeWindow()
+        while true {
+            #expect(window.range.count <= WorkbenchAccessibilityWindow.capacity)
+            accessibleNodeIDs.append(
+                contentsOf: index.accessibilityPolicyNodes(in: window.range).map(\.id)
+            )
+            guard let nextLowerBound = window.nextLowerBound else { break }
+            window = index.accessibilityPolicyNodeWindow(
+                preferredLowerBound: nextLowerBound
+            )
+        }
+        #expect(accessibleNodeIDs == expectedPolicyNodes.map(\.id))
+        #expect(window.pageNumber == window.pageCount)
+
+        while let previousLowerBound = window.previousLowerBound {
+            window = index.accessibilityPolicyNodeWindow(
+                preferredLowerBound: previousLowerBound
+            )
+        }
+        #expect(window.lowerBound == 0)
+
+        let selectedNode = try #require(expectedPolicyNodes.last)
+        let selectedWindow = index.accessibilityPolicyNodeWindow(
+            revealing: selectedNode.id
+        )
+        let selectedIndex = try #require(
+            expectedPolicyNodes.firstIndex { $0.id == selectedNode.id }
+        )
+        #expect(selectedWindow.range.contains(selectedIndex))
+        #expect(selectedWindow.range.count <= WorkbenchAccessibilityWindow.capacity)
     }
 
     @Test func overviewSourceSeparatesVerticalAndInteractionOwnership() throws {
@@ -1173,7 +1618,7 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(bandLayers.contains("allowsMotion: allowsMotion"))
         #expect(bandLayers.contains("policyStatusRevision == rhs.policyStatusRevision"))
         #expect(!bandLayers.contains("nodeStatusByID == rhs.nodeStatusByID"))
-        #expect(topologyViewSource.contains("revision: catalog.structureRevision"))
+        #expect(topologyViewSource.contains("revision: visibleInput.catalogRevision"))
         // Task 08-20: the highlight overlay + second Canvas merged into the
         // single opaque/linear base canvas; labels render in a dedicated layer.
         let baseBand = try sourceSection(
@@ -1203,7 +1648,17 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(topologyAccessibility.contains("OverviewTopologyAccessibilityNodes("))
         #expect(topologyAccessibility.contains("ForEach(nodes)"))
         #expect(topologyAccessibility.contains("ForEach(paths[pathRange])"))
+        #expect(topologyAccessibility.contains("topologyIndex.accessibilityPolicyNodes("))
+        #expect(topologyAccessibility.contains("pathRange: pathWindow.range"))
+        #expect(topologyAccessibility.contains("WorkbenchAccessibilityPageControls("))
+        #expect(topologyAccessibility.contains(".onChange(of: interaction.snapshot)"))
+        #expect(topologyAccessibility.contains("guard snapshot.isPinned else { return }"))
+        #expect(!topologyAccessibility.contains("nodes.filter"))
+        #expect(!topologyAccessibility.contains("ForEach(groups)"))
+        #expect(!topologyAccessibility.contains("LazyVStack"))
         #expect(topologyAccessibility.contains(".accessibilityAddTraits(isPinned ? .isSelected : [])"))
+        #expect(topologyViewSource.contains("OverviewTopologyPathRows("))
+        #expect(topologyViewSource.contains(".accessibilityHidden(true)"))
     }
 
     @Test func overviewRouteOwnsTheOnlyOverviewViewInstantiation() throws {
@@ -1245,9 +1700,128 @@ struct WorkbenchOverviewPerformanceTests {
         let topologyCall = String(
             topologyViewSource[topologyCallStart.lowerBound..<topologyTypeStart.lowerBound]
         )
-        #expect(topologyCall.contains("revision: catalog.structureRevision"))
+        #expect(topologyCall.contains("revision: visibleInput.catalogRevision"))
         #expect(!topologyCall.contains("metricsRevision"))
         #expect(!topologyCall.contains("trafficRevision"))
+
+        let topologySectionBody = try sourceSection(
+            topologyViewSource,
+            from: "var body: some View {",
+            to: "@MainActor\n    private func loadStructureInput"
+        )
+        #expect(topologySectionBody.contains("OverviewTopologyCatalogRequest.observing(appModel)"))
+        #expect(topologySectionBody.contains(".task(id: request)"))
+        #expect(!topologySectionBody.contains("connectionsCatalog"))
+        #expect(topologyViewSource.contains("structureRevision: appModel.connectionsStructureRevision"))
+        #expect(topologyViewSource.contains("let catalog = appModel.connectionsCatalog"))
+    }
+
+    @Test func overviewHighlightsStageExactNavigationBeforeChangingDestination() throws {
+        let dashboard = try workbenchSource(named: "WorkbenchDashboard.swift")
+        let projection = try workbenchSource(named: "WorkbenchOverviewProjection.swift")
+        let latencySection = try sourceSection(
+            dashboard,
+            from: "private struct OverviewLatencyHighlightsSection",
+            to: "private struct OverviewRuleHighlightsSection"
+        )
+        let ruleSection = try sourceSection(
+            dashboard,
+            from: "private struct OverviewRuleHighlightsSection",
+            to: "private struct OverviewConnectionHighlightsSection"
+        )
+        let connectionSection = try sourceSection(
+            dashboard,
+            from: "private struct OverviewConnectionHighlightsSection",
+            to: "private struct OverviewConnectionHighlightsLoader"
+        )
+
+        #expect(latencySection.contains("workspaceStore.stageProxyNavigation("))
+        #expect(latencySection.contains("groupOccurrenceID: row.groupOccurrenceID"))
+        #expect(latencySection.contains("nodeName: row.nodeName"))
+        let proxyStage = try #require(
+            latencySection.range(of: "workspaceStore.stageProxyNavigation(")
+        )
+        let proxyDestination = try #require(
+            latencySection.range(of: "destination = .proxies")
+        )
+        #expect(proxyStage.lowerBound < proxyDestination.lowerBound)
+
+        #expect(ruleSection.contains("workspaceStore.stageRuleNavigation("))
+        for exactField in [
+            "sourceIndex: row.sourceIndex",
+            "reportedRuleID: row.reportedRuleID",
+            "type: row.type",
+            "payload: row.payload",
+        ] {
+            #expect(ruleSection.contains(exactField))
+        }
+        let ruleStage = try #require(
+            ruleSection.range(of: "workspaceStore.stageRuleNavigation(")
+        )
+        let ruleDestination = try #require(
+            ruleSection.range(of: "destination = .rules")
+        )
+        #expect(ruleStage.lowerBound < ruleDestination.lowerBound)
+
+        #expect(connectionSection.contains("workspaceStore.stageConnectionNavigation("))
+        #expect(connectionSection.contains("openConnection(row, scope: visiblePresentation.scope)"))
+        #expect(connectionSection.contains("scope.navigationSelection("))
+        #expect(connectionSection.contains("currentScope: OverviewConnectionHighlightsScope.observing(appModel)"))
+        let connectionStage = try #require(
+            connectionSection.range(of: "workspaceStore.stageConnectionNavigation(")
+        )
+        let connectionDestination = try #require(
+            connectionSection.range(of: "destination = .connections")
+        )
+        #expect(connectionStage.lowerBound < connectionDestination.lowerBound)
+
+        #expect(projection.contains("ProxyGroupKey("))
+        #expect(projection.contains("groupOccurrenceID:"))
+    }
+
+    @Test func connectionHighlightsKeepFullCatalogWorkOutsideSwiftUIBodies() throws {
+        let dashboard = try workbenchSource(named: "WorkbenchDashboard.swift")
+        let projection = try workbenchSource(named: "WorkbenchOverviewProjection.swift")
+        let section = try sourceSection(
+            dashboard,
+            from: "private struct OverviewConnectionHighlightsSection",
+            to: "private struct OverviewConnectionHighlightsLoader"
+        )
+        let loader = try sourceSection(
+            dashboard,
+            from: "private struct OverviewConnectionHighlightsLoader",
+            to: "struct OverviewConnectionHighlightsScope"
+        )
+        let loaderBody = try sourceSection(
+            loader,
+            from: "var body: some View {",
+            to: "@MainActor\n    private func rebuildPresentation"
+        )
+        let request = try sourceSection(
+            dashboard,
+            from: "struct OverviewConnectionHighlightsRequest",
+            to: "struct OverviewConnectionHighlightsPresentation"
+        )
+
+        #expect(section.contains("OverviewConnectionHighlightsScope.observing(appModel)"))
+        #expect(section.contains("presentation?.visible(for: scope)"))
+        #expect(!section.contains("connectionsCatalog"))
+        #expect(!section.contains("OverviewProjection.topActiveConnections"))
+
+        #expect(loaderBody.contains("OverviewConnectionHighlightsRequest.observing("))
+        #expect(loaderBody.contains(".task(id: request)"))
+        #expect(!loaderBody.contains("connectionsCatalog.connections"))
+        #expect(!loaderBody.contains("OverviewProjection.topActiveConnections"))
+        #expect(loader.contains("let connections = appModel.connectionsCatalog.connections"))
+        #expect(!loader.contains("Task.detached"))
+        #expect(loader.contains("OverviewProjection.topActiveConnectionsCancellable("))
+        #expect(loader.contains("guard presentation != nextPresentation else { return }"))
+        #expect(request.contains("metricsRevision: appModel.connectionsMetricsRevision"))
+        #expect(!request.contains("connectionsCatalog"))
+        #expect(projection.contains("@concurrent\n    static func topActiveConnectionsCancellable("))
+        #expect(projection.contains("try Task.checkCancellation()"))
+        #expect(projection.contains("checksCancellation: true"))
+        #expect(projection.contains("Task<Never, Never>.isCancelled"))
     }
 
     private func workbenchSource(named fileName: String) throws -> String {

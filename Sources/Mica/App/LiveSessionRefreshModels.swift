@@ -551,3 +551,111 @@ struct SessionEndpointCache: Equatable {
         self = SessionEndpointCache()
     }
 }
+
+enum MihomoSmartWeightsCacheUpdate: Equatable, Sendable {
+    case notReceived
+    case replace(SmartWeightsResponse?)
+}
+
+struct MihomoEndpointChangePlan: Equatable, Sendable {
+    let shouldWriteVersion: Bool
+    let shouldWriteConfig: Bool
+    let shouldWriteProxies: Bool
+    let shouldWriteSmartWeights: Bool
+    let shouldWriteRules: Bool
+    let shouldWriteProxyProviders: Bool
+    let shouldWriteRuleProviders: Bool
+    let shouldRebuildUnifiedSnapshot: Bool
+    let domains: DashboardPublicationDomains
+
+    var cacheWriteCount: Int {
+        [
+            shouldWriteVersion,
+            shouldWriteConfig,
+            shouldWriteProxies,
+            shouldWriteSmartWeights,
+            shouldWriteRules,
+            shouldWriteProxyProviders,
+            shouldWriteRuleProviders,
+        ].count(where: { $0 })
+    }
+
+    var policyGroupProjectionWorkUnits: Int {
+        domains.contains(.policyGroups) ? 1 : 0
+    }
+
+    static func medium(
+        cache: SessionEndpointCache,
+        proxies: ProxiesResponse? = nil,
+        smartWeights: MihomoSmartWeightsCacheUpdate = .notReceived
+    ) -> Self {
+        let proxiesChanged = proxies.map { cache.proxies != $0 } ?? false
+        let smartWeightsChanged: Bool
+        switch smartWeights {
+        case .notReceived:
+            smartWeightsChanged = false
+        case .replace(let next):
+            smartWeightsChanged = cache.smartWeights != next
+        }
+
+        return Self(
+            shouldWriteVersion: false,
+            shouldWriteConfig: false,
+            shouldWriteProxies: proxiesChanged,
+            shouldWriteSmartWeights: smartWeightsChanged,
+            shouldWriteRules: false,
+            shouldWriteProxyProviders: false,
+            shouldWriteRuleProviders: false,
+            shouldRebuildUnifiedSnapshot: proxiesChanged,
+            domains: proxiesChanged || smartWeightsChanged
+                ? [.policyGroups, .insight]
+                : []
+        )
+    }
+
+    static func slow(
+        cache: SessionEndpointCache,
+        version: VersionResponse?,
+        config: ConfigResponse?,
+        rules: RulesResponse?,
+        proxyProviders: ProxyProvidersResponse?,
+        ruleProviders: RuleProvidersResponse?
+    ) -> Self {
+        let versionChanged = version.map { cache.version != $0 } ?? false
+        let configChanged = config.map { cache.config != $0 } ?? false
+        let rulesChanged = rules.map { cache.rules != $0 } ?? false
+        let proxyProvidersChanged = proxyProviders.map {
+            cache.proxyProviders != $0
+        } ?? false
+        let ruleProvidersChanged = ruleProviders.map {
+            cache.ruleProviders != $0
+        } ?? false
+
+        var domains: DashboardPublicationDomains = []
+        if versionChanged || configChanged {
+            domains.insert(.metadata)
+        }
+        if rulesChanged {
+            domains.formUnion([.rules, .insight])
+        }
+        if proxyProvidersChanged || ruleProvidersChanged {
+            domains.formUnion([.providers, .insight])
+        }
+
+        return Self(
+            shouldWriteVersion: versionChanged,
+            shouldWriteConfig: configChanged,
+            shouldWriteProxies: false,
+            shouldWriteSmartWeights: false,
+            shouldWriteRules: rulesChanged,
+            shouldWriteProxyProviders: proxyProvidersChanged,
+            shouldWriteRuleProviders: ruleProvidersChanged,
+            shouldRebuildUnifiedSnapshot: versionChanged
+                || configChanged
+                || rulesChanged
+                || proxyProvidersChanged
+                || ruleProvidersChanged,
+            domains: domains
+        )
+    }
+}

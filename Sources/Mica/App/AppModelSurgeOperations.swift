@@ -2,38 +2,11 @@ import Foundation
 import MicaCore
 
 extension AppModel {
-    /// Clears every Surge in-flight marker to its idle baseline. All Surge
-    /// operations share a single `surgeTask` and cancel the previous one on
-    /// entry, so at most one Surge op is ever live. Calling this at the start
-    /// of each mutating op (mirroring `refreshSurgeRouter`/`probeSurgeRouter`,
-    /// which already reset these inline) guarantees a superseded op's marker
-    /// can never linger: the cancelled task's continuation returns without
-    /// touching any flag, and the new op re-establishes only its own. This
-    /// also self-heals the case where `deleteRouter`/`selectRouter` cancel an
-    /// in-flight Surge op without running its continuation.
-    private func resetSurgeInFlightMarkers() {
-        changingSurgeOutbound = false
-        switchingSurgePolicyGroup = nil
-        testingSurgePolicyGroup = nil
-        killingSurgeRequestID = nil
-        killingSurgeProjectedConnectionID = nil
-        reloadingRules = false
-        reloadingSurgeProfile = false
-        changingControllerLogLevel = false
-    }
-
     func setSurgeOutboundMode(_ mode: String) {
-        surgeTask?.cancel()
-        resetSurgeInFlightMarkers()
-
-        guard let router = selectedRouter, runtimeControllerKind(for: router) == .surgeCompatible else {
-            operationState = .error(localized("operation.select_surge_mode"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.setOutboundMode, router: router, action: TrialCommandAction.surgeOutboundMode.title(language: presentationLanguage)) else {
-            return
-        }
+        guard let router = selectedRouter,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              surgeTask == nil,
+              canBeginLiveAction(.setOutboundMode, router: router, familyInFlight: hasSurgeOperationInFlight) else { return }
 
         let commandID = beginCommand(.surgeOutboundMode, router: router, summary: localized("operation.changing_surge_mode"))
         changingSurgeOutbound = true
@@ -56,6 +29,7 @@ extension AppModel {
 
                 applySurgeSnapshot(snapshot, router: router)
                 changingSurgeOutbound = false
+                surgeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.surge_mode_changed"))
                 operationState = .success(localized("operation.surge_mode_changed"), action: TrialCommandAction.surgeOutboundMode.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -64,6 +38,7 @@ extension AppModel {
                 }
 
                 changingSurgeOutbound = false
+                surgeTask = nil
                 if didSetMode {
                     var snapshot = sessionActionSurgeSnapshot
                     snapshot.outboundMode = mode
@@ -89,18 +64,18 @@ extension AppModel {
         }
     }
 
-    func selectSurgePolicy(_ policy: String, in group: String) {
-        surgeTask?.cancel()
-        resetSurgeInFlightMarkers()
-
-        guard let router = selectedRouter, runtimeControllerKind(for: router) == .surgeCompatible else {
-            operationState = .error(localized("operation.select_surge_policy"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.selectSurgePolicy, router: router, action: TrialCommandAction.surgePolicySelect.title(language: presentationLanguage)) else {
-            return
-        }
+    func selectSurgePolicy(
+        _ policy: String,
+        in group: String,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              surgeTask == nil,
+              let currentGroup = sessionActionSurgeSnapshot.policyGroups.first(where: { $0.name == group }),
+              currentGroup.policies.contains(policy),
+              canBeginLiveAction(.selectSurgePolicy, router: router, familyInFlight: hasSurgeOperationInFlight) else { return }
 
         let commandID = beginCommand(.surgePolicySelect, router: router, summary: localized("operation.switching_surge_policy"))
         switchingSurgePolicyGroup = group
@@ -123,6 +98,7 @@ extension AppModel {
 
                 applySurgeSnapshot(snapshot, router: router)
                 switchingSurgePolicyGroup = nil
+                surgeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.surge_policy_switched"))
                 operationState = .success(localized("operation.surge_policy_switched"), action: TrialCommandAction.surgePolicySelect.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -131,6 +107,7 @@ extension AppModel {
                 }
 
                 switchingSurgePolicyGroup = nil
+                surgeTask = nil
                 if didSelectPolicy {
                     var snapshot = sessionActionSurgeSnapshot
                     if let index = snapshot.policyGroups.firstIndex(where: { $0.name == group }) {
@@ -158,18 +135,16 @@ extension AppModel {
         }
     }
 
-    func testSurgePolicyGroup(_ group: String) {
-        surgeTask?.cancel()
-        resetSurgeInFlightMarkers()
-
-        guard let router = selectedRouter, runtimeControllerKind(for: router) == .surgeCompatible else {
-            operationState = .error(localized("operation.select_surge_test"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.testSurgePolicy, router: router, action: TrialCommandAction.surgePolicyTest.title(language: presentationLanguage)) else {
-            return
-        }
+    func testSurgePolicyGroup(
+        _ group: String,
+        scope: LiveCommandScope
+    ) {
+        guard matchesCurrentCommandScope(scope),
+              let router = selectedRouter,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              surgeTask == nil,
+              sessionActionSurgeSnapshot.policyGroups.contains(where: { $0.name == group }),
+              canBeginLiveAction(.testSurgePolicy, router: router, familyInFlight: hasSurgeOperationInFlight) else { return }
 
         let commandID = beginCommand(.surgePolicyTest, router: router, summary: localized("operation.testing_surge_policy"))
         testingSurgePolicyGroup = group
@@ -193,6 +168,7 @@ extension AppModel {
                 }
                 applySurgeSnapshot(snapshot, router: router)
                 testingSurgePolicyGroup = nil
+                surgeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.surge_policy_tested"))
                 operationState = .success(localized("operation.surge_policy_tested"), action: TrialCommandAction.surgePolicyTest.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -201,6 +177,7 @@ extension AppModel {
                 }
 
                 testingSurgePolicyGroup = nil
+                surgeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .failed, summary: localized("operation.surge_policy_test_failed"))
                 operationState = .error(Self.routerTrialFailureMessage(for: error, language: presentationLanguage), action: TrialCommandAction.surgePolicyTest.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.retry_test"))
             }
@@ -212,17 +189,11 @@ extension AppModel {
         projectedID: String? = nil,
         closedConnection: ConnectionSnapshot? = nil
     ) {
-        surgeTask?.cancel()
-        resetSurgeInFlightMarkers()
-
-        guard let router = selectedRouter, runtimeControllerKind(for: router) == .surgeCompatible else {
-            operationState = .error(localized("operation.select_surge_kill"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(.killActiveRequest, router: router, action: TrialCommandAction.surgeRequestKill.title(language: presentationLanguage)) else {
-            return
-        }
+        guard let router = selectedRouter,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              surgeTask == nil,
+              sessionActionSurgeSnapshot.activeRequests.contains(request),
+              canBeginLiveAction(.killActiveRequest, router: router, familyInFlight: hasSurgeOperationInFlight) else { return }
 
         let commandID = beginCommand(.surgeRequestKill, router: router, summary: localized("operation.killing_surge_request"))
         killingSurgeRequestID = request.id
@@ -263,6 +234,7 @@ extension AppModel {
                 }
                 killingSurgeRequestID = nil
                 killingSurgeProjectedConnectionID = nil
+                surgeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.surge_request_killed"))
                 operationState = .success(localized("operation.surge_request_killed"), action: TrialCommandAction.surgeRequestKill.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -276,6 +248,7 @@ extension AppModel {
                 }
                 killingSurgeRequestID = nil
                 killingSurgeProjectedConnectionID = nil
+                surgeTask = nil
                 if didKillRequest {
                     finishCommand(
                         commandID,
@@ -298,22 +271,10 @@ extension AppModel {
     }
 
     func reloadSurgeProfile() {
-        surgeTask?.cancel()
-        resetSurgeInFlightMarkers()
-
         guard let router = selectedRouter,
-              runtimeControllerKind(for: router) == .surgeCompatible else {
-            operationState = .error(localized("operation.select_surge_profile_reload"))
-            return
-        }
-
-        guard controllerSupportsLiveAction(
-            .reloadProfile,
-            router: router,
-            action: TrialCommandAction.surgeProfileReload.title(language: presentationLanguage)
-        ) else {
-            return
-        }
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              surgeTask == nil,
+              canBeginLiveAction(.reloadProfile, router: router, familyInFlight: hasSurgeOperationInFlight) else { return }
 
         let commandID = beginCommand(
             .surgeProfileReload,
@@ -339,7 +300,8 @@ extension AppModel {
                 }
 
                 reloadingSurgeProfile = false
-                requestImmediateSessionRefresh(isUserInitiated: true)
+                surgeTask = nil
+                requestImmediateSessionRefresh()
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -358,6 +320,7 @@ extension AppModel {
                 }
 
                 reloadingSurgeProfile = false
+                surgeTask = nil
                 finishCommand(
                     commandID,
                     routerID: router.id,
@@ -375,8 +338,15 @@ extension AppModel {
     }
 
     func reloadSurgeRules(_ router: RouterProfile) {
-        surgeTask?.cancel()
-        resetSurgeInFlightMarkers()
+        guard selectedRouterID == router.id,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              surgeTask == nil,
+              canBeginLiveAction(
+                .reloadRules,
+                router: router,
+                familyInFlight: hasSurgeOperationInFlight,
+                requiresUnpausedPresentation: true
+              ) else { return }
 
         let commandID = beginCommand(.reloadRules, router: router, summary: localized("operation.reloading_rules"))
         reloadingRules = true
@@ -397,6 +367,7 @@ extension AppModel {
 
                 applySurgeSnapshot(snapshot, router: router)
                 reloadingRules = false
+                surgeTask = nil
                 finishCommand(commandID, routerID: router.id, status: .success, summary: localized("operation.surge_snapshot_loaded"))
                 operationState = .success(localized("operation.reloaded_rules \(dashboard.rules.count)"), action: TrialCommandAction.reloadRules.title(language: presentationLanguage), target: router.displayName)
             } catch {
@@ -405,6 +376,7 @@ extension AppModel {
                 }
 
                 reloadingRules = false
+                surgeTask = nil
                 rulesSnapshotState = .unavailable(Self.routerTrialFailureMessage(for: error, language: presentationLanguage))
                 finishCommand(commandID, routerID: router.id, status: .partial, summary: localized("operation.surge_rules_unavailable"))
                 operationState = .partial(localized("operation.rules_unavailable"), action: TrialCommandAction.reloadRules.title(language: presentationLanguage), target: router.displayName, nextStep: localized("action.refresh"))
@@ -455,20 +427,40 @@ extension AppModel {
     }
 
     func closeSurgeProjectedConnection(_ connection: ConnectionSnapshot) {
-        guard let request = surgeRequest(forProjectedConnectionID: connection.id),
+        guard let router = selectedRouter,
+              surgeTask == nil,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              canBeginLiveAction(
+                .killActiveRequest,
+                router: router,
+                familyInFlight: hasSurgeOperationInFlight
+              ),
+              let target = ConnectionMutationTargetResolver.resolve(
+                requested: connection,
+                currentConnections: connectionsCatalog.connections
+              ),
+              let request = surgeRequest(forProjectedConnectionID: target.id),
               !request.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            operationState = .error(localized("operation.surge_request_not_found"), nextStep: localized("action.refresh"))
             return
         }
 
         killSurgeRequest(
             request,
-            projectedID: connection.id,
-            closedConnection: connection
+            projectedID: target.id,
+            closedConnection: target
         )
     }
 
     func closeAllSurgeProjectedConnections(router: RouterProfile) {
+        guard connectionTask == nil,
+              surgeTask == nil,
+              runtimeControllerKind(for: router) == .surgeCompatible,
+              canBeginLiveAction(
+                .killActiveRequest,
+                router: router,
+                familyInFlight: hasConnectionOperationInFlight || hasSurgeOperationInFlight
+              ) else { return }
+
         let projectedConnections = dashboard.connections
         let snapshot = sessionActionSurgeSnapshot
         let projectedIDs = DashboardSnapshot.surgeRequestDisplayIDs(for: snapshot.activeRequests)
@@ -552,6 +544,7 @@ extension AppModel {
             recordClosedSessionConnections(closed)
             removeSessionConnections(closed)
             closingAllConnections = false
+            connectionTask = nil
 
             if let firstFailure {
                 let failure = Self.routerTrialFailureMessage(

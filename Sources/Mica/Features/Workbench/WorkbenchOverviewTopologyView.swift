@@ -5,31 +5,106 @@ import SwiftUI
 struct OverviewTopologySection: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
+    @State private var structureInput: OverviewTopologyCatalogInput?
 
     let runtime: OverviewTopologyRuntime
     @Binding var destination: WorkbenchDestination
 
     var body: some View {
-        let catalog = appModel.connectionsCatalog
+        let request = OverviewTopologyCatalogRequest.observing(appModel)
+        let visibleInput = structureInput?.visible(for: request)
         OverviewFlatSection(
             "overview.topology_title",
             systemImage: "point.3.connected.trianglepath.dotted",
             accessory: {
-                if !catalog.connections.isEmpty {
+                if visibleInput?.connections.isEmpty == false {
                     OverviewTopologyHeaderControls(runtime: runtime)
                 }
             }
         ) {
-            OverviewTopologyWorkspace(
-                connections: catalog.connections,
-                controllerID: appModel.selectedRouterID,
-                generation: appModel.controllerSessionPresentation.generation,
-                revision: catalog.structureRevision,
-                language: language,
-                runtime: runtime,
-                destination: $destination
-            )
+            if let visibleInput {
+                OverviewTopologyWorkspace(
+                    connections: visibleInput.connections,
+                    controllerID: visibleInput.request.controllerID,
+                    generation: visibleInput.request.generation,
+                    revision: visibleInput.catalogRevision,
+                    language: language,
+                    runtime: runtime,
+                    destination: $destination
+                )
+            } else {
+                OverviewTopologyLoadingState(language: language)
+            }
         }
+        .task(id: request) {
+            await loadStructureInput(for: request)
+        }
+    }
+
+    @MainActor
+    private func loadStructureInput(
+        for request: OverviewTopologyCatalogRequest
+    ) async {
+        await Task.yield()
+        guard !Task.isCancelled,
+              OverviewTopologyCatalogRequest.observing(appModel) == request else {
+            return
+        }
+        let catalog = appModel.connectionsCatalog
+        guard !Task.isCancelled,
+              OverviewTopologyCatalogRequest.observing(appModel) == request else {
+            return
+        }
+        structureInput = OverviewTopologyCatalogInput(
+            request: request,
+            catalogRevision: catalog.structureRevision,
+            connections: catalog.connections
+        )
+    }
+}
+
+struct OverviewTopologyCatalogRequest: Equatable, Sendable {
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+    let structureRevision: UInt64
+
+    @MainActor
+    static func observing(_ appModel: AppModel) -> Self {
+        Self(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation,
+            structureRevision: appModel.connectionsStructureRevision
+        )
+    }
+}
+
+struct OverviewTopologyCatalogInput: Equatable, Sendable {
+    let request: OverviewTopologyCatalogRequest
+    let catalogRevision: UInt64
+    let connections: [ConnectionSnapshot]
+
+    func visible(
+        for currentRequest: OverviewTopologyCatalogRequest
+    ) -> Self? {
+        guard request.controllerID == currentRequest.controllerID,
+              request.generation == currentRequest.generation else {
+            return nil
+        }
+        return self
+    }
+}
+
+private struct OverviewTopologyLoadingState: View {
+    let language: AppLanguage
+
+    var body: some View {
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            ProgressView().controlSize(.small)
+            Text(MicaStrings.localizedKey("overview.current_data", language: language))
+                .micaThemeFont(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
     }
 }
 
@@ -128,10 +203,19 @@ private struct OverviewTopologyWorkspace: View {
                 availableWidth: runtime.availableWidth,
                 minimumFlowHeight: resolvedMinimumFlowHeight
             )
+            let visibleTopologyIsEmpty = runtime.presentation.flatMap { presentation in
+                presentation.canRemainVisible(whileResolving: request)
+                    ? presentation.topology.isEmpty
+                    : nil
+            }
+            let reservedMinimumHeight = OverviewTopologyHeightReservation.minimumHeight(
+                visibleTopologyIsEmpty: visibleTopologyIsEmpty,
+                requestedMinimum: resolvedMinimumFlowHeight
+            )
 
             topologyBody(for: request)
                 .frame(
-                    minHeight: CGFloat(resolvedMinimumFlowHeight),
+                    minHeight: reservedMinimumHeight.map(CGFloat.init),
                     alignment: .top
                 )
                 .task(id: request) {
@@ -164,50 +248,38 @@ private struct OverviewTopologyWorkspace: View {
            presentation.canRemainVisible(whileResolving: request) {
             VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                 if presentation.topology.isEmpty {
-                    if runtime.isExpanded {
-                        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                            OverviewTopologyIdleSummary(
-                                connectionCount: presentation.topology.connectionCount,
-                                unavailablePathCount: presentation.topology.routeUnavailableCount,
-                                language: language
-                            )
-                            OverviewInlineState(
-                                titleKey: "overview.topology_empty",
-                                detailKey: "overview.topology_empty_detail"
-                            )
+                    VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                        OverviewTopologyIdleSummary(
+                            connectionCount: presentation.topology.connectionCount,
+                            unavailablePathCount: presentation.topology.routeUnavailableCount,
+                            language: language
+                        )
+                        OverviewInlineState(
+                            titleKey: "overview.topology_empty",
+                            detailKey: "overview.topology_empty_detail"
+                        )
+
+                        if runtime.isExpanded {
                             OverviewTopologyPathRows(
                                 paths: presentation.topology.paths,
                                 language: language,
                                 interaction: runtime.interaction,
                                 onOpenPath: openPathInConnections
                             )
+                            .accessibilityHidden(true)
                         }
-                    } else {
-                        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                            OverviewTopologyIdleSummary(
-                                connectionCount: presentation.topology.connectionCount,
-                                unavailablePathCount: presentation.topology.routeUnavailableCount,
-                                language: language
-                            )
-                            OverviewInlineState(
-                                titleKey: "overview.topology_empty",
-                                detailKey: "overview.topology_empty_detail"
-                            )
-                        }
-                        .accessibilityRepresentation {
-                            OverviewTopologyAccessibilityRepresentation(
-                                paths: presentation.topology.paths,
-                                groups: presentation.index.accessibilityGroups,
-                                nodes: presentation.topology.nodes,
-                                includesPaths: true,
-                                topologyIndex: presentation.index,
-                                policyCache: runtime.policyInspectionCache,
-                                language: language,
-                                interaction: runtime.interaction,
-                                onOpenPath: openPathInConnections,
-                                onOpenProxies: openProxies(for:)
-                            )
-                        }
+                    }
+                    .accessibilityRepresentation {
+                        OverviewTopologyAccessibilityRepresentation(
+                            paths: presentation.topology.paths,
+                            structure: presentation.request.structure,
+                            topologyIndex: presentation.index,
+                            policyCache: runtime.policyInspectionCache,
+                            language: language,
+                            interaction: runtime.interaction,
+                            onOpenPath: openPathInConnections,
+                            onOpenProxies: openProxies(for:)
+                        )
                     }
                 } else {
                     OverviewTopologyViewport(
@@ -386,9 +458,7 @@ private struct OverviewTopologyViewport: View {
                 .accessibilityRepresentation {
                     OverviewTopologyAccessibilityRepresentation(
                         paths: topology.paths,
-                        groups: index.accessibilityGroups,
-                        nodes: topology.nodes,
-                        includesPaths: !showsPathRows,
+                        structure: request.structure,
                         topologyIndex: index,
                         policyCache: runtime.policyInspectionCache,
                         language: language,
@@ -405,6 +475,7 @@ private struct OverviewTopologyViewport: View {
                     interaction: interaction,
                     onOpenPath: onOpenPath
                 )
+                .accessibilityHidden(true)
             }
         }
     }
@@ -1188,9 +1259,7 @@ private struct OverviewTopologyAccessibilityRepresentation: View {
     @Environment(AppModel.self) private var appModel
 
     let paths: [ConnectionTopology.PathRecord]
-    let groups: [OverviewTopologyIndex.AccessibilityGroup]
-    let nodes: [ConnectionTopology.Node]
-    let includesPaths: Bool
+    let structure: OverviewTopologyStructureRequest
     let topologyIndex: OverviewTopologyIndex
     let policyCache: OverviewPolicyInspectionCache
     let language: AppLanguage
@@ -1198,15 +1267,31 @@ private struct OverviewTopologyAccessibilityRepresentation: View {
     let onOpenPath: (ConnectionTopology.PathRecord) -> Void
     let onOpenProxies: (ConnectionTopology.Node) -> Void
 
+    @State private var policyNodeLowerBound = 0
+    @State private var pathLowerBound = 0
+
     var body: some View {
         let policyIndex = policyCache.resolve(
             revision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
+        let policyNodeWindow = topologyIndex.accessibilityPolicyNodeWindow(
+            preferredLowerBound: policyNodeLowerBound
+        )
+        let pathWindow = topologyIndex.accessibilityWindow(
+            preferredLowerBound: pathLowerBound
+        )
 
-        LazyVStack {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            Text(MicaStrings.localizedKey("routing.group_catalog", language: language))
+            WorkbenchAccessibilityPageControls(
+                window: policyNodeWindow,
+                moveToLowerBound: movePolicyNodes
+            )
             OverviewTopologyAccessibilityNodes(
-                nodes: policyNodes,
+                nodes: topologyIndex.accessibilityPolicyNodes(
+                    in: policyNodeWindow.range
+                ),
                 topologyIndex: topologyIndex,
                 policyIndex: policyIndex,
                 language: language,
@@ -1214,36 +1299,81 @@ private struct OverviewTopologyAccessibilityRepresentation: View {
                 onOpenProxies: onOpenProxies
             )
 
-            if includesPaths {
-                ForEach(groups) { group in
-                    OverviewTopologyAccessibilityGroup(
-                        paths: paths,
-                        pathRange: group.pathRange,
-                        language: language,
-                        interaction: interaction,
-                        onOpenPath: onOpenPath
-                    )
-                }
-            }
+            Text(MicaStrings.localizedKey("dashboard.chain_label", language: language))
+            WorkbenchAccessibilityPageControls(
+                window: pathWindow,
+                moveToLowerBound: movePaths
+            )
+            OverviewTopologyAccessibilityGroup(
+                paths: paths,
+                pathRange: pathWindow.range,
+                language: language,
+                interaction: interaction,
+                onOpenPath: onOpenPath
+            )
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             MicaStrings.localizedKey("overview.topology_title", language: language)
         )
+        .onAppear {
+            reconcileWindows(reset: true)
+        }
+        .onChange(of: structure) { previous, next in
+            reconcileWindows(reset: previous.generation != next.generation)
+        }
+        .onChange(of: paths.count) { _, _ in
+            reconcileWindows(reset: false)
+        }
+        .onChange(of: interaction.snapshot) { _, snapshot in
+            revealPinnedSelection(snapshot)
+        }
     }
 
-    private var policyNodes: [ConnectionTopology.Node] {
-        nodes.filter { node in
-            if case .policyHop = node.columnID {
-                return true
-            }
-            return false
+    private func movePolicyNodes(to lowerBound: Int) {
+        policyNodeLowerBound = topologyIndex.accessibilityPolicyNodeWindow(
+            preferredLowerBound: lowerBound
+        ).lowerBound
+    }
+
+    private func movePaths(to lowerBound: Int) {
+        pathLowerBound = topologyIndex.accessibilityWindow(
+            preferredLowerBound: lowerBound
+        ).lowerBound
+    }
+
+    private func reconcileWindows(reset: Bool) {
+        if reset {
+            policyNodeLowerBound = 0
+            pathLowerBound = 0
+        }
+        movePolicyNodes(to: policyNodeLowerBound)
+        movePaths(to: pathLowerBound)
+        revealPinnedSelection(interaction.snapshot)
+    }
+
+    private func revealPinnedSelection(_ snapshot: OverviewTopologyInteractionSnapshot) {
+        guard snapshot.isPinned else { return }
+        let selection = snapshot.activeSelection
+        switch selection {
+        case .node(let nodeID):
+            policyNodeLowerBound = topologyIndex.accessibilityPolicyNodeWindow(
+                preferredLowerBound: policyNodeLowerBound,
+                revealing: nodeID
+            ).lowerBound
+        case .path(let pathID):
+            pathLowerBound = topologyIndex.accessibilityWindow(
+                preferredLowerBound: pathLowerBound,
+                revealing: pathID
+            ).lowerBound
+        case .edge, nil:
+            break
         }
     }
 }
 
 private struct OverviewTopologyAccessibilityNodes: View {
-    let nodes: [ConnectionTopology.Node]
+    let nodes: ArraySlice<ConnectionTopology.Node>
     let topologyIndex: OverviewTopologyIndex
     let policyIndex: OverviewPolicyInspectionIndex
     let language: AppLanguage

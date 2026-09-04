@@ -4,6 +4,549 @@ import Testing
 @testable import Mica
 
 struct WorkbenchDataProjectionTests {
+    private struct AccessibilityPayloadFixtureRow: Identifiable, Equatable, Sendable {
+        let id: String
+        var summary: String
+        var nonsemanticRevision: Int
+    }
+
+    @Test(arguments: [0, 1, 31, 32, 33, 2_000])
+    func accessibilityWindowNeverExposesMoreThanItsBoundedCapacity(_ count: Int) {
+        let window = WorkbenchAccessibilityWindow.resolve(totalCount: count)
+
+        #expect(window.range.count == min(count, WorkbenchAccessibilityWindow.capacity))
+        #expect(window.range.count <= 32)
+        #expect(window.totalCount == count)
+        #expect(window.lowerBound == 0)
+    }
+
+    @Test func accessibilityWindowTraversalCoversTwoThousandItemsExactlyOnce() {
+        let count = 2_000
+        var window = WorkbenchAccessibilityWindow.resolve(totalCount: count)
+        var visited: [Int] = []
+
+        while true {
+            visited.append(contentsOf: window.range)
+            guard let nextLowerBound = window.nextLowerBound else { break }
+            window = WorkbenchAccessibilityWindow.resolve(
+                totalCount: count,
+                preferredLowerBound: nextLowerBound
+            )
+        }
+
+        #expect(visited == Array(0..<count))
+        #expect(window.pageNumber == window.pageCount)
+
+        while let previousLowerBound = window.previousLowerBound {
+            window = WorkbenchAccessibilityWindow.resolve(
+                totalCount: count,
+                preferredLowerBound: previousLowerBound
+            )
+        }
+        #expect(window.range == 0..<32)
+    }
+
+    @Test func accessibilityWindowClampsAfterShrinkAndResetsForGenerationChange() {
+        let beforeShrink = WorkbenchAccessibilityWindow.resolve(
+            totalCount: 2_000,
+            preferredLowerBound: 1_984
+        )
+        #expect(beforeShrink.range == 1_984..<2_000)
+
+        let afterShrink = WorkbenchAccessibilityWindow.resolve(
+            totalCount: 33,
+            preferredLowerBound: beforeShrink.lowerBound
+        )
+        #expect(afterShrink.range == 32..<33)
+
+        let generationReset = WorkbenchAccessibilityWindow.resolve(
+            totalCount: 33,
+            preferredLowerBound: 0
+        )
+        #expect(generationReset.range == 0..<32)
+    }
+
+    @Test func accessibilityWindowRevealsSelectionAndPreservesStableAnchor() throws {
+        let orderedIDs = (0..<2_000).map { "row-\($0)" }
+        let selected = WorkbenchAccessibilityWindowProjection.resolve(
+            orderedIDs: orderedIDs,
+            preferredLowerBound: 0,
+            revealing: "row-1999"
+        )
+        #expect(selected.range == 1_984..<2_000)
+
+        let anchored = WorkbenchAccessibilityWindowProjection.resolve(
+            orderedIDs: orderedIDs,
+            preferredLowerBound: selected.lowerBound,
+            anchorID: "row-1984"
+        )
+        #expect(anchored == selected)
+
+        let metricOnlyUpdate = WorkbenchAccessibilityWindowProjection.resolve(
+            orderedIDs: orderedIDs,
+            preferredLowerBound: anchored.lowerBound,
+            anchorID: "row-1984"
+        )
+        #expect(metricOnlyUpdate == anchored)
+
+        let shiftedIDs = Array(orderedIDs.dropFirst(9)) + (2_000..<2_009).map { "row-\($0)" }
+        let shiftedAnchor = WorkbenchAccessibilityWindowProjection.resolve(
+            orderedIDs: shiftedIDs,
+            preferredLowerBound: anchored.lowerBound,
+            anchorID: "row-1984"
+        )
+        let anchorIndex = try #require(shiftedIDs.firstIndex(of: "row-1984"))
+        #expect(shiftedAnchor.range.contains(anchorIndex))
+    }
+
+    @Test func accessibilityWindowUsesExactStableIdentityForDuplicateAndBlankReportedIDs() {
+        let stableIDs = [
+            "duplicate#source-0",
+            "duplicate#source-1",
+            "unreported#source-2",
+            "unreported#source-3",
+        ] + (4..<40).map { "row-\($0)" }
+
+        let duplicate = WorkbenchAccessibilityWindowProjection.resolve(
+            orderedIDs: stableIDs,
+            revealing: "duplicate#source-1"
+        )
+        let blank = WorkbenchAccessibilityWindowProjection.resolve(
+            orderedIDs: stableIDs,
+            revealing: "unreported#source-3"
+        )
+
+        #expect(duplicate.range.contains(1))
+        #expect(blank.range.contains(3))
+        #expect(stableIDs[1] != stableIDs[0])
+        #expect(stableIDs[3] != stableIDs[2])
+    }
+
+    @Test func accessibilityCursorKeepsTheOlderPageAfterLeavingFollowNewest() throws {
+        let orderedIDs = (0..<2_000).map { "log-\($0)" }
+        var cursor = WorkbenchAccessibilityWindowCursor()
+
+        let newest = cursor.reconcile(
+            orderedIDs: orderedIDs,
+            followsNewest: true
+        )
+        let previousLowerBound = try #require(newest.previousLowerBound)
+        let older = cursor.move(
+            to: previousLowerBound,
+            orderedIDs: orderedIDs
+        )
+        let reconciled = cursor.reconcile(
+            orderedIDs: orderedIDs,
+            followsNewest: false
+        )
+
+        #expect(reconciled == older)
+        #expect(reconciled.range != newest.range)
+    }
+
+    @Test func accessibilityCursorUsesIndexedLookupAfterMetricSortReordersRows() throws {
+        let originalIDs = (0..<96).map { "connection-\($0)" }
+        var cursor = WorkbenchAccessibilityWindowCursor()
+        cursor.move(to: 64, orderedIDs: originalIDs)
+
+        let reorderedIDs = ["connection-64"]
+            + originalIDs.filter { $0 != "connection-64" }
+        let indexByID = Dictionary(
+            uniqueKeysWithValues: reorderedIDs.enumerated().map { ($0.element, $0.offset) }
+        )
+        var lookupCount = 0
+        let reconciled = cursor.reconcile(
+            totalCount: reorderedIDs.count,
+            indexOf: {
+                lookupCount += 1
+                return indexByID[$0]
+            },
+            idAt: { reorderedIDs.indices.contains($0) ? reorderedIDs[$0] : nil }
+        )
+
+        let anchorIndex = try #require(indexByID["connection-64"])
+        #expect(reconciled.range.contains(anchorIndex))
+        #expect(cursor.anchorID == "connection-64")
+        #expect(lookupCount == 1)
+    }
+
+    @Test func accessibilityCursorAppliesLogPrefixDeltaWithoutScanningTheOrder() throws {
+        let originalIDs = (0..<2_000).map { "log-\($0)" }
+        var cursor = WorkbenchAccessibilityWindowCursor()
+        cursor.move(to: 1_952, orderedIDs: originalIDs)
+
+        let shiftedIDs = Array(originalIDs.dropFirst(9))
+            + (2_000..<2_009).map { "log-\($0)" }
+        var idLookupCount = 0
+        let shifted = cursor.applyPrefixDelta(
+            totalCount: shiftedIDs.count,
+            droppedCount: 9,
+            followsNewest: false,
+            idAt: {
+                idLookupCount += 1
+                return shiftedIDs.indices.contains($0) ? shiftedIDs[$0] : nil
+            }
+        )
+
+        let stableAnchorIndex = try #require(shiftedIDs.firstIndex(of: "log-1952"))
+        #expect(shifted.range.contains(stableAnchorIndex))
+        #expect(cursor.anchorID == "log-1952")
+        #expect(cursor.anchorIndex == stableAnchorIndex)
+        #expect(idLookupCount == 0)
+
+        let newest = cursor.applyPrefixDelta(
+            totalCount: shiftedIDs.count,
+            droppedCount: 0,
+            followsNewest: true,
+            idAt: { shiftedIDs.indices.contains($0) ? shiftedIDs[$0] : nil }
+        )
+        #expect(newest.range == 1_984..<2_000)
+        #expect(cursor.anchorID == shiftedIDs[1_984])
+    }
+
+    @Test func logAccessibilityDeltaReportsOnlyVisiblePrefixDrops() {
+        func entry(_ id: String, type: String) -> ControllerLogEntry {
+            ControllerLogEntry(
+                id: id,
+                receivedAt: Date(timeIntervalSince1970: 1),
+                message: LogMessage(type: type, payload: id)
+            )
+        }
+
+        let first = entry("first", type: "info")
+        let second = entry("second", type: "warning")
+        let third = entry("third", type: "warning")
+        let fourth = entry("fourth", type: "warning")
+        var cache = WorkbenchLogProjectionCache()
+        cache.project(
+            entries: [first, second, third],
+            revision: 1,
+            level: .warning,
+            query: "",
+            language: .english,
+            change: .replace
+        )
+        cache.project(
+            entries: [second, third, fourth],
+            revision: 2,
+            level: .warning,
+            query: "",
+            language: .english,
+            change: .delta(
+                droppedEntryIDs: ["first"],
+                appendedEntries: [fourth]
+            )
+        )
+        #expect(cache.accessibilityOrderChange == .prefixDelta(droppedCount: 0))
+
+        let fifth = entry("fifth", type: "warning")
+        cache.project(
+            entries: [third, fourth, fifth],
+            revision: 3,
+            level: .warning,
+            query: "",
+            language: .english,
+            change: .delta(
+                droppedEntryIDs: ["second"],
+                appendedEntries: [fifth]
+            )
+        )
+        #expect(cache.accessibilityOrderChange == .prefixDelta(droppedCount: 1))
+    }
+
+    @Test func tableAccessibilityPayloadMaterializesOnlyTheBoundedWindow() {
+        let sourceRows = (0..<2_000).map {
+            AccessibilityPayloadFixtureRow(
+                id: "row-\($0)",
+                summary: "Summary \($0)",
+                nonsemanticRevision: 0
+            )
+        }
+        let scope = WorkbenchTableAccessibilityScope(
+            controllerID: UUID(uuidString: "00000000-0000-0000-0000-000000000001"),
+            generation: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        )
+        let localization = MicaStrings.localizationContext(for: .english)
+        var summaryCount = 0
+        var actionCount = 0
+
+        let payload = WorkbenchTableAccessibilityPayload.materialize(
+            scope: scope,
+            title: localization.localizedKey("dashboard.tab_connections"),
+            sourceRows: sourceRows,
+            window: WorkbenchAccessibilityWindow.resolve(
+                totalCount: sourceRows.count,
+                preferredLowerBound: 1_984
+            ),
+            selectedRowID: "row-1999",
+            localization: localization,
+            summary: { row, _ in
+                summaryCount += 1
+                return row.summary
+            },
+            namedAction: { _ in
+                actionCount += 1
+                return nil
+            }
+        )
+
+        #expect(payload.rows.count == 16)
+        #expect(payload.rows.count <= WorkbenchAccessibilityWindow.capacity)
+        #expect(summaryCount == 16)
+        #expect(actionCount == 16)
+        #expect(payload.rows.map(\.id) == (1_984..<2_000).map { "row-\($0)" })
+        #expect(payload.rows.last?.isSelected == true)
+    }
+
+    @Test func tableAccessibilityPayloadEqualityTracksOnlyResolvedSemantics() {
+        let rows = (0..<40).map {
+            AccessibilityPayloadFixtureRow(
+                id: "row-\($0)",
+                summary: "Summary \($0)",
+                nonsemanticRevision: 0
+            )
+        }
+        let scope = WorkbenchTableAccessibilityScope(
+            controllerID: UUID(uuidString: "00000000-0000-0000-0000-000000000011"),
+            generation: UUID(uuidString: "00000000-0000-0000-0000-000000000012")!
+        )
+
+        func payload(
+            rows: [AccessibilityPayloadFixtureRow],
+            lowerBound: Int = 0,
+            selectedRowID: String? = nil,
+            language: AppLanguage = .english,
+            direction: WorkbenchAccessibilitySortDirection? = nil,
+            actionTitle: String? = nil,
+            scope: WorkbenchTableAccessibilityScope
+        ) -> WorkbenchTableAccessibilityPayload {
+            let localization = MicaStrings.localizationContext(for: language)
+            return WorkbenchTableAccessibilityPayload.materialize(
+                scope: scope,
+                title: localization.localizedKey("dashboard.tab_connections"),
+                sourceRows: rows,
+                window: WorkbenchAccessibilityWindow.resolve(
+                    totalCount: rows.count,
+                    preferredLowerBound: lowerBound
+                ),
+                selectedRowID: selectedRowID,
+                localization: localization,
+                sortOptions: [
+                    WorkbenchAccessibilitySortOption(
+                        id: "summary",
+                        title: localization.localizedKey("dashboard.col_status"),
+                        direction: direction
+                    ),
+                ],
+                summary: { row, localization in
+                    "\(localization.localizedKey("dashboard.col_status")): \(row.summary)"
+                },
+                namedAction: { _ in
+                    actionTitle.map {
+                        WorkbenchAccessibilityNamedAction(id: "fixture.action", title: $0)
+                    }
+                }
+            )
+        }
+
+        let baseline = payload(rows: rows, scope: scope)
+        var nonsemantic = rows
+        nonsemantic[0].nonsemanticRevision = 1
+        nonsemantic[39].summary = "Changed outside the active window"
+
+        #expect(payload(rows: nonsemantic, scope: scope) == baseline)
+
+        var changedSummary = rows
+        changedSummary[0].summary = "Changed inside the active window"
+        #expect(payload(rows: changedSummary, scope: scope) != baseline)
+        #expect(payload(rows: rows, selectedRowID: "row-1", scope: scope) != baseline)
+        #expect(payload(rows: rows, lowerBound: 32, scope: scope) != baseline)
+        #expect(payload(rows: Array(rows.dropLast()), scope: scope) != baseline)
+        #expect(payload(rows: rows, language: .simplifiedChinese, scope: scope) != baseline)
+        #expect(payload(rows: rows, direction: .ascending, scope: scope) != baseline)
+        #expect(payload(rows: rows, actionTitle: "Change state", scope: scope) != baseline)
+        #expect(
+            payload(
+                rows: rows,
+                scope: WorkbenchTableAccessibilityScope(
+                    controllerID: scope.controllerID,
+                    generation: UUID(uuidString: "00000000-0000-0000-0000-000000000013")!
+                )
+            ) != baseline
+        )
+    }
+
+    @MainActor
+    @Test func tableAccessibilityHostEqualityIgnoresDispatcherIdentity() {
+        let localization = MicaStrings.localizationContext(for: .english)
+        let scope = WorkbenchTableAccessibilityScope(
+            controllerID: nil,
+            generation: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!
+        )
+        let payload = WorkbenchTableAccessibilityPayload.materialize(
+            scope: scope,
+            title: "Table",
+            sourceRows: [
+                AccessibilityPayloadFixtureRow(
+                    id: "row",
+                    summary: "Summary",
+                    nonsemanticRevision: 0
+                ),
+            ],
+            window: WorkbenchAccessibilityWindow.resolve(totalCount: 1),
+            selectedRowID: nil,
+            localization: localization,
+            summary: { row, _ in row.summary }
+        )
+
+        let first = WorkbenchTableAccessibilityHost(payload: payload) { _ in }
+        let second = WorkbenchTableAccessibilityHost(payload: payload) { _ in
+            Issue.record("Dispatcher must not participate in host equality")
+        }
+
+        #expect(first == second)
+    }
+
+    @Test func ruleAccessibilityMutationResolverRejectsStaleOrUnavailableIntents() throws {
+        let scope = WorkbenchTableAccessibilityScope(
+            controllerID: UUID(uuidString: "00000000-0000-0000-0000-000000000031"),
+            generation: UUID(uuidString: "00000000-0000-0000-0000-000000000032")!
+        )
+        let mutableRule = RuleViewState(
+            id: "reported-rule",
+            index: 7,
+            type: "DOMAIN",
+            payload: "example.com",
+            proxy: "Policy",
+            disabled: false,
+            hasMutableExtra: true
+        )
+        let mutableRow = try #require(
+            WorkbenchRuleProjection.rows(
+                from: [mutableRule],
+                connections: [],
+                language: .english
+            ).first
+        )
+        let intent = WorkbenchTableAccessibilityIntent.performNamedAction(
+            rowID: mutableRow.id,
+            actionID: WorkbenchRuleAccessibilityMutationResolver.actionID,
+            scope: scope
+        )
+
+        func resolved(
+            intent: WorkbenchTableAccessibilityIntent = intent,
+            rows: [WorkbenchRuleRow] = [mutableRow],
+            updatingRuleID: String? = nil,
+            canRefresh: Bool = true,
+            isBusy: Bool = false,
+            supportsMutation: Bool = true
+        ) -> RuleViewState? {
+            WorkbenchRuleAccessibilityMutationResolver.resolve(
+                intent: intent,
+                currentScope: scope,
+                rows: rows,
+                updatingRuleID: updatingRuleID,
+                canRefresh: canRefresh,
+                isBusy: isBusy,
+                supportsMutation: supportsMutation
+            )
+        }
+
+        #expect(resolved() == mutableRule)
+        #expect(
+            WorkbenchRuleAccessibilityMutationResolver.namedAction(
+                for: mutableRow,
+                title: "Change state",
+                updatingRuleID: nil,
+                canRefresh: true,
+                isBusy: false,
+                supportsMutation: true
+            )?.id == WorkbenchRuleAccessibilityMutationResolver.actionID
+        )
+
+        let staleScope = WorkbenchTableAccessibilityScope(
+            controllerID: scope.controllerID,
+            generation: UUID(uuidString: "00000000-0000-0000-0000-000000000033")!
+        )
+        #expect(
+            resolved(
+                intent: .performNamedAction(
+                    rowID: mutableRow.id,
+                    actionID: WorkbenchRuleAccessibilityMutationResolver.actionID,
+                    scope: staleScope
+                )
+            ) == nil
+        )
+        #expect(resolved(rows: []) == nil)
+        #expect(resolved(updatingRuleID: mutableRule.id) == nil)
+        #expect(resolved(canRefresh: false) == nil)
+        #expect(resolved(isBusy: true) == nil)
+        #expect(resolved(supportsMutation: false) == nil)
+        #expect(
+            resolved(
+                intent: .performNamedAction(
+                    rowID: mutableRow.id,
+                    actionID: "different.action",
+                    scope: scope
+                )
+            ) == nil
+        )
+
+        let updatedRule = RuleViewState(
+            id: mutableRule.id,
+            index: mutableRule.index,
+            type: mutableRule.type,
+            payload: mutableRule.payload,
+            proxy: mutableRule.proxy,
+            disabled: true,
+            hasMutableExtra: true
+        )
+        let updatedRow = try #require(
+            WorkbenchRuleProjection.rows(
+                from: [updatedRule],
+                connections: [],
+                language: .english
+            ).first
+        )
+        #expect(updatedRow.id == mutableRow.id)
+        #expect(resolved(rows: [updatedRow]) == updatedRule)
+
+        let missingIndexRule = RuleViewState(
+            id: mutableRule.id,
+            index: nil,
+            type: mutableRule.type,
+            payload: mutableRule.payload,
+            proxy: mutableRule.proxy,
+            disabled: mutableRule.disabled,
+            hasMutableExtra: true
+        )
+        let missingIndexRow = try #require(
+            WorkbenchRuleProjection.rows(
+                from: [missingIndexRule],
+                connections: [],
+                language: .english
+            ).first
+        )
+        #expect(missingIndexRow.id == mutableRow.id)
+        #expect(resolved(rows: [missingIndexRow]) == nil)
+
+        let immutableRow = try #require(
+            WorkbenchRuleProjection.rows(
+                from: [RuleViewState(
+                    id: "immutable-rule",
+                    type: "MATCH",
+                    payload: "",
+                    proxy: "DIRECT",
+                    hasMutableExtra: false
+                )],
+                connections: [],
+                language: .english
+            ).first
+        )
+        #expect(resolved(rows: [immutableRow]) == nil)
+    }
+
     @Test func sharedDataSearchKeepsUnicodeCaseInsensitiveSemantics() {
         #expect(WorkbenchDataSearch.contains("browser.app", in: "Browser.APP"))
         #expect(WorkbenchDataSearch.contains("mÜnchen", in: "München Edge"))
@@ -1024,6 +1567,119 @@ struct WorkbenchDataProjectionTests {
         #expect(path.isDisabled == false)
     }
 
+    @Test func ruleNavigationResolvesOnlyTheExactSourceOccurrence() throws {
+        let controllerID = UUID(uuidString: "00000000-0000-0000-0000-000000000041")!
+        let generation = UUID(uuidString: "00000000-0000-0000-0000-000000000042")!
+        let rules = [
+            RuleViewState(
+                id: "duplicate",
+                type: "DOMAIN",
+                payload: "same.example",
+                proxy: "First"
+            ),
+            RuleViewState(
+                id: "duplicate",
+                type: "DOMAIN",
+                payload: "same.example",
+                proxy: "Second"
+            ),
+            RuleViewState(
+                id: "",
+                type: "MATCH",
+                payload: "",
+                proxy: "Third"
+            ),
+            RuleViewState(
+                id: "",
+                type: "MATCH",
+                payload: "",
+                proxy: "Fourth"
+            ),
+        ]
+        let rows = WorkbenchRuleProjection.rows(
+            from: rules,
+            connections: [],
+            language: .english
+        )
+        let duplicateSelection = WorkbenchRuleNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            sourceIndex: 1,
+            reportedRuleID: "duplicate",
+            type: "DOMAIN",
+            payload: "same.example"
+        )
+        let blankSelection = WorkbenchRuleNavigationSelection(
+            controllerID: controllerID,
+            generation: generation,
+            sourceIndex: 3,
+            reportedRuleID: "",
+            type: "MATCH",
+            payload: ""
+        )
+
+        #expect(rows.map(\.id).count == Set(rows.map(\.id)).count)
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                duplicateSelection,
+                controllerID: controllerID,
+                generation: generation,
+                in: rows
+            )?.id == rows[1].id
+        )
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                blankSelection,
+                controllerID: controllerID,
+                generation: generation,
+                in: rows
+            )?.id == rows[3].id
+        )
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                duplicateSelection,
+                controllerID: UUID(),
+                generation: generation,
+                in: rows
+            ) == nil
+        )
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                duplicateSelection,
+                controllerID: controllerID,
+                generation: UUID(),
+                in: rows
+            ) == nil
+        )
+
+        var reordered = rows
+        reordered.swapAt(0, 1)
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                duplicateSelection,
+                controllerID: controllerID,
+                generation: generation,
+                in: reordered
+            ) == nil
+        )
+
+        var changedRules = rules
+        changedRules[1].payload = "changed.example"
+        let changedRows = WorkbenchRuleProjection.rows(
+            from: changedRules,
+            connections: [],
+            language: .english
+        )
+        #expect(
+            WorkbenchRuleNavigationResolver.resolve(
+                duplicateSelection,
+                controllerID: controllerID,
+                generation: generation,
+                in: changedRows
+            ) == nil
+        )
+    }
+
     @Test func connectionNavigationDirectoryKeepsOnlyUniqueExactTargets() throws {
         let rules = [
             RuleViewState(
@@ -1043,6 +1699,12 @@ struct WorkbenchDataProjectionTests {
                 type: "DOMAIN-SUFFIX",
                 payload: "example.org",
                 proxy: "Policy B"
+            ),
+            RuleViewState(
+                id: "",
+                type: "PROCESS-NAME",
+                payload: "tool",
+                proxy: "Policy A"
             ),
         ]
         let groups = ProxyProjection.arrangedGroups(
@@ -1075,14 +1737,27 @@ struct WorkbenchDataProjectionTests {
         )
 
         #expect(
-            directory.ruleTarget(type: "DOMAIN", payload: "example.com")?.id
+            directory.ruleTarget(type: "DOMAIN", payload: "example.com")?.reportedRuleID
                 == "unique"
+        )
+        #expect(
+            directory.ruleTarget(type: "DOMAIN", payload: "example.com")?.sourceIndex
+                == 0
         )
         #expect(
             directory.ruleTarget(type: "domain", payload: "example.com") == nil
         )
         #expect(
             directory.ruleTarget(type: "DOMAIN-SUFFIX", payload: "example.org") == nil
+        )
+        #expect(
+            directory.ruleTarget(type: "PROCESS-NAME", payload: "tool")
+                == WorkbenchConnectionRuleNavigationTarget(
+                    sourceIndex: 3,
+                    reportedRuleID: "",
+                    type: "PROCESS-NAME",
+                    payload: "tool"
+                )
         )
         #expect(directory.policyTarget(named: "Policy A")?.group.id == "Policy A")
         #expect(directory.policyTarget(named: "policy a") == nil)
@@ -1494,7 +2169,126 @@ struct WorkbenchDataProjectionTests {
         #expect(row.severity == .warning)
         #expect(row.levelText == "warn")
         #expect(row.typeText == "debug")
-        #expect(row.accessibilityText.contains("controller warning"))
+        #expect(
+            WorkbenchLogProjection.accessibilitySummary(
+                for: row,
+                localization: MicaStrings.localizationContext(for: .english)
+            ).contains("controller warning")
+        )
+    }
+
+    @Test func boundedAccessibilitySummariesSwitchLabelsWithoutChangingRowValues() throws {
+        let english = MicaStrings.localizationContext(for: .english)
+        let simplifiedChinese = MicaStrings.localizationContext(for: .simplifiedChinese)
+        let connectionRow = try #require(
+            WorkbenchConnectionProjection.rows(
+                from: [Self.connection(
+                    id: "localized-connection",
+                    upload: 64,
+                    host: "summary.example",
+                    destinationIP: "203.0.113.10",
+                    destinationPort: "443",
+                    process: "Browser",
+                    processPath: "/Applications/Browser.app"
+                )],
+                language: .english
+            ).first
+        )
+        let logRow = try #require(
+            WorkbenchLogProjection.rows(
+                from: [ControllerLogEntry(
+                    id: "localized-log",
+                    receivedAt: Date(timeIntervalSince1970: 1),
+                    message: LogMessage(type: "info", payload: "summary payload")
+                )],
+                language: .english
+            ).first
+        )
+        let ruleRow = try #require(
+            WorkbenchRuleProjection.rows(
+                from: [RuleViewState(
+                    id: "localized-rule",
+                    index: 7,
+                    type: "DOMAIN",
+                    payload: "summary.example",
+                    proxy: "Policy"
+                )],
+                connections: [],
+                language: .english
+            ).first
+        )
+        let sourceRow = try #require(
+            WorkbenchSourceProjection.rows(
+                from: [ProxyProviderViewState(
+                    kind: .proxy,
+                    name: "Summary Provider",
+                    type: "HTTP",
+                    itemCount: 4
+                )],
+                language: .english
+            ).first
+        )
+
+        let summaries = [
+            (
+                WorkbenchConnectionProjection.accessibilitySummary(
+                    for: connectionRow,
+                    localization: english
+                ),
+                WorkbenchConnectionProjection.accessibilitySummary(
+                    for: connectionRow,
+                    localization: simplifiedChinese
+                ),
+                english.localizedKey("traffic.connection_host"),
+                simplifiedChinese.localizedKey("traffic.connection_host"),
+                connectionRow.host
+            ),
+            (
+                WorkbenchLogProjection.accessibilitySummary(
+                    for: logRow,
+                    localization: english
+                ),
+                WorkbenchLogProjection.accessibilitySummary(
+                    for: logRow,
+                    localization: simplifiedChinese
+                ),
+                english.localizedKey("traffic.log_payload"),
+                simplifiedChinese.localizedKey("traffic.log_payload"),
+                logRow.payloadText
+            ),
+            (
+                WorkbenchRuleProjection.accessibilitySummary(
+                    for: ruleRow,
+                    localization: english
+                ),
+                WorkbenchRuleProjection.accessibilitySummary(
+                    for: ruleRow,
+                    localization: simplifiedChinese
+                ),
+                english.localizedKey("dashboard.col_payload"),
+                simplifiedChinese.localizedKey("dashboard.col_payload"),
+                ruleRow.rule.payload
+            ),
+            (
+                WorkbenchSourceProjection.accessibilitySummary(
+                    for: sourceRow,
+                    localization: english
+                ),
+                WorkbenchSourceProjection.accessibilitySummary(
+                    for: sourceRow,
+                    localization: simplifiedChinese
+                ),
+                english.localizedKey("dashboard.col_provider"),
+                simplifiedChinese.localizedKey("dashboard.col_provider"),
+                sourceRow.source.name
+            ),
+        ]
+
+        for (englishSummary, chineseSummary, englishLabel, chineseLabel, value) in summaries {
+            #expect(englishSummary.contains("\(englishLabel): \(value)"))
+            #expect(chineseSummary.contains("\(chineseLabel): \(value)"))
+            #expect(englishSummary != chineseSummary)
+        }
     }
 
     @Test func logProjectionNeverSortsAndFilteringRetainsIncomingOrder() {
@@ -1676,6 +2470,7 @@ struct WorkbenchDataProjectionTests {
         #expect(cache.filterEvaluationCount == 4)
         #expect(cache.allRows.map(\.id) == ["second", "third", "fourth"])
         #expect(cache.visibleRows.map(\.id) == ["second", "third", "fourth"])
+        #expect(cache.accessibilityOrderChange == .prefixDelta(droppedCount: 0))
 
         cache.project(
             entries: [third, fourth, fifth],
@@ -1694,6 +2489,7 @@ struct WorkbenchDataProjectionTests {
         #expect(cache.formattedRowCount == 5)
         #expect(cache.allRows.map(\.id) == ["third", "fourth", "fifth"])
         #expect(cache.visibleRows.map(\.id) == ["third", "fourth", "fifth"])
+        #expect(cache.accessibilityOrderChange == .replace)
     }
 
     @Test func logProjectionCacheFallsBackForDuplicateOrBlankControllerIDs() {

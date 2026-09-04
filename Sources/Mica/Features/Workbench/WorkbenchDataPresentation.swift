@@ -339,6 +339,387 @@ enum WorkbenchDataSearch {
     }
 }
 
+struct WorkbenchAccessibilityWindow: Equatable, Sendable {
+    static let capacity = 32
+
+    let totalCount: Int
+    let lowerBound: Int
+    let upperBound: Int
+
+    var range: Range<Int> {
+        lowerBound..<upperBound
+    }
+
+    var pageNumber: Int {
+        guard totalCount > 0 else { return 0 }
+        return (lowerBound / Self.capacity) + 1
+    }
+
+    var pageCount: Int {
+        guard totalCount > 0 else { return 0 }
+        return ((totalCount - 1) / Self.capacity) + 1
+    }
+
+    var previousLowerBound: Int? {
+        guard lowerBound > 0 else { return nil }
+        return max(lowerBound - Self.capacity, 0)
+    }
+
+    var nextLowerBound: Int? {
+        guard upperBound < totalCount else { return nil }
+        return lowerBound + Self.capacity
+    }
+
+    static func resolve(
+        totalCount: Int,
+        preferredLowerBound: Int = 0,
+        revealing index: Int? = nil
+    ) -> Self {
+        let totalCount = max(totalCount, 0)
+        guard totalCount > 0 else {
+            return Self(totalCount: 0, lowerBound: 0, upperBound: 0)
+        }
+
+        let lastPageLowerBound = ((totalCount - 1) / capacity) * capacity
+        let requestedLowerBound: Int
+        if let index, (0..<totalCount).contains(index) {
+            requestedLowerBound = (index / capacity) * capacity
+        } else {
+            requestedLowerBound = min(max(preferredLowerBound, 0), lastPageLowerBound)
+        }
+        let lowerBound = (requestedLowerBound / capacity) * capacity
+        return Self(
+            totalCount: totalCount,
+            lowerBound: lowerBound,
+            upperBound: min(lowerBound + capacity, totalCount)
+        )
+    }
+}
+
+enum WorkbenchAccessibilityWindowProjection {
+    static func resolve<ID: Equatable>(
+        orderedIDs: [ID],
+        preferredLowerBound: Int = 0,
+        anchorID: ID? = nil,
+        revealing selectedID: ID? = nil,
+        followsNewest: Bool = false
+    ) -> WorkbenchAccessibilityWindow {
+        let revealIndex = selectedID.flatMap { orderedIDs.firstIndex(of: $0) }
+        let anchoredIndex = anchorID.flatMap { orderedIDs.firstIndex(of: $0) }
+        let preferredIndex: Int?
+        if let revealIndex {
+            preferredIndex = revealIndex
+        } else if followsNewest, !orderedIDs.isEmpty {
+            preferredIndex = orderedIDs.index(before: orderedIDs.endIndex)
+        } else {
+            preferredIndex = anchoredIndex
+        }
+        return WorkbenchAccessibilityWindow.resolve(
+            totalCount: orderedIDs.count,
+            preferredLowerBound: preferredLowerBound,
+            revealing: preferredIndex
+        )
+    }
+}
+
+struct WorkbenchAccessibilityWindowCursor: Equatable, Sendable {
+    private(set) var lowerBound = 0
+    private(set) var anchorID: String?
+    private(set) var anchorIndex: Int?
+
+    mutating func reset() {
+        lowerBound = 0
+        anchorID = nil
+        anchorIndex = nil
+    }
+
+    @discardableResult
+    mutating func reconcile(
+        orderedIDs: [String],
+        revealing selectedID: String? = nil,
+        followsNewest: Bool = false
+    ) -> WorkbenchAccessibilityWindow {
+        reconcile(
+            totalCount: orderedIDs.count,
+            revealing: selectedID,
+            followsNewest: followsNewest,
+            indexOf: { orderedIDs.firstIndex(of: $0) },
+            idAt: { orderedIDs.indices.contains($0) ? orderedIDs[$0] : nil }
+        )
+    }
+
+    @discardableResult
+    mutating func reconcile(
+        totalCount: Int,
+        revealing selectedID: String? = nil,
+        followsNewest: Bool = false,
+        indexOf: (String) -> Int?,
+        idAt: (Int) -> String?
+    ) -> WorkbenchAccessibilityWindow {
+        let selectedIndex = selectedID.flatMap(indexOf)
+        let retainedAnchorIndex = anchorID.flatMap(indexOf)
+        let preferredIndex: Int?
+        if let selectedIndex {
+            preferredIndex = selectedIndex
+        } else if followsNewest, totalCount > 0 {
+            preferredIndex = totalCount - 1
+        } else {
+            preferredIndex = retainedAnchorIndex
+        }
+        let window = WorkbenchAccessibilityWindow.resolve(
+            totalCount: totalCount,
+            preferredLowerBound: lowerBound,
+            revealing: preferredIndex
+        )
+        lowerBound = window.lowerBound
+
+        if let retainedAnchorID = anchorID,
+           let retainedAnchorIndex,
+           window.range.contains(retainedAnchorIndex),
+           selectedID == nil,
+           !followsNewest {
+            anchorID = retainedAnchorID
+            anchorIndex = retainedAnchorIndex
+        } else if let selectedID, let selectedIndex {
+            anchorID = selectedID
+            anchorIndex = selectedIndex
+        } else {
+            anchorID = idAt(window.lowerBound)
+            anchorIndex = anchorID == nil ? nil : window.lowerBound
+        }
+        return window
+    }
+
+    @discardableResult
+    mutating func move(
+        to requestedLowerBound: Int,
+        orderedIDs: [String]
+    ) -> WorkbenchAccessibilityWindow {
+        move(
+            to: requestedLowerBound,
+            totalCount: orderedIDs.count,
+            idAt: { orderedIDs.indices.contains($0) ? orderedIDs[$0] : nil }
+        )
+    }
+
+    @discardableResult
+    mutating func move(
+        to requestedLowerBound: Int,
+        totalCount: Int,
+        idAt: (Int) -> String?
+    ) -> WorkbenchAccessibilityWindow {
+        let window = WorkbenchAccessibilityWindow.resolve(
+            totalCount: totalCount,
+            preferredLowerBound: requestedLowerBound
+        )
+        lowerBound = window.lowerBound
+        anchorID = idAt(window.lowerBound)
+        anchorIndex = anchorID == nil ? nil : window.lowerBound
+        return window
+    }
+
+    @discardableResult
+    mutating func applyPrefixDelta(
+        totalCount: Int,
+        droppedCount: Int,
+        followsNewest: Bool,
+        idAt: (Int) -> String?
+    ) -> WorkbenchAccessibilityWindow {
+        let totalCount = max(totalCount, 0)
+        let droppedCount = max(droppedCount, 0)
+        if followsNewest {
+            let window = WorkbenchAccessibilityWindow.resolve(
+                totalCount: totalCount,
+                revealing: totalCount > 0 ? totalCount - 1 : nil
+            )
+            lowerBound = window.lowerBound
+            anchorID = idAt(window.lowerBound)
+            anchorIndex = anchorID == nil ? nil : window.lowerBound
+            return window
+        }
+
+        if let anchorIndex {
+            let shiftedAnchorIndex = anchorIndex - droppedCount
+            if (0..<totalCount).contains(shiftedAnchorIndex) {
+                let window = WorkbenchAccessibilityWindow.resolve(
+                    totalCount: totalCount,
+                    preferredLowerBound: max(lowerBound - droppedCount, 0),
+                    revealing: shiftedAnchorIndex
+                )
+                lowerBound = window.lowerBound
+                self.anchorIndex = shiftedAnchorIndex
+                return window
+            }
+        }
+
+        return move(
+            to: max(lowerBound - droppedCount, 0),
+            totalCount: totalCount,
+            idAt: idAt
+        )
+    }
+}
+
+struct WorkbenchTableAccessibilityScope: Equatable, Sendable {
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+}
+
+enum WorkbenchAccessibilitySortDirection: Equatable, Sendable {
+    case ascending
+    case descending
+}
+
+struct WorkbenchAccessibilitySortOption: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let direction: WorkbenchAccessibilitySortDirection?
+}
+
+struct WorkbenchAccessibilityNamedAction: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+}
+
+struct WorkbenchTableAccessibilityPayload: Equatable, Sendable {
+    struct PageAction: Equatable, Sendable {
+        let title: String
+        let lowerBound: Int
+    }
+
+    struct SortControl: Identifiable, Equatable, Sendable {
+        let id: String
+        let title: String
+        let value: String?
+        let hint: String
+        let isSelected: Bool
+        let targetAscending: Bool
+    }
+
+    struct Row: Identifiable, Equatable, Sendable {
+        let id: String
+        let summary: String
+        let isSelected: Bool
+        let namedAction: WorkbenchAccessibilityNamedAction?
+    }
+
+    let scope: WorkbenchTableAccessibilityScope
+    let title: String
+    let window: WorkbenchAccessibilityWindow
+    let selectedRowID: String?
+    let pageLabel: String
+    let rangeLabel: String
+    let previousPage: PageAction?
+    let nextPage: PageAction?
+    let sortControls: [SortControl]
+    let rows: [Row]
+
+    static func materialize<SourceRow: Identifiable>(
+        scope: WorkbenchTableAccessibilityScope,
+        title: String,
+        sourceRows: [SourceRow],
+        window: WorkbenchAccessibilityWindow,
+        selectedRowID: String?,
+        localization: MicaStrings.LocalizationContext,
+        sortOptions: [WorkbenchAccessibilitySortOption] = [],
+        summary: (SourceRow, MicaStrings.LocalizationContext) -> String,
+        namedAction: ((SourceRow) -> WorkbenchAccessibilityNamedAction?)? = nil
+    ) -> Self where SourceRow.ID == String {
+        let resolvedWindow = WorkbenchAccessibilityWindow.resolve(
+            totalCount: sourceRows.count,
+            preferredLowerBound: window.lowerBound
+        )
+        let first = resolvedWindow.range.isEmpty ? 0 : resolvedWindow.lowerBound + 1
+        let pageLabel = localization.localized(
+            "traffic.page_label %lld %lld %lld",
+            arguments: [
+                String(resolvedWindow.pageNumber),
+                String(resolvedWindow.pageCount),
+                String(resolvedWindow.totalCount),
+            ]
+        )
+        let rangeLabel = localization.localized(
+            "traffic.range_label %lld %lld %lld",
+            arguments: [
+                String(first),
+                String(resolvedWindow.upperBound),
+                String(resolvedWindow.totalCount),
+            ]
+        )
+        let previousTitle = localization.localizedKey("traffic.previous_page")
+        let nextTitle = localization.localizedKey("traffic.next_page")
+        let sortHint = localization.localizedKey("traffic.help_sort_direction")
+        let ascending = localization.localizedKey("traffic.sort_ascending")
+        let descending = localization.localizedKey("traffic.sort_descending")
+
+        return Self(
+            scope: scope,
+            title: title,
+            window: resolvedWindow,
+            selectedRowID: selectedRowID,
+            pageLabel: pageLabel,
+            rangeLabel: rangeLabel,
+            previousPage: resolvedWindow.previousLowerBound.map {
+                PageAction(title: previousTitle, lowerBound: $0)
+            },
+            nextPage: resolvedWindow.nextLowerBound.map {
+                PageAction(title: nextTitle, lowerBound: $0)
+            },
+            sortControls: sortOptions.map { option in
+                SortControl(
+                    id: option.id,
+                    title: option.title,
+                    value: option.direction.map { direction in
+                        direction == .ascending ? ascending : descending
+                    },
+                    hint: sortHint,
+                    isSelected: option.direction != nil,
+                    targetAscending: option.direction != .ascending
+                )
+            },
+            rows: sourceRows[resolvedWindow.range].map { row in
+                Row(
+                    id: row.id,
+                    summary: summary(row, localization),
+                    isSelected: selectedRowID == row.id,
+                    namedAction: namedAction?(row)
+                )
+            }
+        )
+    }
+}
+
+enum WorkbenchTableAccessibilityIntent: Equatable, Sendable {
+    case selectRow(id: String, scope: WorkbenchTableAccessibilityScope)
+    case movePage(lowerBound: Int, scope: WorkbenchTableAccessibilityScope)
+    case setSort(id: String, ascending: Bool, scope: WorkbenchTableAccessibilityScope)
+    case performNamedAction(
+        rowID: String,
+        actionID: String,
+        scope: WorkbenchTableAccessibilityScope
+    )
+
+    var scope: WorkbenchTableAccessibilityScope {
+        switch self {
+        case .selectRow(_, let scope),
+             .movePage(_, let scope),
+             .setSort(_, _, let scope),
+             .performNamedAction(_, _, let scope):
+            scope
+        }
+    }
+}
+
+enum WorkbenchAccessibilitySummary {
+    static func field(
+        _ titleKey: String,
+        value: String,
+        localization: MicaStrings.LocalizationContext
+    ) -> String {
+        "\(localization.localizedKey(titleKey)): \(value)"
+    }
+}
+
 extension String {
     var dataNonEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
