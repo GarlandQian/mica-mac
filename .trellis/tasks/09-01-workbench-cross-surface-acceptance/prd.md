@@ -17,6 +17,7 @@
   扫描。本任务接管其未通过的视觉验收并替换该渲染决策；长链视口、完整
   路径、交互和数据语义继续保留。
 - 自动验证不得启动 Mica、读取用户控制器配置、连接真实控制器或执行远程操作。运行时逐页视觉验收由用户完成，除非用户另行明确授权 visual-only smoke。
+- 用户在 2026-09-04 的真实数据使用中确认：策略组展开后纵向滚动明显卡顿。静态审计确认当前视觉树是外层 `LazyVStack` 按“组”懒加载、每个展开组再嵌套一个 `LazyVGrid` 按节点布局；同时根页面直接观察完整 `policyGroupCatalog`，使周期性 catalog revision 在延迟提交判断之前先触发大视图失效。既有投影 benchmark 不实例化 SwiftUI 布局，不能作为该运行时缺陷已经通过的证据。
 
 ## Requirements
 
@@ -65,6 +66,7 @@
 - Inspector destination gating 和 Actions 宽度决策必须是 O(1) 的纯状态/投影；拓扑定位复用现有 layout/index，不重新构建图结构或扫描 SwiftUI 子树。
 - Connections/Logs 各 2,000 行、大规则集、大 Sources 集、多策略组展开和完整 Diagnostics disclosure 下，滚动、切页、筛选和窗口 resize 不出现新的明显卡顿。
 - 涉及既有 hot path 时运行两组可比 Release benchmark。保留优化必须满足目标 case 两次 median 至少改善 10%，且无无关 case 连续回退超过 10%；纯 UX 修复至少不得让相关 case 连续回退超过 10%。
+- Proxies 展开区只保留一个顶层懒布局：策略组是 source-ordered section，组头跨列，节点 tile 是根懒布局直接管理的可见单元；不得保留 `LazyVStack -> group panel -> LazyVGrid` 的同轴嵌套。完整 catalog intake 必须由窄观察边界监听标量 revision，根视觉树只消费已接受快照；滚动中的 deferrable 更新保持 latest-wins，并只在 idle 后使视觉树提交一次。
 
 ### R7. Scope and dependency discipline
 
@@ -99,7 +101,7 @@
 - [x] AC6：no-controller、loading、unsupported、empty、filter-empty、failed-first、stale、paused 和 partial 场景在页面、command bar、inspector 与 status bar 中无矛盾，命令门控一致。
 - [x] AC7：英文/简体中文和四档字号下，菜单、help、tooltips、按钮、Inspector 与格式参数完整；VoiceOver/键盘/Reduce Motion 合同通过源码与定向测试。
 - [x] AC8：controller switch、generation end、stale reconnect、pause/resume 和 destination visibility 的现有生命周期测试通过，旧确认/旧选择/旧结果不能作用于新会话。
-- [x] AC9：2,000 Connections、2,000 Logs、大规则/来源集、多展开策略组和 Diagnostics disclosure 的相关测试/benchmark 通过；没有可重复的 >10% 性能回退。
+- [ ] AC9：2,000 Connections、2,000 Logs、大规则/来源集、多展开策略组和 Diagnostics disclosure 的相关测试/benchmark 通过；Proxies 使用单一顶层懒布局与标量 catalog revision 观察边界，展开后拖动/减速滚动及周期刷新无可复现明显卡顿，且没有可重复的 >10% 性能回退。
 - [x] AC10：`swift build`、完整 `swift test`、source verifier、XCStrings JSON、对比度审计、`git diff --check` 和当前/父任务 Trellis validate 全部通过。
 - [ ] AC11：用户使用真实控制器完成浅色/深色逐页视觉验收；自动验证不连接控制器、不执行远程操作、不运行未经授权的 runtime smoke。
 - [ ] AC12：真实数据密集拓扑不再出现整屏实心灰带/色块；节点与连接线宽

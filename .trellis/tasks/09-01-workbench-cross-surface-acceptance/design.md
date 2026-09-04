@@ -198,3 +198,24 @@ AppModel remote-command method hardening remains outside this presentation task.
 ## 9. Validation Boundary
 
 Automated validation uses fixtures and offline tests only. It must not launch Mica, contact a controller, click Test/Refresh/Update/Close/Action controls, or access user profile/secret stores. Final light/dark runtime screenshots and real-controller page traversal remain a user acceptance step unless separately authorized.
+
+## 10. Reopened Proxies Expanded-Scroll Correction (2026-09-04)
+
+### Root cause
+
+- 当前唯一纵向 `ScrollView` 内部使用 `LazyVStack`，但它的直接懒加载单元是完整策略组；每个展开组内部再使用自适应 `LazyVGrid`。多组或大组展开后，外层只看到少量超高、动态变化的 child，无法把节点 tile 作为根滚动布局的独立懒加载单元。
+- `WorkbenchPolicyGroupsView` 直接以 `.onChange(of: appModel.policyGroupCatalog)` 观察完整值。即使 `ProxyCatalogPresentationCoordinator` 随后把 deferrable 更新延迟到滚动 idle，完整值变化已经使根视觉树重新求值，并重建 group presentation 数组、字典和展开树 diff。
+- `ProxyScrollInteractionTracker` 只在 scroll phase 边界变化，不观察 offset；节点 hover 在滚动时抑制 enter，因此两者不是每帧状态循环。既有 expanded-groups benchmark 只测投影缓存，不测 SwiftUI layout/render。
+
+### Rendering design
+
+- 保留一个 `ScrollViewReader` 和一个纵向 `ScrollView`，其内容只有一个自适应 `LazyVGrid`。每个策略组直接表示为该 grid 的 `Section`：header 包含现有组摘要、操作、延迟分布，以及展开后的独立筛选；member tile 是 section content。不得在 section 内再创建同轴 lazy stack/grid。
+- 组与节点顺序、多个同时展开、独立筛选、完整成员、选中/Inspector、测试与切换命令、稳定 group/member reveal ID、两阶段定位和 bounded accessibility replacement 全部保持不变。不得通过分页、截断成员、强制关闭其他组或降低字段完整度换取流畅度。
+- 将完整 catalog 观察移到零尺寸、不可命中、AX hidden 的窄 leaf。leaf 只把初始/会话边界快照和标量 `policyGroupCatalogRevision` 对应的快照交给现有 `receiveCatalog`; 根视觉子树不得直接观察或比较完整 catalog。session/controller/generation 校验和 critical-operation immediate path 继续由现有 coordinator/acceptance 边界负责。
+- 不给携带闭包的 section/tile 添加忽略 action identity 的 `Equatable`。若单层布局与观察隔离后仍有 trace 证据，再设计安全的 action router 边界。
+
+### Verification boundary
+
+- 源码合同必须证明视觉区域只有一个根 `LazyVGrid`、策略组使用 `Section`、panel 内不存在 nested `LazyVGrid`，并保留 group/member stable IDs 与唯一 outer scroll owner。
+- 定向测试覆盖多个同时展开组的 group-then-member source order、关闭/重开、独立筛选、当前/Inspector selection 与精确 reveal；现有 latest-wins-until-idle scheduler 测试继续通过。
+- 保留 `proxy-expanded-groups-projection` Release benchmark 并生成两组可比 after；它只负责证明投影/cache 无回退。真实帧 pacing 仍需用户授权后，以 collapsed / one-expanded / several-expanded 拖动与减速场景验证。

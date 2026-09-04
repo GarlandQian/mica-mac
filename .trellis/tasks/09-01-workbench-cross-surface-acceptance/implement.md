@@ -349,6 +349,52 @@ Implementation evidence:
   frame) exceeded 10% in both noisy paired runs; no out-of-scope source was
   changed to tune those results.
 
+### Reopened Proxies Expanded-Scroll Correction (2026-09-04)
+
+- [x] Replace `LazyVStack -> ProxyPolicyGroupPanel -> LazyVGrid` with one root adaptive `LazyVGrid` whose source-ordered `Section` headers own group summary/filter controls and whose direct section content owns node tiles.
+- [x] Preserve complete members, multiple simultaneous expansions, independent filters, stable group/member reveal IDs, Inspector selection, capability/generation-gated commands, bounded AX traversal, and one vertical scroll owner.
+- [x] Move complete policy-catalog intake into a nonvisual scalar-revision observer so deferrable catalog changes do not invalidate the root visual tree before the existing scroll-idle scheduler commits them.
+- [x] Add source-contract and focused multi-expanded/order/filter/reveal tests; update the verifier to reject the old nested lazy layout and direct root catalog observation.
+- [x] Run focused tests, source verifier, Debug build, two comparable Release projection benchmarks, independent `trellis-check`, full offline gate, task validation, and durable spec synchronization.
+- [ ] Obtain user-authorized real-data collapsed / one-expanded / several-expanded frame-pacing confirmation before checking AC9 or archiving the task.
+
+Research: `research/proxy-expanded-scroll-hotspot.md`. No Mica process or controller was used during diagnosis.
+
+Implementation evidence:
+
+- Proxies now has one root adaptive `LazyVGrid`; source-ordered `Section`
+  headers own group controls and direct section children own every visible node
+  tile. The old same-axis nested lazy hierarchy and expanded-subtree transition
+  are gone while stable group/member reveal targets remain.
+- A zero-size `ProxyPolicyCatalogObserver` observes only a scalar,
+  session-bound request at the visual boundary. Full catalog intake is
+  revalidated by controller ID, generation, and revision before presentation
+  mutation. The independent checker also fixed an out-of-order session reset
+  race and unified visual/accessibility member activation around the same exact
+  current-record and capability gate.
+- Focused Proxies validation passed 33/33 tests. The final offline gate passed
+  Node syntax, the Workbench source verifier, localization JSON validation,
+  `git diff --check`, Debug build, both child/parent Trellis validations, and
+  the complete suite: 109 XCTest tests plus 416 Swift Testing tests with zero
+  failures.
+- Comparable Release reports are
+  `tmp/codex/performance/proxy-scroll-final-{1,2}/mica-performance.json`, using
+  `topology-route-final-{1,2}` as the unchanged baseline. All 30 case names,
+  fixture counts, checksums, and reported work units match. The related
+  `proxy-expanded-groups-projection#2000` case changed by +6.00% and +11.62%,
+  so it did not exceed the 10% regression threshold in both runs. Five
+  unrelated cases exceeded 10% in both noisy pairs: connection keyed metric
+  update (+17.83%/+13.95%), Mihomo medium unchanged change-plan
+  (+51.24%/+43.65%), runtime connection frame at 5,000
+  (+10.17%/+24.81%) and 10,000 (+19.09%/+23.89%), and topology unique route
+  at 1,000 (+10.39%/+10.32%). Their owning sources were unchanged and were not
+  tuned out of scope.
+- The Release projection benchmark does not measure SwiftUI layout or frame
+  pacing. The remaining AC9 gate therefore still requires an explicitly
+  authorized real-controller comparison with collapsed, one-expanded, and
+  several-expanded policy groups. No Mica process or controller was used by
+  this correction.
+
 ## Final Planning Gate
 
 - [x] Goal, in-scope/out-of-scope behavior, observable acceptance, risks, and dependencies are explicit.
