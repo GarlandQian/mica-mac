@@ -312,8 +312,8 @@ post-fix authorized runtime AX repeat remains the open acceptance item.
   fixtures/checksums/work units and record every repeated >10% movement.
 - [x] Dispatch an independent `trellis-check`, synchronize the durable Workbench
   contract, and run the complete offline gate.
-- [ ] Commit the accepted correction in a scoped local commit; do not push
-  without a new user request.
+- [x] Commit the accepted correction in scoped local commit `076ec17`; do not
+  push without a new user request.
 - [ ] Obtain the user's light/dark real-controller visual acceptance before
   archiving this task or its `08-23` visual predecessor.
 
