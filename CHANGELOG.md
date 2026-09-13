@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.30.0 - 2026-09-13
+
+### Workbench
+
+- Reworked the native Workbench around live controller data, with dedicated workspace, monitor, and controller destinations.
+- Improved topology readability, proxy navigation, policy-group interaction, and cross-surface state ownership.
+- Hardened live-session publication, controller selection, refresh boundaries, and asynchronous command ownership.
+
+### Verification
+
+- Expanded offline source-contract, controller-boundary, navigation, rendering, and performance coverage.
+- Kept Mica remote-controller-only with no bundled or launched local core.
+
 ## 0.29.0 - 2026-07-10
 
 ### Rebuilt
