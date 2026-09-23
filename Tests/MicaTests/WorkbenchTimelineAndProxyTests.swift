@@ -361,13 +361,13 @@ struct WorkbenchTimelineAndProxyTests {
         )
         #expect(visibleGlobal.map { $0.group.id } == ["Alpha", "Beta", "GLOBAL"])
         #expect(
-            ProxyProjection.filteredGroups(visibleGlobal, query: "node b")
+            ProxyProjection.filteredGroups(visibleGlobal, query: "beta")
                 .map { $0.group.id } == ["Beta"]
         )
         #expect(groups.map(\.id) == ["Alpha", "GLOBAL", "Beta"])
     }
 
-    @Test func globalGroupSearchMatchesMembersAndMetadataWithoutReordering() {
+    @Test func directorySearchMatchesOnlyGroupNameAndTypeWithoutReordering() {
         let firstDetail = ProxyNodeViewState(
             snapshot: ProxySnapshot(
                 name: "Tokyo Edge",
@@ -412,17 +412,18 @@ struct WorkbenchTimelineAndProxyTests {
         )
 
         #expect(
-            ProxyProjection.filteredGroups(arranged, query: "Fallback")
+            ProxyProjection.filteredGroups(arranged, query: "Second")
                 .map { $0.group.id } == ["Second"]
         )
         #expect(
-            ProxyProjection.filteredGroups(arranged, query: "Shared Provider")
-                .map { $0.group.id } == ["First", "Third"]
+            ProxyProjection.filteredGroups(arranged, query: "Selector")
+                .map { $0.group.id } == ["First", "Second", "Third"]
         )
         #expect(
-            ProxyProjection.filteredGroups(arranged, query: "utun7")
-                .map { $0.group.id } == ["First", "Third"]
+            ProxyProjection.filteredGroups(arranged, query: "Shared Provider").isEmpty
         )
+        #expect(ProxyProjection.filteredGroups(arranged, query: "Fallback").isEmpty)
+        #expect(ProxyProjection.filteredGroups(arranged, query: "utun7").isEmpty)
         #expect(arranged.map { $0.group.id } == ["First", "Second", "Third"])
         #expect(groups.map(\.id) == ["First", "Second", "Third"])
     }
@@ -453,15 +454,20 @@ struct WorkbenchTimelineAndProxyTests {
         let projection = ProxyGroupCatalogProjection(
             catalog: catalog,
             visibility: .alwaysShow,
-            query: "sao paulo"
+            query: "first"
         )
 
         #expect(projection.arrangedGroups.map { $0.group.id } == ["First", "Second", "GLOBAL"])
         #expect(projection.visibleGroups.map { $0.group.id } == ["First"])
+        #expect(ProxyGroupCatalogProjection(
+            catalog: catalog,
+            visibility: .alwaysShow,
+            query: "sao paulo"
+        ).visibleGroups.isEmpty)
         #expect(catalog.groups.map(\.id) == ["First", "GLOBAL", "Second"])
     }
 
-    @Test func proxyOpenPathsStayInControllerOrderAndOnlyActiveMembersProject() throws {
+    @Test func proxyActivationPreservesControllerOrderAndOnlyActiveMembersProject() throws {
         let arranged = ProxyProjection.arrangedGroups(
             [
                 Self.group(id: "A", selected: "A-1", options: ["A-1", "A-2"]),
@@ -479,7 +485,7 @@ struct WorkbenchTimelineAndProxyTests {
 
         var workspace = WorkbenchDestinationWorkspace()
         for group in [groupC, groupA, global, groupB] {
-            workspace = ProxyWorkspaceProjection.opening(
+            workspace = ProxyWorkspaceProjection.activating(
                 group.id,
                 in: workspace,
                 groups: arranged,
@@ -488,16 +494,16 @@ struct WorkbenchTimelineAndProxyTests {
         }
 
         #expect(
-            workspace.openGroupIDs
+            arranged.map(\.id)
                 == [groupA.id, groupB.id, groupC.id, global.id]
         )
         #expect(workspace.activeGroupID == groupB.id)
 
-        workspace.groupFilters[groupB.id] = "B-2"
+        workspace.proxyMemberQuery = "B-2"
         let active = ProxyProjection.activeGroup(
             in: arranged,
             groupID: workspace.activeGroupID,
-            query: workspace.groupFilters[groupB.id] ?? ""
+            query: workspace.proxyMemberQuery
         )
 
         #expect(active.occurrence?.group.id == "B")
@@ -506,7 +512,7 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(!active.members.contains { $0.name.hasPrefix("C-") })
     }
 
-    @Test func closingActiveProxyTabPrefersNextThenPrevious() {
+    @Test func removingActiveProxyGroupReturnsToFirstAndClearsLocalState() {
         let arranged = ProxyProjection.arrangedGroups(
             [
                 Self.group(id: "A", selected: "A-1"),
@@ -517,29 +523,23 @@ struct WorkbenchTimelineAndProxyTests {
             visibility: .followMode
         )
         var workspace = WorkbenchDestinationWorkspace()
-        for group in arranged {
-            workspace = ProxyWorkspaceProjection.opening(
-                group.id,
-                in: workspace,
-                groups: arranged,
-                preferredMemberID: ProxyProjection.preferredMemberID(in: group.group)
-            )
-        }
         workspace.activeGroupID = arranged[1].id
+        workspace.proxyMemberQuery = "B-1"
+        workspace.inspectedProxyMemberID = ProxyProjection.preferredMemberID(in: arranged[1].group)
 
-        workspace = ProxyWorkspaceProjection.closing(
-            arranged[1].id,
-            in: workspace,
-            groups: arranged
-        )
-        #expect(workspace.activeGroupID == arranged[2].id)
-
-        workspace = ProxyWorkspaceProjection.closing(
-            arranged[2].id,
-            in: workspace,
-            groups: arranged
+        workspace = ProxyWorkspaceProjection.reconciled(
+            workspace,
+            groups: [arranged[0], arranged[2]]
         )
         #expect(workspace.activeGroupID == arranged[0].id)
+        #expect(workspace.proxyMemberQuery.isEmpty)
+        #expect(workspace.inspectedProxyMemberID == nil)
+
+        workspace = ProxyWorkspaceProjection.reconciled(
+            workspace,
+            groups: []
+        )
+        #expect(workspace.activeGroupID == nil)
     }
 
     @Test func proxyNodeSearchTextIsPrecomputedAndNormalized() {
@@ -766,31 +766,19 @@ struct WorkbenchTimelineAndProxyTests {
         )
 
         var workspace = WorkbenchDestinationWorkspace()
-        workspace.openGroupIDs = ["stale-group", duplicate.id, first.id]
-        workspace.activeGroupID = "stale-group"
-        workspace.groupFilters = [
-            first.id: "asia",
-            duplicate.id: "europe",
-            "stale-group": "stale",
-        ]
-        workspace.selectedGroupMemberIDs = [
-            first.id: firstMember,
-            duplicate.id: "stale-member",
-            "stale-group": "stale-member",
-        ]
+        workspace.activeGroupID = duplicate.id
+        workspace.proxyMemberQuery = "europe"
+        workspace.inspectedProxyMemberID = firstMember
 
         let reconciled = ProxyWorkspaceProjection.reconciled(
             workspace,
             groups: arranged
         )
 
-        #expect(reconciled.openGroupIDs == [first.id, duplicate.id])
-        #expect(reconciled.activeGroupID == first.id)
-        #expect(reconciled.groupFilters[first.id] == "asia")
-        #expect(reconciled.groupFilters[duplicate.id] == "europe")
-        #expect(reconciled.groupFilters["stale-group"] == nil)
-        #expect(reconciled.selectedGroupMemberIDs[first.id] == firstMember)
-        #expect(reconciled.selectedGroupMemberIDs[duplicate.id] == nil)
+        #expect(first.id != duplicate.id)
+        #expect(reconciled.activeGroupID == duplicate.id)
+        #expect(reconciled.proxyMemberQuery == "europe")
+        #expect(reconciled.inspectedProxyMemberID == nil)
     }
 
     @Test func proxyMemberMutationRejectsStaleAndNonSelectableTargets() throws {
@@ -1164,9 +1152,9 @@ struct WorkbenchTimelineAndProxyTests {
         )
         let edge = try #require(layout.edges.first)
 
-        #expect(source.rect.width == 12)
-        #expect(source.rect.height > 0)
-        #expect(source.hitRect.height >= 28)
+        #expect(source.rect.width >= 144)
+        #expect(source.rect.height >= 36)
+        #expect(source.hitRect.contains(source.rect))
         #expect(edge.hitTolerance >= 10)
         #expect(edge.hitRect.height >= max(20, edge.width + 4))
         #expect(

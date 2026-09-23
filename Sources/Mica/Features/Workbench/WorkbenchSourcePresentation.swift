@@ -86,14 +86,7 @@ enum WorkbenchSourceProjection {
             ])
             let compactConfigurationText = WorkbenchDataFormat.joined([
                 typeText,
-                WorkbenchDataFormat.reported(
-                    source.vehicleType,
-                    language: language
-                ),
-                WorkbenchDataFormat.reported(
-                    source.format,
-                    language: language
-                ),
+                configurationDetailText,
             ]) ?? typeText
             let itemCountText = String(source.itemCount)
             let updatableText = MicaStrings.localizedKey(

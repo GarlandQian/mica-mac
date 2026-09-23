@@ -82,16 +82,12 @@ struct WorkbenchPolicyGroupsView: View {
 
     @Binding var searchText: String
 
-    @State private var projectionCache = ProxyCatalogProjectionCache()
-    @State private var groupProjection = ProxyGroupCatalogProjection.empty
-    @State private var expandedProjections: [String: ProxyActiveGroupProjection] = [:]
-    @State private var accessibilityIndex = ProxyAccessibilityIndex.empty
-    @State private var acceptedCatalog = PolicyGroupCatalogSnapshot.empty
-    @State private var acceptedCatalogRevision = ProxyCatalogRevision.zero
-    @State private var catalogRevisionSequence: UInt64 = 0
+    @State private var model = ProxyWorkspaceModel()
     @State private var presentationCoordinator = ProxyCatalogPresentationCoordinator()
     @State private var scrollInteractionTracker = ProxyScrollInteractionTracker()
     @State private var healthFilter: ProxyHealthFilter = .all
+    @State private var hoveredMemberID: String?
+    @State private var previewMemberID: String?
     @State private var reveal: WorkbenchProxyNavigationReveal?
     @State private var lastScrolledRevealToken: UUID?
     @State private var pendingNavigation: WorkbenchProxyNavigationSelection?
@@ -117,33 +113,32 @@ struct WorkbenchPolicyGroupsView: View {
             )
         }
         .onAppear {
+            synchronizePresentation()
             consumePendingProxyNavigation()
         }
         .onDisappear {
             presentationCoordinator.reset()
+            hoveredMemberID = nil
+            previewMemberID = nil
         }
-        .onChange(of: preferences.globalGroupVisibility) { _, _ in
-            rebuildCatalogIndex()
-            resolveReveal()
+        .onChange(of: model.activeGroup?.id) { _, _ in
+            hoveredMemberID = nil
+            previewMemberID = nil
         }
-        .onChange(of: searchText) { _, _ in
-            rebuildVisibleGroupProjection()
-            resolveReveal()
+        .task(id: hoverRequest) {
+            previewMemberID = nil
+            let request = hoverRequest
+            guard let candidate = request.previewCandidateID else { return }
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled, request == hoverRequest else { return }
+            previewMemberID = candidate
         }
-        .onChange(of: workspace.openGroupIDs) { _, _ in
-            rebuildExpandedGroupIndexes()
-            resolveReveal()
-        }
-        .onChange(of: workspace.groupFilters) { _, _ in
-            rebuildExpandedProjections()
+        .onChange(of: presentationInput) { _, _ in
+            synchronizePresentation()
             resolveReveal()
         }
         .onChange(of: workspace.pendingProxySelection) { _, _ in
             consumePendingProxyNavigation()
-        }
-        .onChange(of: healthFilter) { _, _ in
-            rebuildExpandedProjections()
-            resolveReveal()
         }
         .onChange(of: proxyOperationActivity) { oldActivity, newActivity in
             guard oldActivity != newActivity,
@@ -163,11 +158,10 @@ struct WorkbenchPolicyGroupsView: View {
             WorkbenchCommandSummary(
                 symbolName: "point.3.connected.trianglepath.dotted",
                 titleKey: "routing.group_catalog",
-                value: groupProjection.visibleGroups.count.formatted(),
+                value: model.groupProjection.visibleGroups.count.formatted(),
                 detail: groupVisibilitySummary
             )
         } controls: {
-            healthFilterPicker
             WorkbenchStatusBadge(
                 text: modeBadgeText,
                 tint: MicaTheme.textSecondary
@@ -184,229 +178,332 @@ struct WorkbenchPolicyGroupsView: View {
 
     @ViewBuilder
     private var content: some View {
-        let commandScope = LiveCommandScope(
-            controllerID: appModel.selectedRouterID,
-            generation: appModel.controllerSessionPresentation.generation
-        )
         VStack(spacing: 0) {
             if let revealObstruction {
                 WorkbenchProxyRevealObstructionNotice(
                     obstruction: revealObstruction,
-                    nodeName: reveal?.nodeName
-                        ?? pendingNavigation?.nodeName
-                        ?? "",
+                    nodeName: reveal?.nodeName ?? pendingNavigation?.nodeName ?? "",
                     recoverAndLocate: recoverRevealObstruction
                 )
             }
-
-            if let unresolvedReason,
-               let pendingNavigation {
+            if let unresolvedReason, let pendingNavigation {
                 WorkbenchProxyUnresolvedNotice(
                     nodeName: pendingNavigation.nodeName,
                     reason: unresolvedReason
                 )
             }
-
-            if shouldShowNoMatchingGroups {
-                noMatchingGroupsState
-            } else if groupProjection.arrangedGroups.isEmpty {
+            if model.groupProjection.arrangedGroups.isEmpty {
                 emptyState
-            } else if groupProjection.visibleGroups.isEmpty {
-                noMatchingGroupsState
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(
-                                    .adaptive(minimum: 340, maximum: 460),
-                                    spacing: MicaTheme.Spacing.space2,
-                                    alignment: .top
-                                ),
-                            ],
-                            alignment: .leading,
-                            spacing: MicaTheme.Spacing.space2
-                        ) {
-                            ForEach(groupPresentations) { presentation in
-                                Section {
-                                    if presentation.isExpanded {
-                                        ForEach(presentation.members) { member in
-                                            ProxyPolicyNodeTile(
-                                                member: member,
-                                                scrollInteractionTracker: scrollInteractionTracker,
-                                                isInspected: presentation.inspectedMemberID
-                                                    == member.id,
-                                                isHighlighted: reveal?.groupID
-                                                    == presentation.id
-                                                    && reveal?.memberID == member.id,
-                                                commandsEnabled: liveCommandsAvailable,
-                                                canSelect: canSelectMember
-                                                    && presentation.occurrence.group.selectable,
-                                                canTest: canTestNode,
-                                                isSwitching: presentation.isSwitching,
-                                                isMeasuring: appModel.measuringDelayNode?.groupID
-                                                    == presentation.occurrence.group.id
-                                                    && appModel.measuringDelayNode?.nodeName
-                                                        == member.name,
-                                                onSelect: {
-                                                    guard let commandScope else { return }
-                                                    selectMember(
-                                                        member.id,
-                                                        in: presentation.id,
-                                                        scope: commandScope
-                                                    )
-                                                },
-                                                onTest: {
-                                                    guard let commandScope else { return }
-                                                    testMember(
-                                                        member.id,
-                                                        in: presentation.id,
-                                                        scope: commandScope
-                                                    )
-                                                }
-                                            )
-                                            .id(
-                                                ProxyProjection.revealTargetID(
-                                                    groupID: presentation.id,
-                                                    memberID: member.id
-                                                )
-                                            )
-                                        }
-                                    }
-                                } header: {
-                                    ProxyPolicyGroupSectionHeader(
-                                        presentation: presentation,
-                                        commandsEnabled: liveCommandsAvailable,
-                                        canTestGroup: canTestGroup,
-                                        onToggle: {
-                                            guard let commandScope else { return }
-                                            toggleAccessibilityGroup(
-                                                presentation.id,
-                                                scope: commandScope
-                                            )
-                                        },
-                                        onFilterChange: {
-                                            guard let commandScope,
-                                                  appModel.matchesCurrentCommandScope(
-                                                      commandScope
-                                                  ) else { return }
-                                            setGroupFilter($0, for: presentation.id)
-                                        },
-                                        onTestGroup: {
-                                            guard let commandScope else { return }
-                                            testGroup(
-                                                presentation.id,
-                                                scope: commandScope
-                                            )
-                                        },
-                                        onClearFixed: {
-                                            guard let commandScope else { return }
-                                            clearFixedSelection(
-                                                in: presentation.id,
-                                                scope: commandScope
-                                            )
-                                        },
-                                        onLocateCurrent: {
-                                            guard let commandScope else { return }
-                                            locateAccessibilityCurrentNode(
-                                                in: presentation.id,
-                                                scope: commandScope
-                                            )
-                                        }
-                                    )
-                                    .id(
-                                        WorkbenchProxyScrollTarget.group(
-                                            presentation.id
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                        .padding(MicaTheme.Spacing.space4)
-                        .frame(maxWidth: 1_320, alignment: .topLeading)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    }
-                    .scrollIndicators(.automatic)
-                    .background(MicaTheme.canvas)
-                    .accessibilityRepresentation {
-                        ProxyBoundedAccessibilityCatalog(
-                            index: accessibilityIndex,
-                            controllerID: appModel.selectedRouterID,
-                            generation: appModel.controllerSessionPresentation.generation,
-                            selectedElementID: accessibilitySelectedElementID,
-                            activeGroupID: workspace.activeGroupID,
-                            inspectedMemberIDs: workspace.selectedGroupMemberIDs,
-                            commandsEnabled: liveCommandsAvailable,
-                            canSelectMember: canSelectMember,
-                            canTestGroup: canTestGroup,
-                            canTestNode: canTestNode,
-                            canClearFixedSelection: appModel.supportsUnifiedAction(
-                                .clearFixedSelection
-                            ),
-                            activity: proxyOperationActivity,
-                            onToggleGroup: { groupID, scope in
-                                toggleAccessibilityGroup(groupID, scope: scope)
-                            },
-                            onLocateCurrent: { groupID, scope in
-                                locateAccessibilityCurrentNode(in: groupID, scope: scope)
-                            },
-                            onTestGroup: { groupID, scope in
-                                testGroup(groupID, scope: scope)
-                            },
-                            onClearFixed: { groupID, scope in
-                                clearFixedSelection(in: groupID, scope: scope)
-                            },
-                            onSelectMember: { groupID, memberID, scope in
-                                selectMember(memberID, in: groupID, scope: scope)
-                            },
-                            onTestMember: { groupID, memberID, scope in
-                                testMember(memberID, in: groupID, scope: scope)
-                            }
-                        )
-                    }
-                    .proxyScrollInteraction(
-                        in: .nodes,
-                        coordinator: presentationCoordinator,
-                        tracker: scrollInteractionTracker
-                    )
-                    .task(id: reveal) {
-                        guard let reveal else { return }
-                        await Task.yield()
-                        guard !Task.isCancelled,
-                              self.reveal?.token == reveal.token,
-                              reveal.isCurrent(
-                                  controllerID: appModel.selectedRouterID,
-                                  generation: appModel
-                                      .controllerSessionPresentation.generation
-                              ) else {
-                            return
-                        }
-                        if lastScrolledRevealToken != reveal.token {
-                            proxy.scrollTo(
-                                WorkbenchProxyScrollTarget.group(reveal.groupID),
-                                anchor: .center
-                            )
-                            try? await Task.sleep(for: .milliseconds(16))
-                            guard !Task.isCancelled,
-                                  self.reveal?.token == reveal.token,
-                                  reveal.isCurrent(
-                                      controllerID: appModel.selectedRouterID,
-                                      generation: appModel
-                                          .controllerSessionPresentation.generation
-                                  ) else {
-                                return
-                            }
-                            proxy.scrollTo(reveal.targetID, anchor: .center)
-                            lastScrolledRevealToken = reveal.token
-                        }
-                        try? await Task.sleep(for: .milliseconds(900))
-                        guard !Task.isCancelled,
-                              self.reveal?.token == reveal.token else { return }
-                        self.reveal = nil
+                HStack(spacing: 0) {
+                    groupDirectory
+                        .frame(width: 200)
+                    Rectangle().fill(MicaTheme.separator).frame(width: 1)
+                    if let presentation = model.activeGroup {
+                        activeGroupWorkspace(presentation)
+                            .id(presentation.id)
+                    } else {
+                        noMatchingGroupsState
                     }
                 }
             }
         }
+    }
+
+    private var groupDirectory: some View {
+        let scope = currentCommandScope
+        return VStack(spacing: 0) {
+            TextField(
+                MicaStrings.localizedKey("routing.search_groups", language: language),
+                text: $searchText
+            )
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel(MicaStrings.localizedKey("routing.search_groups", language: language))
+            .padding(MicaTheme.Spacing.space2)
+            if model.groupProjection.visibleDirectoryItems.isEmpty {
+                noMatchingGroupsState
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(model.groupProjection.visibleDirectoryItems) { item in
+                                ProxyPolicyGroupDirectoryRow(
+                                    item: item,
+                                    isActive: workspace.activeGroupID == item.id
+                                ) {
+                                    guard let scope else { return }
+                                    activateAccessibilityGroup(item.id, scope: scope)
+                                }
+                                .id(item.id)
+                            }
+                        }
+                        .padding(.vertical, MicaTheme.Spacing.space1)
+                    }
+                    .accessibilityRepresentation {
+                        accessibilityCatalog(index: model.directoryAccessibilityIndex)
+                    }
+                    .onChange(of: workspace.activeGroupID) { _, groupID in
+                        if let groupID { proxy.scrollTo(groupID, anchor: .center) }
+                    }
+                }
+            }
+        }
+        .background(MicaTheme.surface)
+    }
+
+    private func activeGroupWorkspace(_ presentation: ProxyActiveGroupPresentation) -> some View {
+        let scope = currentCommandScope
+        return VStack(spacing: 0) {
+            ProxyPolicyActiveGroupHeader(
+                presentation: presentation,
+                commandsEnabled: liveCommandsAvailable,
+                canTestGroup: canTestGroup,
+                onTestGroup: {
+                    guard let scope else { return }
+                    testGroup(presentation.id, scope: scope)
+                },
+                onClearFixed: {
+                    guard let scope else { return }
+                    clearFixedSelection(in: presentation.id, scope: scope)
+                },
+                onLocateCurrent: {
+                    guard let scope else { return }
+                    locateAccessibilityCurrentNode(in: presentation.id, scope: scope)
+                }
+            )
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                TextField(
+                    MicaStrings.localizedKey("routing.search_active_nodes", language: language),
+                    text: Binding(
+                        get: { workspace.proxyMemberQuery },
+                        set: {
+                            guard let scope, appModel.matchesCurrentCommandScope(scope) else { return }
+                            setGroupFilter($0, for: presentation.id)
+                        }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(MicaStrings.localizedKey("routing.search_active_nodes", language: language))
+                healthFilterPicker
+            }
+            .padding(.horizontal, MicaTheme.Spacing.space3)
+            .padding(.bottom, MicaTheme.Spacing.space2)
+            HStack {
+                Text(MicaStrings.localizedKey("routing.source_order", language: language))
+                Spacer()
+                Text(MicaStrings.localized(
+                    "routing.member_window \(presentation.members.count) \(presentation.item.memberCount)",
+                    language: language
+                ))
+            }
+            .micaThemeFont(.caption)
+            .foregroundStyle(MicaTheme.textTertiary)
+            .padding(.horizontal, MicaTheme.Spacing.space3)
+            .padding(.bottom, MicaTheme.Spacing.space2)
+            MicaHairlineSeparator()
+            nodeList(presentation)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func nodeList(_ presentation: ProxyActiveGroupPresentation) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 1) {
+                    if presentation.members.isEmpty {
+                        WorkbenchStateView(
+                            kind: .filterEmpty,
+                            titleKey: presentation.filter.proxyNonBlank == nil
+                                && healthFilter == .all
+                                ? "routing.members_empty" : "routing.members_filtered_empty"
+                        )
+                    }
+                    ForEach(presentation.members) { member in
+                        VStack(spacing: 0) {
+                            nodeRow(member, in: presentation)
+                                .anchorPreference(
+                                    key: ProxyNodePreviewAnchorKey.self,
+                                    value: .bounds
+                                ) {
+                                    hoveredMemberID == member.id ? [member.id: $0] : [:]
+                                }
+                            if presentation.inspectedMemberID == member.id {
+                                inlineDetails(member, in: presentation)
+                            }
+                        }
+                        .id(ProxyProjection.revealTargetID(
+                            groupID: presentation.id, memberID: member.id
+                        ))
+                    }
+                }
+                .padding(MicaTheme.Spacing.space2)
+            }
+            .background(MicaTheme.canvas)
+            .accessibilityRepresentation {
+                VStack(spacing: 0) {
+                    accessibilityCatalog(index: model.accessibilityIndex)
+                    if let selectedID = presentation.inspectedMemberID,
+                       let member = presentation.members.first(where: { $0.id == selectedID }) {
+                        inlineDetails(member, in: presentation)
+                    }
+                }
+            }
+            .proxyScrollInteraction(
+                in: .nodes,
+                coordinator: presentationCoordinator,
+                tracker: scrollInteractionTracker
+            )
+            .onScrollPhaseChange { _, phase in
+                if phase != .idle {
+                    previewMemberID = nil
+                }
+            }
+            .overlayPreferenceValue(ProxyNodePreviewAnchorKey.self) { anchors in
+                GeometryReader { geometry in
+                    if !scrollInteractionTracker.isScrolling,
+                       let previewMemberID,
+                       previewMemberID != presentation.inspectedMemberID,
+                       let anchor = anchors[previewMemberID],
+                       let member = presentation.members.first(where: { $0.id == previewMemberID }) {
+                        let snapshot = ProxyNodeInspectionProjection.snapshot(
+                            member: member, in: presentation.occurrence, language: language
+                        )
+                        if let layout = ProxyNodePreviewLayout.resolve(
+                            viewport: geometry.size,
+                            anchor: geometry[anchor],
+                            fieldCount: snapshot.fields.count
+                        ) {
+                            ProxyNodeHoverPreview(snapshot: snapshot, size: layout.frame.size)
+                                .offset(x: layout.frame.minX, y: layout.frame.minY)
+                        }
+                    }
+                }
+                .clipped()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+            .task(id: reveal) {
+                guard let reveal else { return }
+                await Task.yield()
+                guard !Task.isCancelled,
+                      self.reveal?.token == reveal.token,
+                      reveal.groupID == presentation.id,
+                      reveal.isCurrent(
+                        controllerID: appModel.selectedRouterID,
+                        generation: appModel.controllerSessionPresentation.generation
+                      ) else { return }
+                if lastScrolledRevealToken != reveal.token {
+                    proxy.scrollTo(reveal.targetID, anchor: .center)
+                    lastScrolledRevealToken = reveal.token
+                }
+                try? await Task.sleep(for: .milliseconds(900))
+                guard !Task.isCancelled, self.reveal?.token == reveal.token else { return }
+                self.reveal = nil
+            }
+        }
+    }
+
+    private func nodeRow(
+        _ member: ProxyNodeRowProjection,
+        in presentation: ProxyActiveGroupPresentation
+    ) -> some View {
+        let scope = currentCommandScope
+        return ProxyPolicyNodeTile(
+            member: member,
+            scrollInteractionTracker: scrollInteractionTracker,
+            isInspected: presentation.inspectedMemberID == member.id,
+            isHighlighted: reveal?.groupID == presentation.id && reveal?.memberID == member.id,
+            commandsEnabled: liveCommandsAvailable,
+            canSelect: canSelectMember && presentation.occurrence.group.selectable,
+            canTest: canTestNode,
+            isSwitching: presentation.isSwitching,
+            isMeasuring: proxyOperationActivity.isMeasuring(
+                groupID: presentation.occurrence.group.id, nodeName: member.name
+            ),
+            onSelect: {
+                guard let scope else { return }
+                selectMember(member.id, in: presentation.id, scope: scope)
+            },
+            onInspect: {
+                guard let scope else { return }
+                _ = inspectMember(member.id, in: presentation.id, scope: scope)
+            },
+            onTest: {
+                guard let scope else { return }
+                testMember(member.id, in: presentation.id, scope: scope)
+            },
+            onHoverChanged: { isHovered in
+                if isHovered { hoveredMemberID = member.id }
+                else if hoveredMemberID == member.id { hoveredMemberID = nil }
+            }
+        )
+    }
+
+    private func inlineDetails(
+        _ member: ProxyNodeRowProjection,
+        in presentation: ProxyActiveGroupPresentation
+    ) -> some View {
+        ProxyInlineNodeDetails(snapshot: ProxyNodeInspectionProjection.snapshot(
+            member: member, in: presentation.occurrence, language: language
+        ))
+        .id(ProxyNodeDetailIdentity(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation,
+            groupID: presentation.id,
+            memberID: member.id
+        ))
+    }
+
+    private var hoverRequest: ProxyNodeHoverRequest {
+        ProxyNodeHoverRequest(
+            memberID: hoveredMemberID,
+            isScrolling: scrollInteractionTracker.isScrolling,
+            inspectedMemberID: workspace.inspectedProxyMemberID
+        )
+    }
+
+    private var currentCommandScope: LiveCommandScope? {
+        LiveCommandScope(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+    }
+
+    private func accessibilityCatalog(index: ProxyAccessibilityIndex) -> some View {
+        ProxyBoundedAccessibilityCatalog(
+            index: index,
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation,
+            selectedElementID: index.selectedElementID(
+                activeGroupID: workspace.activeGroupID,
+                selectedMemberID: workspace.inspectedProxyMemberID
+            ),
+            activeGroupID: workspace.activeGroupID,
+            inspectedMemberID: workspace.inspectedProxyMemberID,
+            commandsEnabled: liveCommandsAvailable,
+            canSelectMember: canSelectMember,
+            canTestGroup: canTestGroup,
+            canTestNode: canTestNode,
+            canClearFixedSelection: appModel.supportsUnifiedAction(.clearFixedSelection),
+            activity: proxyOperationActivity,
+            onActivateGroup: { groupID, scope in
+                activateAccessibilityGroup(groupID, scope: scope)
+            },
+            onLocateCurrent: { groupID, scope in
+                locateAccessibilityCurrentNode(in: groupID, scope: scope)
+            },
+            onTestGroup: { groupID, scope in testGroup(groupID, scope: scope) },
+            onClearFixed: { groupID, scope in clearFixedSelection(in: groupID, scope: scope) },
+            onSelectMember: { groupID, memberID, scope in
+                selectMember(memberID, in: groupID, scope: scope)
+            },
+            onInspectMember: { groupID, memberID, scope in
+                _ = inspectMember(memberID, in: groupID, scope: scope)
+            },
+            onTestMember: { groupID, memberID, scope in
+                testMember(memberID, in: groupID, scope: scope)
+            }
+        )
     }
 
     private var noMatchingGroupsState: some View {
@@ -415,12 +512,6 @@ struct WorkbenchPolicyGroupsView: View {
             titleKey: "dashboard.no_matching_groups",
             detailKey: "dashboard.no_matching_groups_hint"
         )
-    }
-
-    private var shouldShowNoMatchingGroups: Bool {
-        !groupProjection.arrangedGroups.isEmpty
-            && !ProxySearchText.normalize(searchText).isEmpty
-            && groupProjection.visibleGroups.isEmpty
     }
 
     private var emptyState: some View {
@@ -458,7 +549,7 @@ struct WorkbenchPolicyGroupsView: View {
             )
         }
 
-        if !acceptedCatalog.groups.isEmpty {
+        if !model.catalog.groups.isEmpty {
             return WorkbenchStateView(
                 kind: .filterEmpty,
                 titleKey: "routing.groups_hidden_by_preference",
@@ -505,7 +596,8 @@ struct WorkbenchPolicyGroupsView: View {
                     .tag(filter)
             }
         }
-        .pickerStyle(.segmented)
+        .pickerStyle(.menu)
+        .fixedSize()
         .labelsHidden()
         .accessibilityLabel(
             MicaStrings.localizedKey(
@@ -523,47 +615,39 @@ struct WorkbenchPolicyGroupsView: View {
         )
     }
 
-    private var accessibilitySelectedElementID: String? {
-        let currentWorkspace = workspace
-        guard let activeGroupID = currentWorkspace.activeGroupID else {
-            return nil
-        }
-        return accessibilityIndex.selectedElementID(
-            activeGroupID: activeGroupID,
-            selectedMemberID: currentWorkspace.selectedGroupMemberIDs[activeGroupID]
+    private var presentationInput: ProxyWorkspacePresentationInput {
+        ProxyWorkspacePresentationInput(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation,
+            workspace: workspace,
+            query: searchText,
+            visibility: preferences.globalGroupVisibility,
+            healthFilter: healthFilter,
+            activity: proxyOperationActivity,
+            canClearFixedSelection: appModel.supportsUnifiedAction(.clearFixedSelection)
         )
     }
 
-    private var groupPresentations: [ProxyExpandedGroupPresentation] {
-        let itemsByID = Dictionary(
-            uniqueKeysWithValues: groupProjection.directoryItems.map {
-                ($0.id, $0)
-            }
+    private func synchronizePresentation(
+        _ input: ProxyWorkspacePresentationInput? = nil
+    ) {
+        let input = input ?? presentationInput
+        persistReconciledWorkspace(
+            model.updatePresentation(input),
+            replacing: input.workspace
         )
-        let openGroupIDs = Set(workspace.openGroupIDs)
+    }
 
-        return groupProjection.visibleGroups.compactMap { occurrence in
-            guard let item = itemsByID[occurrence.id] else { return nil }
-            let index = projectionCache.expandedGroupIndex(for: occurrence.id)
-            let inspectedMemberID = workspace.selectedGroupMemberIDs[occurrence.id]
-            return ProxyExpandedGroupPresentation(
-                occurrence: occurrence,
-                item: item,
-                isExpanded: openGroupIDs.contains(occurrence.id),
-                members: expandedProjections[occurrence.id]?.members ?? [],
-                filter: workspace.groupFilters[occurrence.id] ?? "",
-                inspectedMemberID: inspectedMemberID,
-                inspectedMember: inspectedMemberID.flatMap {
-                    index.recordsByID[$0]?.row
-                },
-                healthSummary: item.healthSummary,
-                healthFilter: healthFilter,
-                isSwitching: isSwitchingGroup(occurrence.group.id),
-                isTesting: isTestingGroup(occurrence.group.id),
-                isClearingFixed: appModel.clearingFixedGroupID
-                    == occurrence.group.id,
-                canClearFixed: canClearFixed(occurrence)
-            )
+    private func persistReconciledWorkspace(
+        _ next: WorkbenchDestinationWorkspace,
+        replacing previous: WorkbenchDestinationWorkspace
+    ) {
+        guard next != previous else { return }
+        workspaceStore.update(
+            controllerID: appModel.selectedRouterID,
+            destination: .proxies
+        ) { stored in
+            stored = next
         }
     }
 
@@ -576,17 +660,16 @@ struct WorkbenchPolicyGroupsView: View {
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         ) else { return }
-        catalogRevisionSequence &+= 1
         let update = ProxyCatalogUpdate(
             revision: ProxyCatalogRevision(
                 controllerID: request.controllerID,
                 generation: request.generation,
-                value: catalogRevisionSequence
+                value: request.revision
             ),
             catalog: catalog
         )
         let priority = ProxyCatalogUpdateClassifier.priority(
-            previous: acceptedCatalog,
+            previous: model.catalog,
             next: catalog
         )
         let now = Date()
@@ -622,12 +705,9 @@ struct WorkbenchPolicyGroupsView: View {
             coordinator: presentationCoordinator
         )
         presentationCoordinator.reset()
-        acceptedCatalog = .empty
-        acceptedCatalogRevision = .zero
-        projectionCache = ProxyCatalogProjectionCache()
-        groupProjection = .empty
-        expandedProjections = [:]
-        accessibilityIndex = .empty
+        model.reset()
+        hoveredMemberID = nil
+        previewMemberID = nil
         reveal = retainedReveal
         lastScrolledRevealToken = retainedScrolledToken
         pendingNavigation = retainedPendingNavigation
@@ -642,147 +722,52 @@ struct WorkbenchPolicyGroupsView: View {
         if supersedingDeferredUpdates {
             presentationCoordinator.clearPendingUpdate()
         }
-        guard update.revision.isCurrent(
+        let input = presentationInput
+        guard let reconciled = model.accept(
+            update,
             selectedControllerID: appModel.selectedRouterID,
             sessionControllerID: appModel.controllerSessionPresentation.controllerID,
-            generation: appModel.controllerSessionPresentation.generation
+            generation: appModel.controllerSessionPresentation.generation,
+            input: input
         ) else {
             return
         }
-        acceptedCatalog = update.catalog
-        acceptedCatalogRevision = update.revision
-        rebuildCatalogIndex()
+        persistReconciledWorkspace(reconciled, replacing: input.workspace)
         consumePendingProxyNavigation()
         resolveReveal()
     }
 
-    private func rebuildCatalogIndex() {
-        projectionCache.updateCatalog(
-            acceptedCatalog,
-            revision: acceptedCatalogRevision,
-            visibility: preferences.globalGroupVisibility
-        )
-        rebuildVisibleGroupProjection()
-        let reconciled = reconcileWorkspace()
-        rebuildExpandedGroupIndexes(using: reconciled)
-    }
-
-    private func rebuildVisibleGroupProjection() {
-        groupProjection = projectionCache.groupProjection(query: searchText)
-        rebuildAccessibilityIndex()
-    }
-
-    @discardableResult
-    private func reconcileWorkspace() -> WorkbenchDestinationWorkspace {
-        let current = workspace
-        let next = ProxyWorkspaceProjection.reconciled(
-            current,
-            groups: groupProjection.arrangedGroups
-        )
-        guard next != current else { return current }
-
-        workspaceStore.update(
-            controllerID: appModel.selectedRouterID,
-            destination: .proxies
-        ) { stored in
-            stored = next
-        }
-        return next
-    }
-
-    private func rebuildExpandedGroupIndexes(
-        using currentWorkspace: WorkbenchDestinationWorkspace? = nil
-    ) {
-        let currentWorkspace = currentWorkspace ?? workspace
-        projectionCache.updateExpandedGroups(
-            groupIDs: currentWorkspace.openGroupIDs
-        )
-        rebuildExpandedProjections(using: currentWorkspace)
-    }
-
-    private func rebuildExpandedProjections(
-        using currentWorkspace: WorkbenchDestinationWorkspace? = nil
-    ) {
-        let currentWorkspace = currentWorkspace ?? workspace
-        expandedProjections = Dictionary(
-            uniqueKeysWithValues: currentWorkspace.openGroupIDs.compactMap {
-                groupID in
-                let index = projectionCache.expandedGroupIndex(for: groupID)
-                guard index.occurrence != nil else { return nil }
-                return (
-                    groupID,
-                    ProxyActiveGroupProjection(
-                        index: index,
-                        query: currentWorkspace.groupFilters[groupID] ?? "",
-                        healthFilter: healthFilter
-                    )
-                )
-            }
-        )
-        rebuildAccessibilityIndex(using: currentWorkspace)
-    }
-
-    private func rebuildAccessibilityIndex(
-        using currentWorkspace: WorkbenchDestinationWorkspace? = nil
-    ) {
-        let currentWorkspace = currentWorkspace ?? workspace
-        accessibilityIndex = ProxyAccessibilityIndex(
-            groups: groupProjection.visibleGroups,
-            directoryItems: groupProjection.visibleDirectoryItems,
-            openGroupIDs: currentWorkspace.openGroupIDs,
-            expandedGroups: expandedProjections
-        )
-    }
-
-    private func openGroup(_ groupID: String) {
+    private func activateGroup(_ groupID: String) {
         guard hasCurrentCatalogProjection,
-              groupProjection.arrangedGroups.contains(where: {
-            $0.id == groupID
-        }) else { return }
-
+              model.groupProjection.arrangedGroups.contains(where: { $0.id == groupID })
+        else { return }
         beginTransientPresentationInteraction()
+        hoveredMemberID = nil
+        previewMemberID = nil
         workspaceStore.update(
             controllerID: appModel.selectedRouterID,
             destination: .proxies
         ) { stored in
-            stored = ProxyWorkspaceProjection.opening(
+            stored = ProxyWorkspaceProjection.activating(
                 groupID,
                 in: stored,
-                groups: groupProjection.arrangedGroups,
-                preferredMemberID: nil
+                groups: model.groupProjection.arrangedGroups
             )
         }
+        synchronizePresentation()
     }
 
-    private func toggleGroup(_ groupID: String) {
-        if workspace.openGroupIDs.contains(groupID) {
-            closeGroup(groupID)
-        } else {
-            openGroup(groupID)
-        }
-    }
-
-    private func toggleAccessibilityGroup(
-        _ groupID: String,
-        scope: LiveCommandScope
-    ) {
+    private func activateAccessibilityGroup(_ groupID: String, scope: LiveCommandScope) {
         guard appModel.matchesCurrentCommandScope(scope) else { return }
-        toggleGroup(groupID)
+        dismissPendingReveal()
+        activateGroup(groupID)
     }
 
-    private func closeGroup(_ groupID: String) {
-        guard hasCurrentCatalogProjection else { return }
-        beginTransientPresentationInteraction()
-        workspaceStore.update(
-            controllerID: appModel.selectedRouterID,
-            destination: .proxies
-        ) { stored in
-            stored = ProxyWorkspaceProjection.closing(
-                groupID,
-                in: stored,
-                groups: groupProjection.arrangedGroups
-            )
-        }
+    private func dismissPendingReveal() {
+        pendingNavigation = nil
+        reveal = nil
+        revealObstruction = nil
+        unresolvedReason = nil
     }
 
     private func setGroupFilter(_ value: String, for groupID: String) {
@@ -791,7 +776,7 @@ struct WorkbenchPolicyGroupsView: View {
             controllerID: appModel.selectedRouterID,
             destination: .proxies
         ) { stored in
-            stored.groupFilters[groupID] = value
+            stored.proxyMemberQuery = value
         }
     }
 
@@ -800,26 +785,9 @@ struct WorkbenchPolicyGroupsView: View {
         in groupID: String,
         scope: LiveCommandScope
     ) {
-        let index = projectionCache.expandedGroupIndex(for: groupID)
         guard appModel.matchesCurrentCommandScope(scope),
-              hasCurrentGroupProjection(groupID),
-              let occurrence = index.occurrence,
-              let member = index.recordsByID[memberID]?.row else { return }
-
-        workspaceStore.update(
-            controllerID: appModel.selectedRouterID,
-            destination: .proxies
-        ) { stored in
-            stored.activeGroupID = groupID
-            stored.selectedGroupMemberIDs[groupID] = memberID
-        }
-        workspaceStore.selectInspector(
-            .proxyNode(
-                groupName: occurrence.group.id,
-                groupOccurrenceID: occurrence.id,
-                nodeName: member.name
-            )
-        )
+              hasCurrentGroupProjection(groupID) else { return }
+        let index = model.activeGroupIndex(for: groupID)
 
         guard let target = ProxyProjection.currentMemberMutationTarget(
             groupID: groupID,
@@ -834,11 +802,37 @@ struct WorkbenchPolicyGroupsView: View {
             requiresSelectableGroup: true
         ) else { return }
 
-        guard occurrence.group.selected != target.memberName else {
+        guard index.occurrence?.group.selected != target.memberName else {
             return
         }
         prioritizeUserOperationResult()
         select(target.memberName, in: target.groupID, scope: scope)
+    }
+
+    /// Toggles the exact member's inline detail without selecting a remote node.
+    /// Default tile/VoiceOver activation remains usable for read-only groups.
+    @discardableResult
+    private func inspectMember(
+        _ memberID: String,
+        in groupID: String,
+        scope: LiveCommandScope
+    ) -> ProxyGroupOccurrence? {
+        let index = model.activeGroupIndex(for: groupID)
+        guard appModel.matchesCurrentCommandScope(scope),
+              hasCurrentGroupProjection(groupID),
+              let occurrence = index.occurrence,
+              index.recordsByID[memberID]?.row != nil else { return nil }
+
+        dismissPendingReveal()
+        workspaceStore.update(
+            controllerID: appModel.selectedRouterID,
+            destination: .proxies
+        ) { stored in
+            stored.activeGroupID = groupID
+            stored.inspectedProxyMemberID = stored.inspectedProxyMemberID == memberID ? nil : memberID
+        }
+        previewMemberID = nil
+        return occurrence
     }
 
     private func testMember(
@@ -852,7 +846,7 @@ struct WorkbenchPolicyGroupsView: View {
               let target = ProxyProjection.currentMemberMutationTarget(
                 groupID: groupID,
                 memberID: memberID,
-                index: projectionCache.expandedGroupIndex(for: groupID),
+                index: model.activeGroupIndex(for: groupID),
                 selectedControllerID: appModel.selectedRouterID,
                 sessionControllerID: appModel.controllerSessionPresentation.controllerID,
                 generation: appModel.controllerSessionPresentation.generation,
@@ -869,15 +863,10 @@ struct WorkbenchPolicyGroupsView: View {
     }
 
     private func testGroup(_ groupID: String, scope: LiveCommandScope) {
-        let index = projectionCache.expandedGroupIndex(for: groupID)
         guard appModel.matchesCurrentCommandScope(scope),
-              hasCurrentGroupProjection(groupID),
-              let occurrence = index.occurrence,
-              groupProjection.arrangedGroups.contains(where: {
-                $0.key == occurrence.key
-              }),
               liveCommandsAvailable,
-              canTestGroup else { return }
+              canTestGroup,
+              let occurrence = model.groupOccurrence(for: groupID, scope: scope) else { return }
         prioritizeUserOperationResult()
         performGroupTest(occurrence.group.id, scope: scope)
     }
@@ -886,11 +875,9 @@ struct WorkbenchPolicyGroupsView: View {
         in groupID: String,
         scope: LiveCommandScope
     ) {
-        let index = projectionCache.expandedGroupIndex(for: groupID)
         guard appModel.matchesCurrentCommandScope(scope),
-              hasCurrentGroupProjection(groupID),
-              let occurrence = index.occurrence,
               liveCommandsAvailable,
+              let occurrence = model.groupOccurrence(for: groupID, scope: scope),
               canClearFixed(occurrence) else { return }
         prioritizeUserOperationResult()
         appModel.clearFixedSelection(
@@ -955,7 +942,7 @@ struct WorkbenchPolicyGroupsView: View {
     }
 
     private var hasCurrentCatalogProjection: Bool {
-        projectionCache.groupIndex.revision.isCurrent(
+        model.revision.isCurrent(
             selectedControllerID: appModel.selectedRouterID,
             sessionControllerID: appModel.controllerSessionPresentation.controllerID,
             generation: appModel.controllerSessionPresentation.generation
@@ -963,19 +950,16 @@ struct WorkbenchPolicyGroupsView: View {
     }
 
     private func hasCurrentGroupProjection(_ groupID: String) -> Bool {
-        let index = projectionCache.expandedGroupIndex(for: groupID)
+        let index = model.activeGroupIndex(for: groupID)
         return hasCurrentCatalogProjection
             && index.revision
-                == projectionCache.groupIndex.revision
+                == model.revision
             && index.occurrence?.id == groupID
     }
 
     private func isSwitchingGroup(_ groupID: String) -> Bool {
-        proxyOperationActivity.isSwitching(groupID: groupID)
-    }
-
-    private func isTestingGroup(_ groupID: String) -> Bool {
-        proxyOperationActivity.isTesting(groupID: groupID)
+        let reportedID = model.activeGroupIndex(for: groupID).occurrence?.group.id ?? groupID
+        return proxyOperationActivity.isSwitching(groupID: reportedID)
     }
 
     private func select(
@@ -1009,8 +993,8 @@ struct WorkbenchPolicyGroupsView: View {
         guard let controllerID = appModel.selectedRouterID else { return nil }
         let generation = appModel.controllerSessionPresentation.generation
         let controllerGroups = ProxyProjection.arrangedGroups(
-            acceptedCatalog.groups,
-            mode: acceptedCatalog.mode,
+            model.catalog.groups,
+            mode: model.catalog.mode,
             visibility: .alwaysShow
         )
         if let activeGroupID = workspace.activeGroupID,
@@ -1045,7 +1029,7 @@ struct WorkbenchPolicyGroupsView: View {
 
         let selection: WorkbenchProxyNavigationSelection?
         if let groupID,
-           let occurrence = projectionCache.groupIndex.arrangedGroups.first(
+           let occurrence = model.groupProjection.arrangedGroups.first(
                where: { $0.id == groupID }
            ),
            let nodeName = occurrence.group.selected.proxyNonBlank {
@@ -1106,7 +1090,7 @@ struct WorkbenchPolicyGroupsView: View {
         let resolution = ProxyProjection.resolveNavigationTarget(
             groupOccurrenceID: pendingNavigation.groupOccurrenceID,
             nodeName: pendingNavigation.nodeName,
-            catalog: acceptedCatalog,
+            catalog: model.catalog,
             visibility: preferences.globalGroupVisibility
         )
 
@@ -1138,34 +1122,25 @@ struct WorkbenchPolicyGroupsView: View {
         unresolvedReason = nil
 
         let currentWorkspace = workspace
-        if !currentWorkspace.openGroupIDs.contains(occurrence.id) {
-            openGroup(occurrence.id)
+        if currentWorkspace.activeGroupID != occurrence.id {
+            activateGroup(occurrence.id)
             return
         }
 
-        let index = projectionCache.expandedGroupIndex(for: occurrence.id)
+        let index = model.activeGroupIndex(for: occurrence.id)
         guard index.occurrence != nil else {
-            rebuildExpandedGroupIndexes()
+            synchronizePresentation()
             return
         }
 
-        var blockers: WorkbenchProxyFilterObstructions = []
-        if !groupProjection.visibleGroups.contains(where: {
-            $0.id == occurrence.id
-        }) {
-            blockers.insert(.globalSearch)
-        }
-        let textProjection = ProxyActiveGroupProjection(
+        // Directory search only filters the left rail; it does not hide the
+        // active group's node list or prevent cross-group navigation.
+        let blockers = WorkbenchProxyFilterObstructions.resolve(
+            member: row,
             index: index,
-            query: currentWorkspace.groupFilters[occurrence.id] ?? "",
-            healthFilter: .all
+            query: currentWorkspace.proxyMemberQuery,
+            healthFilter: healthFilter
         )
-        if !textProjection.members.contains(where: { $0.id == member.id }) {
-            blockers.insert(.groupFilter)
-        }
-        if !healthFilter.includes(row) {
-            blockers.insert(.healthFilter)
-        }
         guard blockers.isEmpty else {
             revealObstruction = .filters(
                 groupOccurrenceID: occurrence.id,
@@ -1173,10 +1148,10 @@ struct WorkbenchPolicyGroupsView: View {
             )
             return
         }
-        guard expandedProjections[occurrence.id]?.members.contains(where: {
+        guard model.activeProjection.members.contains(where: {
             $0.id == member.id
-        }) == true else {
-            rebuildExpandedProjections()
+        }) else {
+            synchronizePresentation()
             return
         }
 
@@ -1185,15 +1160,9 @@ struct WorkbenchPolicyGroupsView: View {
             destination: .proxies
         ) { stored in
             stored.activeGroupID = occurrence.id
-            stored.selectedGroupMemberIDs[occurrence.id] = member.id
+            stored.inspectedProxyMemberID = member.id
         }
-        workspaceStore.selectInspector(
-            .proxyNode(
-                groupName: occurrence.group.id,
-                groupOccurrenceID: occurrence.id,
-                nodeName: row.name
-            )
-        )
+
         reveal = WorkbenchProxyNavigationReveal(
             controllerID: controllerID,
             generation: pendingNavigation.generation,
@@ -1211,8 +1180,8 @@ struct WorkbenchPolicyGroupsView: View {
         switch revealObstruction {
         case .hiddenGlobal:
             preferences.globalGroupVisibility = .alwaysShow
-            rebuildCatalogIndex()
-        case .filters(let groupOccurrenceID, _):
+            synchronizePresentation()
+        case .filters:
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
@@ -1220,13 +1189,11 @@ struct WorkbenchPolicyGroupsView: View {
                     controllerID: appModel.selectedRouterID,
                     destination: .proxies
                 ) { stored in
-                    stored.groupFilters[groupOccurrenceID] = ""
+                    stored.proxyMemberQuery = ""
                 }
                 healthFilter = .all
-                searchText = ""
             }
-            rebuildVisibleGroupProjection()
-            rebuildExpandedProjections()
+            synchronizePresentation()
         case nil:
             break
         }
@@ -1257,7 +1224,7 @@ struct WorkbenchPolicyGroupsView: View {
 
     private var proxySessionPresentation: ProxySessionPresentation {
         ProxySessionPresentation(
-            hasRetainedCatalog: !acceptedCatalog.groups.isEmpty,
+            hasRetainedCatalog: !model.catalog.groups.isEmpty,
             state: appModel.controllerSessionPresentation.state,
             language: language
         )
@@ -1265,7 +1232,7 @@ struct WorkbenchPolicyGroupsView: View {
 
     private var groupVisibilitySummary: String {
         MicaStrings.localized(
-            "routing.visible_groups_count \(groupProjection.visibleGroups.count) \(groupProjection.arrangedGroups.count)",
+            "routing.visible_groups_count \(model.groupProjection.visibleGroups.count) \(model.groupProjection.arrangedGroups.count)",
             language: language
         )
     }
@@ -1275,7 +1242,7 @@ struct WorkbenchPolicyGroupsView: View {
     }
 
     private var modeBadgeText: String {
-        let mode = groupProjection.mode
+        let mode = model.groupProjection.mode
         return MicaStrings.localized(
             "routing.mode_current \(mode)",
             language: language

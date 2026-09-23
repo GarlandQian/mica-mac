@@ -151,21 +151,27 @@ struct WorkbenchManagementProjectionTests {
             WorkbenchControllerListProjection.reconciledSelection(
                 storedID: second.id,
                 activeID: first.id,
-                candidates: [first, second]
+                profiles: [first, second],
+                query: "",
+                controllerTypeLabel: { _ in "Mihomo" }
             ) == second.id
         )
         #expect(
             WorkbenchControllerListProjection.reconciledSelection(
                 storedID: UUID(),
                 activeID: second.id,
-                candidates: [first, second]
+                profiles: [first, second],
+                query: "",
+                controllerTypeLabel: { _ in "Mihomo" }
             ) == second.id
         )
         #expect(
             WorkbenchControllerListProjection.reconciledSelection(
                 storedID: nil,
                 activeID: nil,
-                candidates: [first, second]
+                profiles: [first, second],
+                query: "",
+                controllerTypeLabel: { _ in "Mihomo" }
             ) == first.id
         )
     }
@@ -373,7 +379,7 @@ struct WorkbenchManagementProjectionTests {
     }
 
     @Test func actionsLayoutUsesCompactSingleColumnOnlyForSparseCommands() {
-        for commandCount in 0...2 {
+        for commandCount in 0...4 {
             let narrow = WorkbenchActionsLayoutDecision.resolve(
                 commandCount: commandCount,
                 availableWidth: 1_200
@@ -386,7 +392,7 @@ struct WorkbenchManagementProjectionTests {
         }
 
         let constrainedDense = WorkbenchActionsLayoutDecision.resolve(
-            commandCount: 3,
+            commandCount: 5,
             availableWidth: 899
         )
         #expect(
@@ -396,7 +402,7 @@ struct WorkbenchManagementProjectionTests {
         #expect(!constrainedDense.usesTwoColumns)
 
         let wideDense = WorkbenchActionsLayoutDecision.resolve(
-            commandCount: 3,
+            commandCount: 5,
             availableWidth: 900
         )
         #expect(

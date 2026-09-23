@@ -26842,19 +26842,767 @@
         }
       }
     },
+    "routing.use_node %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Switch to %@" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "切换到 %@" }
+        }
+      }
+    },
+    "routing.inspect_node %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "View details for %@" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "查看 %@ 的详情" }
+        }
+      }
+    },
+    "routing.node_parameter_cipher": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Cipher" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "加密方式" }
+        }
+      }
+    },
+    "routing.node_parameter_hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Hidden value" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "已隐藏" }
+        }
+      }
+    },
+    "routing.node_parameter_hide": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Hide" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "隐藏" }
+        }
+      }
+    },
+    "routing.node_parameter_hide_named %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Hide %@" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "隐藏 %@" }
+        }
+      }
+    },
+    "routing.node_parameter_password": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Password" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "密码" }
+        }
+      }
+    },
+    "routing.node_parameter_plugin": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Plugin" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "插件" }
+        }
+      }
+    },
+    "routing.node_parameter_plugin_options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Plugin options" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "插件参数" }
+        }
+      }
+    },
+    "routing.node_parameter_port": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Port" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "端口" }
+        }
+      }
+    },
+    "routing.node_parameter_server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Server" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "服务器" }
+        }
+      }
+    },
+    "routing.node_parameter_show": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Show" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "显示" }
+        }
+      }
+    },
+    "routing.node_parameter_show_named %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Show %@" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "显示 %@" }
+        }
+      }
+    },
+    "routing.node_parameter_sni": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Server name (SNI)" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "服务器名称（SNI）" }
+        }
+      }
+    },
+    "routing.node_parameter_tls": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "TLS" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "TLS" }
+        }
+      }
+    },
+    "routing.node_parameter_transport": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Transport" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "传输参数" }
+        }
+      }
+    },
+    "routing.node_parameter_username": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Username" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "用户名" }
+        }
+      }
+    },
+    "routing.node_parameter_uuid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "UUID" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "UUID" }
+        }
+      }
+    },
+    "routing.node_parameter_allowed_ips": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Allowed IP ranges" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "允许的 IP 网段" }
+        }
+      }
+    },
+    "routing.node_parameter_alpn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "ALPN" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "ALPN" }
+        }
+      }
+    },
+    "routing.node_parameter_alter_id": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Alter ID" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "额外 ID 数量" }
+        }
+      }
+    },
+    "routing.node_parameter_authenticated_length": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Authenticated length" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "长度认证" }
+        }
+      }
+    },
+    "routing.node_parameter_authentication": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Authentication data" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "认证数据" }
+        }
+      }
+    },
+    "routing.node_parameter_authentication_string": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Authentication string" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "认证字符串" }
+        }
+      }
+    },
+    "routing.node_parameter_certificate_fingerprint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Certificate fingerprint" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "证书指纹" }
+        }
+      }
+    },
+    "routing.node_parameter_client_fingerprint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Client fingerprint" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "客户端指纹" }
+        }
+      }
+    },
+    "routing.node_parameter_congestion_control": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Congestion control" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "拥塞控制" }
+        }
+      }
+    },
+    "routing.node_parameter_connection_receive_window": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Connection receive window" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "连接接收窗口" }
+        }
+      }
+    },
+    "routing.node_parameter_disable_mtu_discovery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Disable MTU discovery" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "禁用 MTU 探测" }
+        }
+      }
+    },
+    "routing.node_parameter_disable_sni": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Disable SNI" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "禁用 SNI" }
+        }
+      }
+    },
+    "routing.node_parameter_download_bandwidth": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Download bandwidth" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "下行带宽" }
+        }
+      }
+    },
+    "routing.node_parameter_download_mbps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Download bandwidth (Mbps)" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "下行带宽（Mbps）" }
+        }
+      }
+    },
+    "routing.node_parameter_encryption": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Encryption parameters" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "加密参数" }
+        }
+      }
+    },
+    "routing.node_parameter_endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Endpoint" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "连接端点" }
+        }
+      }
+    },
+    "routing.node_parameter_fast_open": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Fast open" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "快速打开" }
+        }
+      }
+    },
+    "routing.node_parameter_flow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Flow subprotocol" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "子协议" }
+        }
+      }
+    },
+    "routing.node_parameter_global_padding": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Global padding" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "全局填充" }
+        }
+      }
+    },
+    "routing.node_parameter_grpc": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "gRPC options" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "gRPC 参数" }
+        }
+      }
+    },
+    "routing.node_parameter_headers": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Request headers" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "请求头" }
+        }
+      }
+    },
+    "routing.node_parameter_heartbeat_interval": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Heartbeat interval" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "心跳间隔" }
+        }
+      }
+    },
+    "routing.node_parameter_http_options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "HTTP transport options" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "HTTP 传输参数" }
+        }
+      }
+    },
+    "routing.node_parameter_interface_address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "IP addresses" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "IP 地址" }
+        }
+      }
+    },
+    "routing.node_parameter_mtu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "MTU" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "MTU" }
+        }
+      }
+    },
+    "routing.node_parameter_obfuscation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Obfuscation" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "混淆" }
+        }
+      }
+    },
+    "routing.node_parameter_obfuscation_password": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Obfuscation password" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "混淆密码" }
+        }
+      }
+    },
+    "routing.node_parameter_packet_encoding": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Packet encoding" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "数据包编码" }
+        }
+      }
+    },
+    "routing.node_parameter_peers": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Peers" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "对端" }
+        }
+      }
+    },
+    "routing.node_parameter_persistent_keepalive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Persistent keepalive" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "持续保活间隔" }
+        }
+      }
+    },
+    "routing.node_parameter_pre_shared_key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Pre-shared key" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "预共享密钥" }
+        }
+      }
+    },
+    "routing.node_parameter_private_key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Private key" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "私钥" }
+        }
+      }
+    },
+    "routing.node_parameter_public_key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Public key" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "公钥" }
+        }
+      }
+    },
+    "routing.node_parameter_reality": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Reality options" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "Reality 参数" }
+        }
+      }
+    },
+    "routing.node_parameter_receive_window": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Receive window" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "接收窗口" }
+        }
+      }
+    },
+    "routing.node_parameter_request_timeout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Request timeout" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "请求超时" }
+        }
+      }
+    },
+    "routing.node_parameter_reserved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Reserved bytes" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "保留字节" }
+        }
+      }
+    },
+    "routing.node_parameter_security": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Security mode" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "安全模式" }
+        }
+      }
+    },
+    "routing.node_parameter_shadowsocks_options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Shadowsocks options" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "Shadowsocks 参数" }
+        }
+      }
+    },
+    "routing.node_parameter_skip_certificate_verification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Skip certificate verification" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "跳过证书验证" }
+        }
+      }
+    },
+    "routing.node_parameter_token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Token" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "令牌" }
+        }
+      }
+    },
+    "routing.node_parameter_udp_over_tcp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "UDP over TCP" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "UDP over TCP" }
+        }
+      }
+    },
+    "routing.node_parameter_udp_over_tcp_version": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "UDP over TCP version" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "UDP over TCP 版本" }
+        }
+      }
+    },
+    "routing.node_parameter_udp_relay_mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "UDP relay mode" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "UDP 中继模式" }
+        }
+      }
+    },
+    "routing.node_parameter_upload_bandwidth": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Upload bandwidth" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "上行带宽" }
+        }
+      }
+    },
+    "routing.node_parameter_upload_mbps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Upload bandwidth (Mbps)" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "上行带宽（Mbps）" }
+        }
+      }
+    },
+    "routing.node_parameter_websocket": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "WebSocket options" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "WebSocket 参数" }
+        }
+      }
+    },
+    "routing.node_parameter_zero_rtt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "0-RTT handshake" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "0-RTT 握手" }
+        }
+      }
+    },
+    "routing.node_parameter_protocol": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Protocol" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "协议" }
+        }
+      }
+    },
+    "routing.node_section_protocol": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Reported protocol configuration" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "已报告的协议配置" }
+        }
+      }
+    },
     "routing.node_section_overview": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Overview"
+            "value": "Runtime state"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "概况"
+            "value": "运行状态"
           }
         }
       }
@@ -26865,13 +27613,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Controller fields"
+            "value": "Other reported fields"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "控制器字段"
+            "value": "其他已报告字段"
           }
         }
       }
@@ -26882,13 +27630,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Testing and latency"
+            "value": "Test results"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "测试与延迟"
+            "value": "测速结果"
           }
         }
       }
@@ -26899,14 +27647,47 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Transport capabilities"
+            "value": "Reported capabilities"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "传输能力"
+            "value": "已报告的能力"
           }
+        }
+      }
+    },
+    "routing.node_runtime_id": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Node ID" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "节点标识" }
+        }
+      }
+    },
+    "routing.node_runtime_routing_mark": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Routing mark" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "路由标记" }
+        }
+      }
+    },
+    "routing.node_runtime_dialer_proxy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": { "state": "translated", "value": "Dialer proxy" }
+        },
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "拨号代理" }
         }
       }
     },
@@ -29205,53 +29986,53 @@
         }
       }
     },
-    "sidebar.group_operate": {
+    "sidebar.group_workspace": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Operate"
+            "value": "Workspace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "操作"
+            "value": "工作区"
           }
         }
       }
     },
-    "sidebar.group_observe": {
+    "sidebar.group_monitor": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Observe"
+            "value": "Monitor"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "观测"
+            "value": "监测"
           }
         }
       }
     },
-    "sidebar.group_manage": {
+    "sidebar.group_controller": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Manage"
+            "value": "Controller"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "管理"
+            "value": "控制器"
           }
         }
       }
@@ -34914,6 +35695,23 @@
         }
       }
     },
+    "controllers.count_one": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 controller"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 个控制器"
+          }
+        }
+      }
+    },
     "controllers.count %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -36066,6 +36864,295 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tailscale 状态流失败，但其余 sing-box 会话仍在运行：%@"
+          }
+        }
+      }
+    },
+    "overview.topology_unknown_source": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source not reported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源未报告"
+          }
+        }
+      }
+    },
+    "overview.topology_unknown_entry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Policy not reported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "策略未报告"
+          }
+        }
+      }
+    },
+    "overview.topology_unknown_outbound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outbound not reported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出站未报告"
+          }
+        }
+      }
+    },
+    "overview.topology_other": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他"
+          }
+        }
+      }
+    },
+    "overview.topology_back_overview": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to overview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回概览"
+          }
+        }
+      }
+    },
+    "overview.topology_view_all": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View all routes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看全部"
+          }
+        }
+      }
+    },
+    "overview.topology_snapshot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route snapshot"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "路径快照"
+          }
+        }
+      }
+    },
+    "overview.topology_related_paths": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Related connections"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关联连接"
+          }
+        }
+      }
+    },
+    "overview.topology_complete_path": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Complete route"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整链路"
+          }
+        }
+      }
+    },
+    "overview.topology_open_connection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看连接"
+          }
+        }
+      }
+    },
+    "overview.topology_snapshot_changed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connections have changed. Return to the overview for current routes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接已更新；返回概览可查看当前链路。"
+          }
+        }
+      }
+    },
+    "overview.topology_summary_count %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld connections"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 条连接"
+          }
+        }
+      }
+    },
+    "overview.topology_merged_count %lld %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld items grouped · %2$lld connections"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已合并 %1$lld 项 · 涉及 %2$lld 条连接"
+          }
+        }
+      }
+    },
+    "routing.search_groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search groups"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索策略组"
+          }
+        }
+      }
+    },
+    "routing.search_active_nodes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search nodes in this group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索当前组节点"
+          }
+        }
+      }
+    },
+    "routing.source_order": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controller order"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制器原始顺序"
+          }
+        }
+      }
+    },
+    "routing.node_preview_hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click to expand all reported fields"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单击展开全部已报告字段"
           }
         }
       }

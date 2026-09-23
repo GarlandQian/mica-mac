@@ -11,13 +11,7 @@ struct ContentView: View {
 
     private let overviewPreferencesStore: OverviewPreferencesStore
 
-    @State private var editor: RouterEditorPresentation?
-    @State private var pendingIntent: PendingEditorIntent?
-    @State private var discardRequestID = 0
-    @State private var addControllerRequestID = 0
-    @State private var editControllerRequestID = 0
-    @State private var editorIsDirty = false
-    @State private var editorIsSaving = false
+    @State private var navigation = WorkbenchNavigationModel()
     @State private var didRegisterMainWindow = false
     @State private var closeGuard = MainWindowCloseGuard()
     @State private var workspaceStore = WorkbenchWorkspaceStore()
@@ -77,8 +71,8 @@ struct ContentView: View {
 
     private var observedContent: some View {
         configuredContent
-            .onChange(of: addControllerRequestID) { presentAddController() }
-            .onChange(of: editControllerRequestID) {
+            .onChange(of: navigation.addControllerRequestID) { presentAddController() }
+            .onChange(of: navigation.editControllerRequestID) {
                 guard let router = appModel.selectedRouter else { return }
                 presentEditController(router)
             }
@@ -88,18 +82,19 @@ struct ContentView: View {
     }
 
     private var configuredContent: some View {
-        navigationContent
+        @Bindable var navigation = navigation
+        return navigationContent
             .navigationSplitViewStyle(.balanced)
             .environment(overviewPreferencesStore)
             .environment(overviewRuntime)
             .focusedValue(\.micaFocusedWorkbenchDestination, destination)
             .focusedValue(
                 \.micaAddControllerRequestID,
-                editorIsSaving ? nil : $addControllerRequestID
+                navigation.acceptsEditorCommands ? $navigation.addControllerRequestID : nil
             )
             .focusedValue(
                 \.micaEditControllerRequestID,
-                editorIsSaving ? nil : $editControllerRequestID
+                navigation.acceptsEditorCommands ? $navigation.editControllerRequestID : nil
             )
     }
 
@@ -107,9 +102,7 @@ struct ContentView: View {
         NavigationSplitView {
             WorkbenchSidebarView(
                 destination: destination,
-                isControllerSwitchingEnabled:
-                    editor == nil
-                    && !editorIsSaving,
+                isControllerSwitchingEnabled: navigation.canSelectController,
                 onSelectController: requestControllerSelection,
                 onAddController: presentAddController
             )
@@ -120,14 +113,24 @@ struct ContentView: View {
                 )
         } detail: {
             VStack(spacing: 0) {
-                if let editor {
+                if let editor = navigation.editor {
                     RouterEditorView(
                         draft: editor.draft,
                         title: editor.titleKey,
-                        discardRequestID: discardRequestID,
-                        onClose: closeEditor,
-                        onDiscardConfirmed: performPendingIntent,
-                        onEditingStateChange: updateCloseGuard
+                        discardRequestID: navigation.discardRequestID,
+                        onClose: { finishEditor(editorID: editor.id) },
+                        onDiscardConfirmed: { confirmDiscard(editorID: editor.id) },
+                        onDiscardCancelled: {
+                            navigation.cancelPendingIntent(editorID: editor.id)
+                        },
+                        onEditingStateChange: { isDirty, isSaving in
+                            navigation.updateEditorState(
+                                editorID: editor.id,
+                                isDirty: isDirty,
+                                isSaving: isSaving
+                            )
+                            updateCombinedCloseGuard()
+                        }
                     )
                     .id(editor.id)
                     .environment(appModel)
@@ -160,7 +163,7 @@ struct ContentView: View {
     }
 
     private func presentAddController() {
-        requestEditor(
+        navigation.requestEditor(
             RouterEditorPresentation(
                 titleKey: "editor.add_router",
                 draft: appModel.draft()
@@ -169,7 +172,7 @@ struct ContentView: View {
     }
 
     private func presentEditController(_ router: RouterProfile) {
-        requestEditor(
+        navigation.requestEditor(
             RouterEditorPresentation(
                 titleKey: "editor.edit_router",
                 draft: appModel.draft(for: router)
@@ -178,85 +181,41 @@ struct ContentView: View {
     }
 
     private func requestDestination(_ next: WorkbenchDestination) {
-        guard !editorIsSaving else { return }
-        guard next.rawValue != destinationRawValue else { return }
-        if editor != nil {
-            pendingIntent = .destination(next)
-            discardRequestID += 1
-            return
+        if let accepted = navigation.requestDestination(
+            next,
+            current: WorkbenchDestination(rawValue: destinationRawValue)
+        ) {
+            destinationRawValue = accepted.rawValue
         }
-        destinationRawValue = next.rawValue
     }
 
     private func requestControllerSelection(_ router: RouterProfile) {
-        guard editor == nil, !editorIsSaving else { return }
+        guard navigation.canSelectController else { return }
         Task { @MainActor in
             await Task.yield()
-            appModel.selectRouter(router)
+            guard navigation.canSelectController,
+                  let current = appModel.routers.first(where: { $0.id == router.id }) else { return }
+            appModel.selectRouter(current)
         }
     }
 
-    private func requestEditor(_ presentation: RouterEditorPresentation) {
-        guard !editorIsSaving else { return }
-        guard editor != nil else {
-            editor = presentation
-            return
-        }
-
-        pendingIntent = .editor(presentation)
-        discardRequestID += 1
+    private func finishEditor(editorID: UUID) {
+        navigation.finishEditor(editorID: editorID)
+        updateCombinedCloseGuard()
     }
 
-    private func closeEditor() {
-        editor = nil
-        pendingIntent = nil
-        editorIsSaving = false
-        updateCloseGuard(isDirty: false, isSaving: false)
-    }
-
-    private func performPendingIntent() {
-        switch pendingIntent {
-        case .destination(let destination):
+    private func confirmDiscard(editorID: UUID) {
+        if let destination = navigation.confirmDiscard(editorID: editorID) {
             destinationRawValue = destination.rawValue
-            editor = nil
-        case .editor(let presentation):
-            editor = presentation
-        case nil:
-            editor = nil
         }
-
-        pendingIntent = nil
-        editorIsSaving = false
-        updateCloseGuard(isDirty: false, isSaving: false)
-    }
-
-    private func updateCloseGuard(isDirty: Bool, isSaving: Bool) {
-        editorIsSaving = isSaving
-        editorIsDirty = isDirty
         updateCombinedCloseGuard()
     }
 
     private func updateCombinedCloseGuard() {
         closeGuard.update(
-            isDirty: editorIsDirty,
-            isSaving: editorIsSaving,
+            isDirty: navigation.editorIsDirty,
+            isSaving: navigation.editorIsSaving,
             language: preferences.language
         )
     }
-}
-
-struct RouterEditorPresentation: Identifiable {
-    let id = UUID()
-    let titleKey: String
-    let draft: RouterDraft
-
-    init(titleKey: String, draft: RouterDraft) {
-        self.titleKey = titleKey
-        self.draft = draft
-    }
-}
-
-private enum PendingEditorIntent {
-    case destination(WorkbenchDestination)
-    case editor(RouterEditorPresentation)
 }

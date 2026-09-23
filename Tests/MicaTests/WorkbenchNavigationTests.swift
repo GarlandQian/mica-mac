@@ -24,18 +24,18 @@ struct WorkbenchNavigationTests {
             "overview", "proxies", "connections", "logs", "rules", "sources",
         ])
         #expect(WorkbenchDestination.operateCases.map(\.rawValue) == [
-            "overview", "proxies", "connections", "rules",
+            "overview", "proxies", "connections", "rules", "sources",
         ])
         #expect(WorkbenchDestination.observeCases.map(\.rawValue) == [
-            "logs", "sources", "diagnostics",
+            "logs", "diagnostics",
         ])
         #expect(WorkbenchDestination.manageCases.map(\.rawValue) == [
             "controllers", "configuration", "actions",
         ])
         #expect(
             WorkbenchDestination.sidebarCases.map(\.rawValue) == [
-                "overview", "proxies", "connections", "rules",
-                "logs", "sources", "diagnostics",
+                "overview", "proxies", "connections", "rules", "sources",
+                "logs", "diagnostics",
                 "controllers", "configuration", "actions",
             ]
         )
@@ -43,9 +43,9 @@ struct WorkbenchNavigationTests {
 
     @Test func destinationsKeepStableGroupsAndControllerRequirements() {
         #expect(WorkbenchDestination.Group.allCases.map(\.titleKey) == [
-            "sidebar.group_operate",
-            "sidebar.group_observe",
-            "sidebar.group_manage",
+            "sidebar.group_workspace",
+            "sidebar.group_monitor",
+            "sidebar.group_controller",
         ])
         #expect(
             WorkbenchDestination.allCases
@@ -82,8 +82,10 @@ struct WorkbenchNavigationTests {
             WorkbenchDestination.allCases
                 .filter(\.supportsSearch)
                 .map(\.rawValue)
-                == ["proxies", "connections", "logs", "rules", "sources", "controllers"]
+                == ["connections", "logs", "rules", "sources", "controllers"]
         )
+        // Proxies has separate, explicitly scoped directory and node searches.
+        #expect(!WorkbenchDestination.proxies.supportsSearch)
         #expect(WorkbenchDestination.overview.shortcut == "1")
         #expect(WorkbenchDestination.proxies.shortcut == "2")
         #expect(WorkbenchDestination.connections.shortcut == "3")
@@ -96,6 +98,23 @@ struct WorkbenchNavigationTests {
         #expect(WorkbenchDestination.diagnostics.shortcut == nil)
     }
 
+    @Test func sidebarGroupsReachEveryDestinationExactlyOnce() {
+        let destinations = WorkbenchDestination.Group.allCases.flatMap(\.destinations)
+        #expect(destinations == WorkbenchDestination.sidebarCases)
+        #expect(Set(destinations) == Set(WorkbenchDestination.allCases))
+        #expect(destinations.count == Set(destinations).count)
+    }
+
+    @Test func inspectorsOnlyBelongToDestinationsWithDetailContent() {
+        #expect(WorkbenchDestination.allCases.filter(\.supportsInspector) == [
+            .overview, .connections, .logs, .rules, .sources, .controllers,
+        ])
+        #expect(!WorkbenchDestination.proxies.supportsInspector)
+        #expect(!WorkbenchDestination.actions.supportsInspector)
+        #expect(!WorkbenchDestination.configuration.supportsInspector)
+        #expect(!WorkbenchDestination.diagnostics.supportsInspector)
+    }
+
     @Test func inspectorSelectionsDeclareStableDefaultDestinations() {
         let controllerID = UUID()
 
@@ -104,14 +123,14 @@ struct WorkbenchNavigationTests {
             WorkbenchInspectorSelection.proxyGroup(
                 groupName: "Group",
                 groupOccurrenceID: "group-0"
-            ).owningDestination == .proxies
+            ).owningDestination == .overview
         )
         #expect(
             WorkbenchInspectorSelection.proxyNode(
                 groupName: "Group",
                 groupOccurrenceID: "group-0",
                 nodeName: "Node"
-            ).owningDestination == .proxies
+            ).owningDestination == .overview
         )
         #expect(WorkbenchInspectorSelection.connection(id: "connection").owningDestination == .connections)
         #expect(
@@ -154,7 +173,7 @@ struct WorkbenchNavigationTests {
     }
 
     @MainActor
-    @Test func overviewAndProxiesPolicySelectionsKeepTheirExplicitOrigins() {
+    @Test func proxyInlineDetailsCannotTakeOwnershipOfOverviewInspector() {
         let fixture = makeWorkspaceStore()
         defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
         let store = fixture.store
@@ -173,10 +192,14 @@ struct WorkbenchNavigationTests {
         #expect(!store.isInspectorPresented)
 
         store.selectInspector(selection, from: .proxies)
+        #expect(!store.isInspectorPresented)
+        #expect(store.inspectorOwningDestination == .overview)
+        #expect(store.inspectorSelection(for: .proxies) == .none)
+        #expect(store.inspectorSelection(for: .overview) == selection)
+
+        store.prepareInspectorForDestinationChange(to: .overview)
         #expect(store.isInspectorPresented)
-        #expect(store.inspectorOwningDestination == .proxies)
-        #expect(store.inspectorSelection(for: .proxies) == selection)
-        #expect(store.inspectorSelection(for: .overview) == .none)
+        #expect(store.inspectorSelection(for: .overview) == selection)
     }
 
     @MainActor
@@ -190,16 +213,10 @@ struct WorkbenchNavigationTests {
             nodeName: "Overview Node"
         )
 
-        store.selectInspector(
-            .proxyNode(
-                groupName: "Proxies Group",
-                groupOccurrenceID: "proxies-group-0",
-                nodeName: "Proxies Node"
-            ),
-            from: .proxies
-        )
+        store.selectInspector(.connection(id: "connection-1"))
         store.selectInspector(overviewSelection, from: .overview)
 
+        #expect(!store.clearInspectorSelection(ownedBy: .connections))
         #expect(!store.clearInspectorSelection(ownedBy: .proxies))
         #expect(store.inspectorSelection(for: .overview) == overviewSelection)
         #expect(store.isInspectorPresented)
@@ -307,9 +324,9 @@ struct WorkbenchNavigationTests {
             $0.sort = [WorkbenchWorkspaceSort(field: "latency", ascending: true)]
             $0.selectedItemID = "node-1"
             $0.scrollAnchorID = "node-1"
-            $0.openGroupIDs = ["group-1"]
             $0.activeGroupID = "group-1"
-            $0.selectedGroupMemberIDs["group-1"] = "node-1"
+            $0.proxyMemberQuery = "node"
+            $0.inspectedProxyMemberID = "node-1"
         }
 
         store.clearSessionBoundState(controllerID: controllerID)
@@ -320,9 +337,9 @@ struct WorkbenchNavigationTests {
         #expect(workspace.sort == [WorkbenchWorkspaceSort(field: "latency", ascending: true)])
         #expect(workspace.selectedItemID == nil)
         #expect(workspace.scrollAnchorID == nil)
-        #expect(workspace.openGroupIDs.isEmpty)
         #expect(workspace.activeGroupID == nil)
-        #expect(workspace.selectedGroupMemberIDs.isEmpty)
+        #expect(workspace.proxyMemberQuery.isEmpty)
+        #expect(workspace.inspectedProxyMemberID == nil)
     }
 
     @MainActor

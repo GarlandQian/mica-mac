@@ -209,7 +209,7 @@ struct WorkbenchActionsLayoutDecision: Equatable, Sendable {
         commandCount: Int,
         availableWidth: CGFloat
     ) -> WorkbenchActionsLayoutDecision {
-        let isSparse = commandCount <= 2
+        let isSparse = commandCount <= 4
         return WorkbenchActionsLayoutDecision(
             maximumContentWidth: isSparse
                 ? compactMaximumWidth

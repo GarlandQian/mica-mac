@@ -130,7 +130,10 @@ struct WorkbenchControllersView: View {
             reconcileManagementSelection()
         }
         .onChange(of: searchText) {
-            reconcileManagementSelection(visibleOnly: true)
+            reconcileManagementSelection()
+        }
+        .onChange(of: language) {
+            reconcileManagementSelection()
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in
             guard selection == .none, managementSelection != nil else { return }
@@ -152,19 +155,31 @@ struct WorkbenchControllersView: View {
             )
         } controls: {
             WorkbenchStatusBadge(
-                text: MicaStrings.localized(
-                    "controllers.count \(filteredProfiles.count)",
+                text: Self.countLabel(
+                    filteredProfiles.count,
                     language: language
                 ),
                 tint: MicaTheme.textSecondary
             )
         } commands: {
-            WorkbenchIconCommand(
-                titleKey: "sidebar.add_controller",
-                systemImage: "plus",
-                action: onAddController
-            )
+            Button(action: onAddController) {
+                Label(
+                    MicaStrings.localizedKey("sidebar.add_controller", language: language),
+                    systemImage: "plus"
+                )
+                .micaThemeFont(.caption, weight: .medium)
+                .fixedSize()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
+    }
+
+    static func countLabel(_ count: Int, language: AppLanguage) -> String {
+        if count == 1 {
+            return MicaStrings.localizedKey("controllers.count_one", language: language)
+        }
+        return MicaStrings.localized("controllers.count \(count)", language: language)
     }
 
     private var controllerList: some View {
@@ -172,7 +187,8 @@ struct WorkbenchControllersView: View {
             controllerRow(profile)
                 .tag(profile.id)
         }
-        .listStyle(.inset(alternatesRowBackgrounds: false))
+        .listStyle(.inset)
+        .alternatingRowBackgrounds(.disabled)
         .micaObserveScrollPerformance()
         .scrollContentBackground(.hidden)
         .background(MicaTheme.canvas)
@@ -183,31 +199,56 @@ struct WorkbenchControllersView: View {
 
     private func controllerRow(_ profile: RouterProfile) -> some View {
         HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-            activeIndicator(profile)
+            WorkbenchSymbol(
+                systemName: profile.controllerKind.editorSymbol,
+                tint: appModel.selectedRouterID == profile.id
+                    ? MicaTheme.accent : MicaTheme.textSecondary,
+                size: .focus
+            )
                 .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
                     Text(verbatim: profile.displayName)
                         .micaThemeFont(.label, weight: .semibold)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Spacer(minLength: MicaTheme.Spacing.space2)
 
-                    WorkbenchControllerStatusView(profile: profile)
-                        .lineLimit(1)
+                    if appModel.selectedRouterID == profile.id {
+                        activeIndicator(profile)
+                    }
                 }
 
                 Text(verbatim: profile.endpointURL)
                     .micaThemeFont(.dataCaption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: MicaTheme.Spacing.space2) {
+                        controllerKindLabel(profile)
+                        Spacer(minLength: MicaTheme.Spacing.space2)
+                        WorkbenchControllerStatusView(profile: profile)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        controllerKindLabel(profile)
+                        WorkbenchControllerStatusView(profile: profile)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, MicaTheme.Spacing.space1)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    private func controllerKindLabel(_ profile: RouterProfile) -> some View {
+        Text(verbatim: profile.controllerKind.micaLabel(language: language))
+            .micaThemeFont(.caption)
+            .foregroundStyle(MicaTheme.textSecondary)
     }
 
     private var filteredProfiles: [RouterProfile] {
@@ -250,20 +291,22 @@ struct WorkbenchControllersView: View {
         }
     }
 
-    private func reconcileManagementSelection(visibleOnly: Bool = false) {
-        let candidates = visibleOnly ? filteredProfiles : appModel.routers
+    private func reconcileManagementSelection() {
         let next = WorkbenchControllerListProjection.reconciledSelection(
             storedID: managementSelection,
             activeID: appModel.selectedRouterID,
-            candidates: candidates
-        )
+            profiles: appModel.routers,
+            query: searchText
+        ) { profile in
+            profile.controllerKind.micaLabel(language: language)
+        }
         setManagementSelection(next)
     }
 
     private func activeIndicator(_ profile: RouterProfile) -> some View {
         let active = appModel.selectedRouterID == profile.id
         return Image(systemName: active ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(active ? MicaTheme.statusOK : .secondary)
+            .foregroundStyle(active ? MicaTheme.accent : .secondary)
             .accessibilityLabel(
                 MicaStrings.localizedKey(
                     active ? "controllers.active" : "controllers.inactive",

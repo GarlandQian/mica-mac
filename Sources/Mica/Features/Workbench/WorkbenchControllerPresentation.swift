@@ -37,8 +37,15 @@ enum WorkbenchControllerListProjection {
     static func reconciledSelection(
         storedID: RouterProfile.ID?,
         activeID: RouterProfile.ID?,
-        candidates: [RouterProfile]
+        profiles: [RouterProfile],
+        query: String,
+        controllerTypeLabel: (RouterProfile) -> String
     ) -> RouterProfile.ID? {
+        let candidates = filtered(
+            profiles,
+            query: query,
+            controllerTypeLabel: controllerTypeLabel
+        )
         if let storedID, candidates.contains(where: { $0.id == storedID }) {
             return storedID
         }

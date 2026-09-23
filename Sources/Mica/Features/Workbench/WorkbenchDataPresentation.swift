@@ -560,7 +560,7 @@ struct WorkbenchAccessibilityWindowCursor: Equatable, Sendable {
     }
 }
 
-struct WorkbenchTableAccessibilityScope: Equatable, Sendable {
+struct WorkbenchSessionIdentity: Equatable, Sendable {
     let controllerID: RouterProfile.ID?
     let generation: UUID
 }
@@ -603,7 +603,7 @@ struct WorkbenchTableAccessibilityPayload: Equatable, Sendable {
         let namedAction: WorkbenchAccessibilityNamedAction?
     }
 
-    let scope: WorkbenchTableAccessibilityScope
+    let scope: WorkbenchSessionIdentity
     let title: String
     let window: WorkbenchAccessibilityWindow
     let selectedRowID: String?
@@ -615,7 +615,7 @@ struct WorkbenchTableAccessibilityPayload: Equatable, Sendable {
     let rows: [Row]
 
     static func materialize<SourceRow: Identifiable>(
-        scope: WorkbenchTableAccessibilityScope,
+        scope: WorkbenchSessionIdentity,
         title: String,
         sourceRows: [SourceRow],
         window: WorkbenchAccessibilityWindow,
@@ -690,16 +690,16 @@ struct WorkbenchTableAccessibilityPayload: Equatable, Sendable {
 }
 
 enum WorkbenchTableAccessibilityIntent: Equatable, Sendable {
-    case selectRow(id: String, scope: WorkbenchTableAccessibilityScope)
-    case movePage(lowerBound: Int, scope: WorkbenchTableAccessibilityScope)
-    case setSort(id: String, ascending: Bool, scope: WorkbenchTableAccessibilityScope)
+    case selectRow(id: String, scope: WorkbenchSessionIdentity)
+    case movePage(lowerBound: Int, scope: WorkbenchSessionIdentity)
+    case setSort(id: String, ascending: Bool, scope: WorkbenchSessionIdentity)
     case performNamedAction(
         rowID: String,
         actionID: String,
-        scope: WorkbenchTableAccessibilityScope
+        scope: WorkbenchSessionIdentity
     )
 
-    var scope: WorkbenchTableAccessibilityScope {
+    var scope: WorkbenchSessionIdentity {
         switch self {
         case .selectRow(_, let scope),
              .movePage(_, let scope),

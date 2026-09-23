@@ -70,6 +70,35 @@ final class MihomoClientContractTests: XCTestCase {
         XCTAssertEqual(response.mixedPort, 7893)
     }
 
+    func testHTTPReadsKeepProxyAndProviderOrderFromTheController() async throws {
+        let profile = RouterProfile(displayName: "Ordered fixture", host: "controller.example")
+        let client = MihomoClient(profile: profile) { request in
+            let url = try XCTUnwrap(request.url)
+            let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+            let body: String
+            switch url.path {
+            case "/proxies":
+                body = #"{"proxies":{"Zulu":{"type":"Selector","all":["Last","First"]},"Alpha":{"type":"Direct"}}}"#
+            case "/providers/proxies":
+                body = #"{"providers":{"Zulu":{"type":"Proxy","proxies":[]},"Alpha":{"type":"Proxy","proxies":[]}}}"#
+            case "/providers/rules":
+                body = #"{"providers":{"Zulu":{"type":"Rule"},"Alpha":{"type":"Rule"}}}"#
+            default:
+                throw URLError(.badURL)
+            }
+            return (Data(body.utf8), response)
+        }
+
+        let proxies = try await client.proxies()
+        let proxyProviders = try await client.proxyProviders()
+        let ruleProviders = try await client.ruleProviders()
+
+        XCTAssertEqual(proxies.proxyOrder, ["Zulu", "Alpha"])
+        XCTAssertEqual(proxies.proxies["Zulu"]?.all, ["Last", "First"])
+        XCTAssertEqual(proxyProviders.providerList.map(\.name), ["Zulu", "Alpha"])
+        XCTAssertEqual(ruleProviders.providerList.map(\.name), ["Zulu", "Alpha"])
+    }
+
     func testSmartWeightsUseControllerEndpointAndPreserveReportedRanks() async throws {
         let data = Data(#"""
         {

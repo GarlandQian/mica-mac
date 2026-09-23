@@ -6,12 +6,27 @@ extension DashboardSnapshot {
         surge snapshot: SurgeControlSnapshot,
         language: AppLanguage = MicaStrings.appLanguage
     ) {
+        let policiesByName = Dictionary(grouping: snapshot.policies, by: \.name)
+        let reportedDetails = policiesByName.compactMapValues { policies -> ProxyNodeViewState? in
+            guard policies.count == 1, let policy = policies.first else { return nil }
+            return ProxyNodeViewState(snapshot: ProxySnapshot(
+                name: policy.name,
+                type: policy.type ?? ""
+            ))
+        }
         let groups = snapshot.policyGroups.map { group in
-            ProxyGroupViewState(
+            var optionDetails: [String: ProxyNodeViewState] = [:]
+            for option in group.policies where optionDetails[option] == nil {
+                guard let detail = reportedDetails[option] else { continue }
+                optionDetails[option] = detail
+            }
+
+            return ProxyGroupViewState(
                 id: group.name,
                 type: group.type ?? "Surge",
                 selected: group.selected ?? "-",
                 options: group.policies,
+                optionDetails: optionDetails,
                 hidden: false,
                 delays: group.latency ?? [:]
             )
@@ -107,13 +122,16 @@ extension DashboardSnapshot {
         language: AppLanguage
     ) -> [ConnectionSnapshot] {
         zip(requests, displayIDs).map { request, projectedID in
-            let chains = [request.policy?.nilIfEmpty, request.originalPolicy?.nilIfEmpty]
-                .compactMap { $0 }
-                .reduce(into: [String]()) { values, value in
-                    if !values.contains(value) {
-                        values.append(value)
-                    }
-                }
+            let finalPolicy = request.policy?.nilIfEmpty
+            let originalPolicy = request.originalPolicy?.nilIfEmpty
+            // The first chain slot is the reported final outbound. Keep it empty
+            // when only the original policy is known, rather than promoting that
+            // policy to a final outbound. Equal names still have separate roles.
+            let chains = if let originalPolicy {
+                [finalPolicy ?? "", originalPolicy]
+            } else {
+                finalPolicy.map { [$0] } ?? []
+            }
             return ConnectionSnapshot(
                 id: projectedID,
                 upload: request.upload,

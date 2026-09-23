@@ -420,7 +420,7 @@ struct AppModelCommandBoundaryTests {
         let calls = await refreshGate.values
         #expect(calls.isEmpty)
         #expect(restartCount.withLock { $0 } == 0)
-        #expect(model.manualSessionRefreshTask == nil)
+        #expect(!model.liveSessionTasks.contains(.manualRefresh))
         #expect(model.selectedRouterRefreshOperationID == nil)
         #expect(!model.isRefreshingDashboard)
     }
@@ -443,7 +443,7 @@ struct AppModelCommandBoundaryTests {
         model.refreshSelectedRouter()
         await refreshGate.waitForCount(3)
         let ownerID = try #require(model.selectedRouterRefreshOperationID)
-        let ownerTask = try #require(model.manualSessionRefreshTask)
+        let ownerTask = try #require(model.liveSessionTasks.task(for: .manualRefresh))
         #expect(model.isRefreshingDashboard)
         #expect(restartCount.withLock { $0 } == 1)
 
@@ -464,7 +464,7 @@ struct AppModelCommandBoundaryTests {
         await refreshGate.releaseAll()
         await ownerTask.value
 
-        #expect(model.manualSessionRefreshTask == nil)
+        #expect(!model.liveSessionTasks.contains(.manualRefresh))
         #expect(model.selectedRouterRefreshOperationID == nil)
         #expect(!model.isRefreshingDashboard)
     }

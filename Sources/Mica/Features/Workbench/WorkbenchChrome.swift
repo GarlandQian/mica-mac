@@ -24,32 +24,36 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
 
         var titleKey: String {
             switch self {
-            case .operate: "sidebar.group_operate"
-            case .observe: "sidebar.group_observe"
-            case .manage: "sidebar.group_manage"
+            case .operate: "sidebar.group_workspace"
+            case .observe: "sidebar.group_monitor"
+            case .manage: "sidebar.group_controller"
+            }
+        }
+
+        var destinations: [WorkbenchDestination] {
+            switch self {
+            case .operate: WorkbenchDestination.operateCases
+            case .observe: WorkbenchDestination.observeCases
+            case .manage: WorkbenchDestination.manageCases
             }
         }
     }
 
     var id: String { rawValue }
 
-    /// The six controller-data destinations reachable via ⌘1…⌘6 and listed in
-    /// the View menu, in fixed product order.
+    /// Menu shortcuts remain independent of sidebar grouping.
     static let workbenchTabCases: [Self] = [
         .overview, .proxies, .connections, .logs, .rules, .sources,
     ]
 
-    /// Operate: the primary operations workflow surfaces (Mica Ops IA).
     static let operateCases: [Self] = [
-        .overview, .proxies, .connections, .rules,
+        .overview, .proxies, .connections, .rules, .sources,
     ]
 
-    /// Observe: read-only monitoring and troubleshooting surfaces.
     static let observeCases: [Self] = [
-        .logs, .sources, .diagnostics,
+        .logs, .diagnostics,
     ]
 
-    /// Manage: controller and application management surfaces.
     static let manageCases: [Self] = [
         .controllers, .configuration, .actions,
     ]
@@ -58,9 +62,9 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
 
     var group: Group {
         switch self {
-        case .overview, .proxies, .connections, .rules:
+        case .overview, .proxies, .connections, .rules, .sources:
             .operate
-        case .logs, .sources, .diagnostics:
+        case .logs, .diagnostics:
             .observe
         case .controllers, .configuration, .actions:
             .manage
@@ -111,9 +115,18 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
 
     var supportsSearch: Bool {
         switch self {
-        case .proxies, .connections, .logs, .rules, .sources, .controllers:
+        case .connections, .logs, .rules, .sources, .controllers:
             true
-        case .overview, .configuration, .actions, .diagnostics:
+        case .overview, .proxies, .configuration, .actions, .diagnostics:
+            false
+        }
+    }
+
+    var supportsInspector: Bool {
+        switch self {
+        case .overview, .connections, .logs, .rules, .sources, .controllers:
+            true
+        case .proxies, .configuration, .actions, .diagnostics:
             false
         }
     }
@@ -166,24 +179,27 @@ struct WorkbenchRootView: View {
     let onEditController: (RouterProfile) -> Void
 
     var body: some View {
-        @Bindable var workspaceStore = workspaceStore
-
-        WorkbenchWorkspaceView(
-            destination: $destination,
-            onAddController: onAddController,
-            onEditController: onEditController
-        )
-            .inspector(isPresented: $workspaceStore.isInspectorPresented) {
+        VStack(spacing: 0) {
+            WorkbenchWorkspaceView(
+                destination: $destination,
+                onAddController: onAddController,
+                onEditController: onEditController
+            )
+            .inspector(isPresented: inspectorPresentation) {
                 WorkbenchInspectorContainer(
-                            destination: $destination,
-                            onEditController: onEditController
-                        )
+                    destination: $destination,
+                    onEditController: onEditController
+                )
                     .inspectorColumnWidth(
                         min: MicaTheme.Metrics.inspectorMin,
                         ideal: MicaTheme.Metrics.inspectorIdeal,
                         max: MicaTheme.Metrics.inspectorMax
                     )
             }
+            // Reserve actual layout space: native Tables can extend beneath
+            // safe-area overlays and otherwise hide their last complete row.
+            WorkbenchBottomChrome()
+        }
             .navigationTitle(
                 MicaStrings.localizedKey(destination.titleKey, language: language)
             )
@@ -193,40 +209,34 @@ struct WorkbenchRootView: View {
                     ToolbarItem(placement: .primaryAction) {
                         OverviewPreferencesToolbarControl()
                     }
-                    .sharedBackgroundVisibility(.hidden)
                 }
 
-                if destination != .diagnostics {
-                    ToolbarItem(placement: .primaryAction) {
-                        WorkbenchSessionControlButton(kind: .test)
+                if destination.requiresController {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        WorkbenchSessionControlButton(kind: .refresh)
+                        WorkbenchSessionControlButton(kind: .pause)
                     }
-                    .sharedBackgroundVisibility(.hidden)
                 }
 
-                ToolbarItem(placement: .primaryAction) {
-                    WorkbenchSessionControlButton(kind: .refresh)
+                if destination.supportsInspector {
+                    ToolbarItem(placement: .primaryAction) {
+                        WorkbenchInspectorToggleButton(
+                            isPresented: inspectorPresentation
+                        )
+                    }
                 }
-                .sharedBackgroundVisibility(.hidden)
-
-                ToolbarItem(placement: .primaryAction) {
-                    WorkbenchSessionControlButton(kind: .pause)
-                }
-                .sharedBackgroundVisibility(.hidden)
-
-                ToolbarItem(placement: .primaryAction) {
-                    WorkbenchInspectorToggleButton(
-                        isPresented: $workspaceStore.isInspectorPresented
-                    )
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                WorkbenchBottomChrome()
             }
             .focusedValue(\.micaFocusedWorkbenchDestination, $destination)
             .background {
                 WorkbenchRootLifecycleObserver(destination: destination)
             }
+    }
+
+    private var inspectorPresentation: Binding<Bool> {
+        Binding(
+            get: { destination.supportsInspector && workspaceStore.isInspectorPresented },
+            set: { workspaceStore.isInspectorPresented = $0 && destination.supportsInspector }
+        )
     }
 }
 

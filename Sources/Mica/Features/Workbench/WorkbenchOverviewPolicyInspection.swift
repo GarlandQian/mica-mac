@@ -206,6 +206,12 @@ struct OverviewPolicyInspectionField: Identifiable, Equatable {
     let value: String
     var tone: Tone = .neutral
     var monospaced = false
+    var isSensitive = false
+    var reportedKey: String? = nil
+
+    func displayValue(revealingSensitiveValue: Bool = false) -> String {
+        isSensitive && !revealingSensitiveValue ? "••••••••" : value
+    }
 }
 
 struct OverviewPolicyInspectionSection: Identifiable, Equatable {
@@ -230,6 +236,40 @@ struct OverviewPolicyInspectionSnapshot: Equatable {
     }
 }
 
+struct ProxyPolicyInspectionIdentity: Hashable {
+    let selectionComponents: [String?]
+    let controllerID: RouterProfile.ID?
+    let generation: UUID
+    let resolvedMemberName: String?
+
+    init(
+        selection: WorkbenchInspectorSelection,
+        controllerID: RouterProfile.ID?,
+        generation: UUID,
+        policyIndex: OverviewPolicyInspectionIndex
+    ) {
+        self.controllerID = controllerID
+        self.generation = generation
+        switch selection {
+        case .proxyGroup(let groupName, let occurrenceID):
+            selectionComponents = ["group", groupName, occurrenceID]
+            let resolution = occurrenceID.map { policyIndex.resolve(groupOccurrenceID: $0) }
+                ?? policyIndex.resolve(name: groupName)
+            if case .group(let group) = resolution, group.name == groupName {
+                resolvedMemberName = group.selectedMember.name
+            } else {
+                resolvedMemberName = nil
+            }
+        case .proxyNode(let groupName, let occurrenceID, let nodeName):
+            selectionComponents = ["node", groupName, occurrenceID, nodeName]
+            resolvedMemberName = nodeName
+        case .none, .connection, .rule, .log, .source, .controller:
+            selectionComponents = ["none"]
+            resolvedMemberName = nil
+        }
+    }
+}
+
 /// Complete policy-inspection field composition shown in the workspace
 /// inspector (task 08-17 Phase 3.3). This is the same complete field set the
 /// removed floating HUD rendered: group/member identity, type, selection,
@@ -239,6 +279,21 @@ struct OverviewPolicyInspectionSnapshot: Equatable {
 /// in stable key order. Resolution is name-exact and unique-only; ambiguous or
 /// missing names return `nil` so callers can present the truthful fallback.
 enum OverviewPolicyInspectionProjection {
+    static func matches(
+        selection: WorkbenchInspectorSelection,
+        resolution: OverviewPolicyInspectionResolution
+    ) -> Bool {
+        switch (selection, resolution) {
+        case (.proxyGroup(let name, let occurrenceID), .group(let group)):
+            name == group.name && (occurrenceID == nil || occurrenceID == group.occurrenceID)
+        case (.proxyNode(let groupName, let occurrenceID, let name), .member(let member)):
+            groupName == member.groupName && name == member.name
+                && (occurrenceID == nil || occurrenceID == member.groupOccurrenceID)
+        default:
+            false
+        }
+    }
+
     static func snapshot(
         groupOccurrenceID: String,
         nodeName: String?,
@@ -322,7 +377,7 @@ enum OverviewPolicyInspectionProjection {
         )
     }
 
-    private static func memberSnapshot(
+    static func memberSnapshot(
         member: OverviewPolicyMemberInspection,
         language: AppLanguage
     ) -> OverviewPolicyInspectionSnapshot {
@@ -344,7 +399,7 @@ enum OverviewPolicyInspectionProjection {
         return OverviewPolicyInspectionSnapshot(
             kind: .policyMember,
             title: member.name,
-            subtitle: nonBlank(member.detail?.type) ?? nonBlank(member.groupType),
+            subtitle: nonBlank(member.detail?.type),
             sections: memberSections(
                 overview: overview,
                 member: member,
@@ -417,14 +472,24 @@ enum OverviewPolicyInspectionProjection {
         language: AppLanguage
     ) -> [OverviewPolicyInspectionSection] {
         var sections: [OverviewPolicyInspectionSection] = []
+        let protocolDetails = member.detail.map(ProxyProtocolInspectionProjection.project)
         appendSection(
             id: "overview",
             titleKey: "routing.node_section_overview",
-            fields: overview,
+            fields: overview + (protocolDetails?.runtimeFields ?? []),
             to: &sections
         )
 
-        guard let detail = member.detail else { return sections }
+        guard let detail = member.detail, let protocolDetails else { return sections }
+        if !protocolDetails.parameters.isEmpty {
+            sections.append(
+                OverviewPolicyInspectionSection(
+                    id: "protocol",
+                    titleKey: "routing.node_section_protocol",
+                    fields: protocolDetails.parameters
+                )
+            )
+        }
 
         let transports = detail.transportCapabilities.map { capability in
             OverviewPolicyInspectionField(
@@ -440,10 +505,9 @@ enum OverviewPolicyInspectionProjection {
             to: &sections
         )
 
-        let detailProjection = ProxyMemberDetailProjection(detail: detail)
         var testing: [OverviewPolicyInspectionField] = []
         appendLatency(
-            detailProjection.latestHistoryDelay,
+            detail.latestHistoryDelay,
             id: "test-delay",
             titleKey: "overview.hud.test_delay",
             to: &testing
@@ -451,16 +515,21 @@ enum OverviewPolicyInspectionProjection {
         append(
             id: "test-time",
             titleKey: "overview.hud.test_time",
-            value: detailProjection.latestHistoryTime,
+            value: detail.latestHistoryTime,
             monospaced: true,
             to: &testing
         )
-        if let history = detailProjection.history, !history.isEmpty {
+        let reportedHistoryCount = detail.history.reduce(into: 0) { count, sample in
+            if sample.delay != nil || nonBlank(sample.time) != nil {
+                count += 1
+            }
+        }
+        if reportedHistoryCount > 0 {
             testing.append(
                 OverviewPolicyInspectionField(
                     id: "test-samples",
                     label: .localized("routing.delay_history"),
-                    value: history.count.formatted(),
+                    value: reportedHistoryCount.formatted(),
                     monospaced: true
                 )
             )
@@ -472,6 +541,7 @@ enum OverviewPolicyInspectionProjection {
             monospaced: true,
             to: &testing
         )
+        testing.append(contentsOf: protocolDetails.testingFields)
         appendSection(
             id: "testing",
             titleKey: "routing.node_section_testing",
@@ -479,18 +549,10 @@ enum OverviewPolicyInspectionProjection {
             to: &sections
         )
 
-        let reportedFields = detailProjection.reportedFields.map { field in
-            OverviewPolicyInspectionField(
-                id: "metadata.\(field.key)",
-                label: .verbatim(field.key),
-                value: field.value,
-                monospaced: true
-            )
-        }
         appendSection(
             id: "reported-fields",
             titleKey: "routing.node_section_reported_fields",
-            fields: reportedFields,
+            fields: protocolDetails.additionalFields,
             to: &sections
         )
         return sections
@@ -619,12 +681,25 @@ struct WorkbenchPolicyInspectorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                 inspectionContent
+                    .id(inspectionIdentity)
                 actionSection
             }
             .padding(MicaTheme.Spacing.space3)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var inspectionIdentity: ProxyPolicyInspectionIdentity {
+        ProxyPolicyInspectionIdentity(
+            selection: selection,
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation,
+            policyIndex: inspectionCache.resolve(
+                revision: appModel.policyGroupCatalogRevision,
+                catalog: appModel.policyGroupCatalog
+            )
+        )
     }
 
     @ViewBuilder
@@ -766,21 +841,7 @@ struct WorkbenchPolicyInspectorView: View {
     }
 
     private func fieldRow(_ field: OverviewPolicyInspectionField) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: field.label.resolved(language: language))
-                .micaThemeFont(.caption, weight: .semibold)
-                .foregroundStyle(.secondary)
-            Text(verbatim: field.value)
-                .micaThemeFont(
-                    field.monospaced ? .dataCaption : .caption,
-                    weight: .medium
-                )
-                .foregroundStyle(field.tone.tint)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityElement(children: .combine)
+        WorkbenchPolicyInspectionFieldRow(field: field)
     }
 
     private var actionSection: some View {
@@ -816,14 +877,27 @@ struct WorkbenchPolicyInspectorView: View {
     /// live topology highlight resolves to exactly one path for the pinned
     /// selection.
     private var singlePath: ConnectionTopology.PathRecord? {
-        guard let controllerID = appModel.selectedRouterID,
+        guard destination == .overview,
+              let controllerID = appModel.selectedRouterID,
               let runtime = overviewRuntime.registry.existingTopologyRuntime(
                   controllerID: controllerID,
                   generation: appModel.controllerSessionPresentation.generation
               ) else {
             return nil
         }
-        let paths = runtime.interaction.snapshot.highlight.paths
+        let interaction = runtime.interaction.snapshot
+        guard interaction.isPinned,
+              case .node(let nodeID) = interaction.activeSelection,
+              let node = runtime.presentation?.index.node(id: nodeID) else { return nil }
+        let policyIndex = inspectionCache.resolve(
+            revision: appModel.policyGroupCatalogRevision,
+            catalog: appModel.policyGroupCatalog
+        )
+        guard OverviewPolicyInspectionProjection.matches(
+            selection: selection,
+            resolution: policyIndex.resolve(name: node.name)
+        ) else { return nil }
+        let paths = interaction.highlight.paths
         return paths.count == 1 ? paths.first : nil
     }
 
@@ -888,6 +962,102 @@ struct WorkbenchPolicyInspectorView: View {
             )
         }
         destination = .connections
+    }
+}
+
+struct WorkbenchPolicyInspectionFieldRow: View {
+    enum LayoutPreference {
+        case stacked
+        case compact
+    }
+
+    @Environment(\.micaAppLanguage) private var language
+    @State private var isRevealed = false
+
+    let field: OverviewPolicyInspectionField
+    var layout: LayoutPreference = .stacked
+
+    var body: some View {
+        Group {
+            if layout == .compact {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
+                        fieldLabel.fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: MicaTheme.Spacing.space3)
+                        fieldValue.fixedSize(horizontal: true, vertical: false)
+                        if field.isSensitive { revealButton.fixedSize() }
+                    }
+                    stackedContent
+                }
+            } else {
+                stackedContent
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .onChange(of: field.value) { _, _ in
+            isRevealed = false
+        }
+    }
+
+    private var stackedContent: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
+                fieldLabel
+                if field.isSensitive {
+                    Spacer(minLength: 0)
+                    revealButton
+                }
+            }
+            fieldValue
+        }
+    }
+
+    private var fieldLabel: some View {
+        Text(verbatim: field.label.resolved(language: language))
+            .micaThemeFont(.caption, weight: .semibold)
+            .foregroundStyle(.secondary)
+            .help(field.reportedKey ?? field.label.resolved(language: language))
+    }
+
+    private var fieldValue: some View {
+        Text(verbatim: field.displayValue(revealingSensitiveValue: isRevealed))
+            .micaThemeFont(
+                field.monospaced ? .dataCaption : .caption,
+                weight: .medium
+            )
+            .foregroundStyle(field.tone.tint)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+            .accessibilityLabel(
+                field.isSensitive && !isRevealed
+                    ? MicaStrings.localizedKey("routing.node_parameter_hidden", language: language)
+                    : field.value
+            )
+    }
+
+    private var revealButton: some View {
+        Button {
+            isRevealed.toggle()
+        } label: {
+            Label(
+                MicaStrings.localizedKey(
+                    isRevealed ? "routing.node_parameter_hide" : "routing.node_parameter_show",
+                    language: language
+                ),
+                systemImage: isRevealed ? "eye.slash" : "eye"
+            )
+            .micaThemeFont(.caption)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(
+            MicaStrings.localized(
+                isRevealed
+                    ? "routing.node_parameter_hide_named \(field.label.resolved(language: language))"
+                    : "routing.node_parameter_show_named \(field.label.resolved(language: language))",
+                language: language
+            )
+        )
     }
 }
 

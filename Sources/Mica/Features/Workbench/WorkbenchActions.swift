@@ -447,22 +447,15 @@ struct WorkbenchActionsView: View {
     }
 
     private func commandRow(_ command: WorkbenchActionCommand) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
-                commandExplanation(command)
-                Spacer(minLength: MicaTheme.Spacing.space3)
-                commandButton(command)
-            }
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                commandExplanation(command)
-                commandButton(command)
-            }
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+            commandIdentity(command)
+            commandButton(command)
         }
-        .padding(.vertical, MicaTheme.Spacing.space2)
+        .padding(.vertical, MicaTheme.Spacing.space3)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func commandExplanation(_ command: WorkbenchActionCommand) -> some View {
+    private func commandIdentity(_ command: WorkbenchActionCommand) -> some View {
         HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             WorkbenchSymbol(
                 systemName: command.systemImage,
@@ -471,10 +464,12 @@ struct WorkbenchActionsView: View {
                     : MicaTheme.textSecondary,
                 frameSize: 20
             )
+            .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 Text(MicaStrings.localizedKey(command.titleKey, language: language))
-                    .micaThemeFont(.label, weight: .medium)
+                    .micaThemeFont(.label, weight: .semibold)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(MicaStrings.localizedKey(command.detailKey, language: language))
                     .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
@@ -493,7 +488,10 @@ struct WorkbenchActionsView: View {
                     .accessibilityHidden(true)
             }
 
-            Button(role: command.risk == .destructive ? .destructive : nil) {
+            Button(
+                MicaStrings.localizedKey(command.titleKey, language: language),
+                role: command.risk == .destructive ? .destructive : nil
+            ) {
                 if command.requiresConfirmation {
                     guard let routerID = appModel.selectedRouterID else { return }
                     pendingConfirmation = WorkbenchRuntimeConfirmation(
@@ -504,15 +502,13 @@ struct WorkbenchActionsView: View {
                 } else {
                     perform(command.intent)
                 }
-            } label: {
-                Label(
-                    MicaStrings.localizedKey(command.titleKey, language: language),
-                    systemImage: command.systemImage
-                )
-                .fixedSize(horizontal: true, vertical: false)
             }
+            .micaThemeFont(.label)
             .buttonStyle(.bordered)
+            .controlSize(.small)
+            .fixedSize(horizontal: true, vertical: false)
             .disabled(!command.isEnabled || hasPendingConfirmation(for: command))
+            .help(MicaStrings.localizedKey(command.detailKey, language: language))
         }
         .frame(minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .trailing)
     }

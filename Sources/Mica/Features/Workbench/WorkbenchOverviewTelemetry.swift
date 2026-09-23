@@ -120,8 +120,9 @@ struct OverviewTelemetrySection: View {
     @Environment(\.micaAppLanguage) private var language
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var controlActiveState
+    @State private var focusedMetric = OverviewMetricID.download
 
-    let availableWidth: CGFloat
+    let layout: OverviewViewportLayout
     let visibleMetrics: Set<OverviewMetricID>
     let preferredTimelineWindow: OverviewTimelineWindow
     let runtime: OverviewTelemetryRuntime
@@ -144,7 +145,6 @@ struct OverviewTelemetrySection: View {
                 connectionSamples: projection.connectionSamples,
                 dates: projection.dates
             )
-            .micaPanel(padding: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: preferredTimelineWindow) {
@@ -181,7 +181,7 @@ struct OverviewTelemetrySection: View {
     private var telemetryTitle: some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
             Image(systemName: "chart.line.uptrend.xyaxis")
-                .micaThemeFont(.title3, weight: .semibold)
+                .micaThemeFont(.label, weight: .semibold)
                 .foregroundStyle(MicaTheme.textSecondary)
                 .accessibilityHidden(true)
             Text(
@@ -190,7 +190,7 @@ struct OverviewTelemetrySection: View {
                     language: language
                 )
             )
-            .micaThemeFont(.title3)
+            .micaThemeFont(.label, weight: .semibold)
             .foregroundStyle(MicaTheme.textPrimary)
         }
         .accessibilityElement(children: .combine)
@@ -207,124 +207,107 @@ struct OverviewTelemetrySection: View {
         let orderedMetrics = OverviewMetricID.allCases.filter(
             visibleMetrics.contains
         )
+        let compact = layout.metricColumns == 1 && orderedMetrics.count > 1
+        let currentMetric = orderedMetrics.contains(focusedMetric)
+            ? focusedMetric
+            : orderedMetrics.first ?? .download
+        let displayedMetrics = compact ? [currentMetric] : orderedMetrics
 
-        Group {
-            if orderedMetrics == OverviewMetricID.allCases, availableWidth >= 960 {
-                HStack(alignment: .top, spacing: 0) {
-                    trafficChart(
-                        .upload,
-                        samples: trafficSamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                    MicaHairlineSeparator(axis: .vertical)
-                        .padding(.vertical, MicaTheme.Spacing.space3)
-                    trafficChart(
-                        .download,
-                        samples: trafficSamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                    MicaHairlineSeparator(axis: .vertical)
-                        .padding(.vertical, MicaTheme.Spacing.space3)
-                    connectionChart(
-                        samples: connectionSamples,
-                        memorySamples: memorySamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                }
-            } else if orderedMetrics == OverviewMetricID.allCases, availableWidth >= 700 {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top, spacing: 0) {
-                        trafficChart(
-                            .upload,
-                            samples: trafficSamples,
-                            dates: dates,
-                            plotHeight: plotHeight
-                        )
-                        MicaHairlineSeparator(axis: .vertical)
-                            .padding(.vertical, MicaTheme.Spacing.space3)
-                        trafficChart(
-                            .download,
-                            samples: trafficSamples,
-                            dates: dates,
-                            plotHeight: plotHeight
-                        )
-                    }
-                    MicaHairlineSeparator()
-                        .padding(.horizontal, MicaTheme.Spacing.space3)
-                    connectionChart(
-                        samples: connectionSamples,
-                        memorySamples: memorySamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                }
-            } else if orderedMetrics.count == 2, availableWidth >= 700 {
-                HStack(alignment: .top, spacing: 0) {
-                    metricPanel(
-                        orderedMetrics[0],
+        if compact {
+            HStack(spacing: MicaTheme.Spacing.space1) {
+                ForEach(orderedMetrics) { metric in
+                    metricReadout(
+                        metric,
+                        isSelected: metric == currentMetric,
                         trafficSamples: trafficSamples,
-                        memorySamples: memorySamples,
-                        connectionSamples: connectionSamples,
-                        dates: dates,
-                        plotHeight: plotHeight
-                    )
-                    MicaHairlineSeparator(axis: .vertical)
-                        .padding(.vertical, MicaTheme.Spacing.space3)
-                    metricPanel(
-                        orderedMetrics[1],
-                        trafficSamples: trafficSamples,
-                        memorySamples: memorySamples,
-                        connectionSamples: connectionSamples,
-                        dates: dates,
-                        plotHeight: plotHeight
+                        connectionSamples: connectionSamples
                     )
                 }
-            } else if let onlyMetric = orderedMetrics.first, orderedMetrics.count == 1 {
+            }
+        }
+
+        OverviewMetricLayout(columns: layout.metricColumns) {
+            ForEach(Array(displayedMetrics.enumerated()), id: \.element) { index, metric in
                 metricPanel(
-                    onlyMetric,
+                    metric,
                     trafficSamples: trafficSamples,
                     memorySamples: memorySamples,
                     connectionSamples: connectionSamples,
                     dates: dates,
-                    plotHeight: plotHeight
+                    plotHeight: layout.metricPlotHeight,
+                    showsReadout: !compact
                 )
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(orderedMetrics.enumerated()), id: \.element) {
-                        index,
-                        metric in
-                        if index > 0 {
-                            MicaHairlineSeparator()
-                                .padding(.horizontal, MicaTheme.Spacing.space3)
-                        }
-                        metricPanel(
-                            metric,
-                            trafficSamples: trafficSamples,
-                            memorySamples: memorySamples,
-                            connectionSamples: connectionSamples,
-                            dates: dates,
-                            plotHeight: plotHeight
-                        )
+                .overlay(alignment: .leading) {
+                    if index % layout.metricColumns > 0 {
+                        Rectangle()
+                            .fill(MicaTheme.separator)
+                            .frame(width: MicaTheme.Shape.hairline)
+                            .padding(.vertical, MicaTheme.Spacing.space3)
                     }
                 }
             }
         }
+        .background(MicaTheme.surface.opacity(0.5),
+                    in: RoundedRectangle(cornerRadius: MicaTheme.Metrics.moduleRadius))
     }
 
-    private var plotHeight: CGFloat {
-        let columnCount: CGFloat
-        if visibleMetrics.count >= 3, availableWidth >= 960 {
-            columnCount = 3
-        } else if visibleMetrics.count >= 2, availableWidth >= 700 {
-            columnCount = 2
-        } else {
-            columnCount = 1
+    private func metricReadout(
+        _ metric: OverviewMetricID,
+        isSelected: Bool,
+        trafficSamples: [TrafficTimeline.Sample],
+        connectionSamples: [ConnectionCountTimeline.Sample]
+    ) -> some View {
+        let traffic = runtime.interaction.snapshot.selectedDate.flatMap {
+            OverviewTimelineProjection.nearestTrafficSample(to: $0, in: trafficSamples)
+        } ?? trafficSamples.last
+        let connections = runtime.interaction.snapshot.selectedDate.flatMap {
+            OverviewTimelineProjection.nearestConnectionSample(to: $0, in: connectionSamples)
+        } ?? connectionSamples.last
+        let value: String?
+        let tint: Color
+        switch metric {
+        case .upload:
+            value = traffic.map { OverviewFormat.rate($0.upload) }
+            tint = MicaTheme.Chart.upload
+        case .download:
+            value = traffic.map { OverviewFormat.rate($0.download) }
+            tint = MicaTheme.Chart.download
+        case .activeConnections:
+            value = connections?.activeCount.formatted()
+            tint = MicaTheme.Chart.connections
         }
-        let panelWidth = max(availableWidth / columnCount, 0)
-        return min(max(panelWidth * 0.60, 240), 300)
+        return Button {
+            focusedMetric = metric
+        } label: {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                HStack(spacing: MicaTheme.Spacing.space1) {
+                    Circle().fill(tint).frame(width: 5, height: 5)
+                        .accessibilityHidden(true)
+                    Text(MicaStrings.localizedKey(metric.titleKey, language: language))
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(MicaTheme.textSecondary)
+                        .lineLimit(1)
+                }
+                Text(verbatim: value ?? MicaStrings.localizedKey("overview.config_not_reported", language: language))
+                    .micaThemeFont(.dataBody, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(MicaTheme.Spacing.space2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? MicaTheme.surface : .clear,
+                        in: RoundedRectangle(cornerRadius: MicaTheme.Metrics.badgeRadius))
+            .overlay(alignment: .bottom) {
+                if isSelected {
+                    Capsule().fill(tint).frame(height: 2)
+                        .padding(.horizontal, MicaTheme.Spacing.space2)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -334,7 +317,8 @@ struct OverviewTelemetrySection: View {
         memorySamples: [MemoryTimeline.Sample],
         connectionSamples: [ConnectionCountTimeline.Sample],
         dates: [Date],
-        plotHeight: CGFloat
+        plotHeight: CGFloat,
+        showsReadout: Bool
     ) -> some View {
         switch metric {
         case .upload:
@@ -342,21 +326,24 @@ struct OverviewTelemetrySection: View {
                 .upload,
                 samples: trafficSamples,
                 dates: dates,
-                plotHeight: plotHeight
+                plotHeight: plotHeight,
+                showsReadout: showsReadout
             )
         case .download:
             trafficChart(
                 .download,
                 samples: trafficSamples,
                 dates: dates,
-                plotHeight: plotHeight
+                plotHeight: plotHeight,
+                showsReadout: showsReadout
             )
         case .activeConnections:
             connectionChart(
                 samples: connectionSamples,
                 memorySamples: memorySamples,
                 dates: dates,
-                plotHeight: plotHeight
+                plotHeight: plotHeight,
+                showsReadout: showsReadout
             )
         }
     }
@@ -366,7 +353,8 @@ struct OverviewTelemetrySection: View {
         _ metric: OverviewTrafficMetric,
         samples: [TrafficTimeline.Sample],
         dates: [Date],
-        plotHeight: CGFloat
+        plotHeight: CGFloat,
+        showsReadout: Bool
     ) -> some View {
         OverviewTrafficChart(
             metric: metric,
@@ -375,7 +363,8 @@ struct OverviewTelemetrySection: View {
             window: runtime.timelineWindow,
             interaction: runtime.interaction,
             allowsMotion: allowsMotion,
-            plotHeight: plotHeight
+            plotHeight: plotHeight,
+            showsReadout: showsReadout
         )
         .frame(maxWidth: .infinity)
     }
@@ -385,7 +374,8 @@ struct OverviewTelemetrySection: View {
         samples: [ConnectionCountTimeline.Sample],
         memorySamples: [MemoryTimeline.Sample],
         dates: [Date],
-        plotHeight: CGFloat
+        plotHeight: CGFloat,
+        showsReadout: Bool
     ) -> some View {
         OverviewConnectionChart(
             samples: samples,
@@ -394,13 +384,13 @@ struct OverviewTelemetrySection: View {
             window: runtime.timelineWindow,
             interaction: runtime.interaction,
             allowsMotion: allowsMotion,
-            plotHeight: plotHeight
+            plotHeight: plotHeight,
+            showsReadout: showsReadout
         )
         .frame(maxWidth: .infinity)
     }
 
-    /// Design.md §2 motion rule: a finite data-arrival pulse only. Reduce
-    /// Motion, a paused stream, and an inactive window render fully static.
+    /// Reduce Motion, a paused stream, and an inactive window render static.
     private var allowsMotion: Bool {
         !reduceMotion
             && controlActiveState != .inactive
@@ -456,19 +446,21 @@ private struct OverviewTelemetryControls: View {
         ) {
             runtime.togglePause()
         }
-        WorkbenchIconCommand(
-            titleKey: "overview.chart_previous_sample",
-            systemImage: "chevron.left",
-            isEnabled: runtime.interaction.canMoveSelection(by: -1, in: dates)
-        ) {
-            runtime.interaction.moveSelection(by: -1, in: dates)
-        }
-        WorkbenchIconCommand(
-            titleKey: "overview.chart_next_sample",
-            systemImage: "chevron.right",
-            isEnabled: runtime.interaction.canMoveSelection(by: 1, in: dates)
-        ) {
-            runtime.interaction.moveSelection(by: 1, in: dates)
+        if snapshot.isPinned {
+            WorkbenchIconCommand(
+                titleKey: "overview.chart_previous_sample",
+                systemImage: "chevron.left",
+                isEnabled: runtime.interaction.canMoveSelection(by: -1, in: dates)
+            ) {
+                runtime.interaction.moveSelection(by: -1, in: dates)
+            }
+            WorkbenchIconCommand(
+                titleKey: "overview.chart_next_sample",
+                systemImage: "chevron.right",
+                isEnabled: runtime.interaction.canMoveSelection(by: 1, in: dates)
+            ) {
+                runtime.interaction.moveSelection(by: 1, in: dates)
+            }
         }
         if snapshot.isPinned || runtime.isPaused {
             WorkbenchIconCommand(
@@ -707,6 +699,13 @@ private enum OverviewTrafficMetric: Equatable, Sendable {
         }
     }
 
+    var tint: Color {
+        switch self {
+        case .upload: MicaTheme.Chart.upload
+        case .download: MicaTheme.Chart.download
+        }
+    }
+
     func value(in sample: TrafficTimeline.Sample) -> Int {
         switch self {
         case .upload: sample.upload
@@ -725,6 +724,7 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
     let timestamp: Date?
     let contextText: String?
     let plotHeight: CGFloat
+    let showsReadout: Bool
     private let plot: Plot
 
     init(
@@ -734,6 +734,7 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
         timestamp: Date?,
         contextText: String? = nil,
         plotHeight: CGFloat,
+        showsReadout: Bool,
         @ViewBuilder plot: () -> Plot
     ) {
         self.titleKey = titleKey
@@ -742,34 +743,33 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
         self.timestamp = timestamp
         self.contextText = contextText
         self.plotHeight = plotHeight
+        self.showsReadout = showsReadout
         self.plot = plot()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            HStack(spacing: MicaTheme.Spacing.space2) {
-                Image(systemName: systemImage)
-                    .micaThemeFont(.caption, weight: .semibold)
-                    .foregroundStyle(MicaTheme.textTertiary)
-                    .accessibilityHidden(true)
-                Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaThemeFont(.caption, weight: .semibold)
-                    .foregroundStyle(MicaTheme.textSecondary)
+            if showsReadout {
+                HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
+                    Image(systemName: systemImage)
+                        .micaThemeFont(.caption, weight: .semibold)
+                        .foregroundStyle(MicaTheme.textTertiary)
+                        .accessibilityHidden(true)
+                    Text(MicaStrings.localizedKey(titleKey, language: language))
+                        .micaThemeFont(.caption, weight: .semibold)
+                        .foregroundStyle(MicaTheme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: MicaTheme.Spacing.space1)
+                    Text(verbatim: value ?? MicaStrings.localizedKey("overview.config_not_reported", language: language))
+                        .micaThemeFont(.dataTitle, weight: .semibold)
+                        .foregroundStyle(value == nil ? MicaTheme.textTertiary : MicaTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .contentTransition(reduceMotion ? .identity : .numericText())
+                        .textSelection(.enabled)
+                }
+                .accessibilityElement(children: .combine)
             }
-            .accessibilityElement(children: .combine)
-
-            Text(
-                verbatim: value ?? MicaStrings.localizedKey(
-                    "overview.config_not_reported",
-                    language: language
-                )
-            )
-            .micaThemeFont(.dataHero, weight: .semibold)
-            .foregroundStyle(value == nil ? MicaTheme.textTertiary : MicaTheme.textPrimary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .contentTransition(reduceMotion ? .identity : .numericText())
-            .textSelection(.enabled)
 
             plot
                 .frame(maxWidth: .infinity)
@@ -793,7 +793,8 @@ private struct OverviewTelemetryPanel<Plot: View>: View {
             }
             .frame(minHeight: 18)
         }
-        .padding(MicaTheme.Spacing.panelPadding)
+        .padding(.horizontal, MicaTheme.Spacing.space3)
+        .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -819,12 +820,11 @@ private struct OverviewTelemetryEmptyPlot: View {
     }
 }
 
-/// Flat latest-sample mark for the Mica Ops charts (design.md §2): one finite
-/// pulse keyed to a real new sample, rendered statically when Reduce Motion is
-/// on, the stream is paused, or the window is inactive.
+/// One finite pulse per received sample, disabled for paused or inactive views.
 private struct OverviewLatestDataMark: View {
     let trigger: Int
     let allowsMotion: Bool
+    let tint: Color
 
     var body: some View {
         if allowsMotion {
@@ -846,10 +846,10 @@ private struct OverviewLatestDataMark: View {
     private var mark: some View {
         ZStack {
             Circle()
-                .stroke(MicaTheme.accent.opacity(0.45), lineWidth: 1)
+                .stroke(tint.opacity(0.45), lineWidth: 1)
                 .frame(width: 12, height: 12)
             Circle()
-                .fill(MicaTheme.accent)
+                .fill(tint)
                 .frame(width: 6, height: 6)
         }
         .frame(width: 16, height: 16)
@@ -858,7 +858,6 @@ private struct OverviewLatestDataMark: View {
 }
 
 private struct OverviewTrafficChart: View {
-    @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
 
     let metric: OverviewTrafficMetric
@@ -868,6 +867,7 @@ private struct OverviewTrafficChart: View {
     let interaction: OverviewTimelineInteractionState
     let allowsMotion: Bool
     let plotHeight: CGFloat
+    let showsReadout: Bool
 
     var body: some View {
         let displayedSample = displayedSample
@@ -877,7 +877,8 @@ private struct OverviewTrafficChart: View {
             systemImage: metric.systemImage,
             value: displayedSample.map { OverviewFormat.rate(metric.value(in: $0)) },
             timestamp: displayedSample?.receivedAt,
-            plotHeight: plotHeight
+            plotHeight: plotHeight,
+            showsReadout: showsReadout
         ) {
             if samples.isEmpty {
                 OverviewTelemetryEmptyPlot(titleKey: "overview.no_traffic_samples")
@@ -923,7 +924,7 @@ private struct OverviewTrafficChart: View {
 
     private var displayedSample: TrafficTimeline.Sample? {
         guard let target = interaction.snapshot.selectedDate else {
-            return appModel.trafficTimeline.samples.last ?? samples.last
+            return samples.last
         }
         return OverviewTimelineProjection.nearestTrafficSample(to: target, in: samples)
     }
@@ -963,7 +964,10 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
     }
 
     var body: some View {
-        let scale = OverviewTimelineChartScale.traffic(samples)
+        let scale = OverviewTimelineChartScale.traffic(
+            samples,
+            value: metric == .upload ? \.upload : \.download
+        )
         let dateDomain = OverviewTimelineProjection.dateDomain(
             endingAt: samples.last?.receivedAt ?? Date.distantPast,
             window: window
@@ -976,14 +980,14 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.upload)
                 )
-                .foregroundStyle(MicaTheme.accent.opacity(0.12))
+                .foregroundStyle(metric.tint.opacity(0.12))
 
                 LinePlot(
                     samples,
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.upload)
                 )
-                .foregroundStyle(MicaTheme.accent)
+                .foregroundStyle(metric.tint)
                 .lineStyle(StrokeStyle(lineWidth: 1.6))
 
             } else {
@@ -992,14 +996,14 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.download)
                 )
-                .foregroundStyle(MicaTheme.accent.opacity(0.12))
+                .foregroundStyle(metric.tint.opacity(0.12))
 
                 LinePlot(
                     samples,
                     x: .value(timeLabel, \.receivedAt),
                     y: .value(metricLabel, \.download)
                 )
-                .foregroundStyle(MicaTheme.accent)
+                .foregroundStyle(metric.tint)
                 .lineStyle(StrokeStyle(lineWidth: 1.6))
 
             }
@@ -1009,11 +1013,12 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, latestSample.receivedAt),
                     y: .value(metricLabel, metric.value(in: latestSample))
                 )
-                .foregroundStyle(MicaTheme.accent)
+                .foregroundStyle(metric.tint)
                 .symbol {
                     OverviewLatestDataMark(
                         trigger: latestSample.id,
-                        allowsMotion: allowsMotion
+                        allowsMotion: allowsMotion,
+                        tint: metric.tint
                     )
                 }
             }
@@ -1044,7 +1049,6 @@ private struct OverviewTrafficBaseChart: View, @MainActor Equatable {
 }
 
 private struct OverviewConnectionChart: View {
-    @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
 
     let samples: [ConnectionCountTimeline.Sample]
@@ -1054,6 +1058,7 @@ private struct OverviewConnectionChart: View {
     let interaction: OverviewTimelineInteractionState
     let allowsMotion: Bool
     let plotHeight: CGFloat
+    let showsReadout: Bool
 
     var body: some View {
         let displayedSample = displayedSample
@@ -1064,7 +1069,8 @@ private struct OverviewConnectionChart: View {
             value: displayedSample?.activeCount.formatted(),
             timestamp: displayedSample?.receivedAt,
             contextText: memoryContextText,
-            plotHeight: plotHeight
+            plotHeight: plotHeight,
+            showsReadout: showsReadout
         ) {
             if samples.isEmpty {
                 OverviewTelemetryEmptyPlot(titleKey: "overview.no_connection_samples")
@@ -1111,7 +1117,7 @@ private struct OverviewConnectionChart: View {
 
     private var displayedSample: ConnectionCountTimeline.Sample? {
         guard let target = interaction.snapshot.selectedDate else {
-            return appModel.connectionCountTimeline.samples.last ?? samples.last
+            return samples.last
         }
         return OverviewTimelineProjection.nearestConnectionSample(
             to: target,
@@ -1121,7 +1127,7 @@ private struct OverviewConnectionChart: View {
 
     private var selectedMemorySample: MemoryTimeline.Sample? {
         guard let target = interaction.snapshot.selectedDate else {
-            return appModel.memoryTimeline.samples.last ?? memorySamples.last
+            return memorySamples.last
         }
         return OverviewTimelineProjection.nearestMemorySample(
             to: target,
@@ -1187,14 +1193,14 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
                 x: .value(timeLabel, \.receivedAt),
                 y: .value(connectionLabel, \.activeCount)
             )
-            .foregroundStyle(MicaTheme.accent.opacity(0.12))
+            .foregroundStyle(MicaTheme.Chart.connections.opacity(0.12))
 
             LinePlot(
                 samples,
                 x: .value(timeLabel, \.receivedAt),
                 y: .value(connectionLabel, \.activeCount)
             )
-            .foregroundStyle(MicaTheme.accent)
+            .foregroundStyle(MicaTheme.Chart.connections)
             .lineStyle(StrokeStyle(lineWidth: 1.5))
 
             if let latestSample = samples.last {
@@ -1202,11 +1208,12 @@ private struct OverviewConnectionBaseChart: View, @MainActor Equatable {
                     x: .value(timeLabel, latestSample.receivedAt),
                     y: .value(connectionLabel, latestSample.activeCount)
                 )
-                .foregroundStyle(MicaTheme.accent)
+                .foregroundStyle(MicaTheme.Chart.connections)
                 .symbol {
                     OverviewLatestDataMark(
                         trigger: latestSample.id,
-                        allowsMotion: allowsMotion
+                        allowsMotion: allowsMotion,
+                        tint: MicaTheme.Chart.connections
                     )
                 }
             }

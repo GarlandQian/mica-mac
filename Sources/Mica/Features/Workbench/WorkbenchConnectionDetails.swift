@@ -21,10 +21,13 @@ struct WorkbenchConnectionDecisionPathRail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            ViewThatFits(in: .horizontal) {
+            ScrollView(.horizontal) {
                 horizontalPath
-                verticalPath
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.bottom, MicaTheme.Spacing.space1)
             }
+            .scrollIndicators(.automatic)
+            .fixedSize(horizontal: false, vertical: true)
 
             if isActive {
                 actionBar
@@ -60,25 +63,6 @@ struct WorkbenchConnectionDecisionPathRail: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var verticalPath: some View {
-        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            originStep
-            verticalConnector
-            inboundStep
-            verticalConnector
-            ruleStep
-
-            ForEach(projection.segments) { segment in
-                verticalConnector
-                routeStep(segment)
-            }
-
-            verticalConnector
-            destinationStep
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var originStep: some View {
         WorkbenchDecisionPathStep(
             titleKey: "traffic.connection_source",
@@ -97,12 +81,6 @@ struct WorkbenchConnectionDecisionPathRail: View {
             tint: MicaTheme.textSecondary,
             monospaced: true
         )
-    }
-
-    private var verticalConnector: some View {
-        WorkbenchDecisionPathConnector()
-            .rotationEffect(.degrees(90))
-            .padding(.leading, MicaTheme.Spacing.space2)
     }
 
     private var ruleStep: some View {

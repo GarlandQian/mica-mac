@@ -18,7 +18,7 @@ destinations:
 9. Actions
 10. Diagnostics
 
-The sidebar groups these destinations into Operate, Observe, and Manage. Native
+The sidebar groups these destinations into Workspace, Monitor, and Controller. Native
 application Settings is separate and opens from the app menu; it is not a
 Workbench destination. Policy groups expand inline and preserve controller
 order. Node selection, latency tests, connection inspection, and source
@@ -53,7 +53,7 @@ Mica does not modify macOS proxy settings, environment variables, firewall rules
 - English, Simplified Chinese, and Follow System language modes.
 - Follow System, Light, and Dark appearance modes.
 - Standard, Comfortable, Large, and Extra Large interface text sizes.
-- Mica Ops color, typography, spacing, shape, metrics, and motion tokens.
+- Shared native typography, neutral surfaces, and the macOS accent preference.
 - Native toolbar commands, keyboard navigation, SF Symbols, VoiceOver labels, and font-aware sidebar/table layouts.
 
 ## Requirements

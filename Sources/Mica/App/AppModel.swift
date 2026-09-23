@@ -170,6 +170,15 @@ final class AppModel {
     var runningRuntimeOperationID: String?
     var controllerSession = ControllerSession() {
         didSet {
+            if oldValue.controllerID != controllerSession.controllerID
+                || oldValue.generation != controllerSession.generation {
+                liveSessionTasks.bind(to: controllerSession.controllerID.map {
+                    LiveSessionRuntimeIdentity(
+                        controllerID: $0,
+                        generation: controllerSession.generation
+                    )
+                })
+            }
             if oldValue.generation != controllerSession.generation {
                 resetSessionPublicationCoordinator(for: controllerSession)
             }
@@ -264,19 +273,8 @@ final class AppModel {
     @ObservationIgnored var providerTask: Task<Void, Never>?
     @ObservationIgnored var rulesTask: Task<Void, Never>?
     @ObservationIgnored var surgeTask: Task<Void, Never>?
-    @ObservationIgnored var liveTrafficTask: Task<Void, Never>?
-    @ObservationIgnored var liveLogsTask: Task<Void, Never>?
-    @ObservationIgnored var liveMemoryTask: Task<Void, Never>?
-    @ObservationIgnored var liveConnectionsTask: Task<Void, Never>?
-    @ObservationIgnored var singBoxSessionTask: Task<Void, Never>?
-    @ObservationIgnored var liveRetryTask: Task<Void, Never>?
-    @ObservationIgnored var backendProbeTask: Task<Void, Never>?
+    @ObservationIgnored let liveSessionTasks = LiveSessionTaskSupervisor()
     @ObservationIgnored var liveRetryState = LiveStreamRetryState()
-    @ObservationIgnored var initialSessionRefreshTask: Task<Void, Never>?
-    @ObservationIgnored var fastSessionRefreshTask: Task<Void, Never>?
-    @ObservationIgnored var mediumSessionRefreshTask: Task<Void, Never>?
-    @ObservationIgnored var slowSessionRefreshTask: Task<Void, Never>?
-    @ObservationIgnored var manualSessionRefreshTask: Task<Void, Never>?
     @ObservationIgnored var selectedRouterRefreshOperationID: UUID?
     @ObservationIgnored var selectedRouterTestOperationID: UUID?
     @ObservationIgnored var runtimeOperationTask: Task<Void, Never>?
@@ -1771,7 +1769,8 @@ final class AppModel {
         }
     }
 
-    func updateProxyProvider(_ provider: ProxyProviderViewState) {
+    func updateProxyProvider(_ provider: ProxyProviderViewState, scope: LiveCommandScope) {
+        guard matchesCurrentCommandScope(scope) else { return }
         let actionTitle = TrialCommandAction.providerUpdate.title(language: presentationLanguage)
         guard let router = selectedRouter else {
             operationState = .error(localized("operation.select_router_provider"))
@@ -1850,7 +1849,8 @@ final class AppModel {
         }
     }
 
-    func healthCheckProxyProvider(_ provider: ProxyProviderViewState) {
+    func healthCheckProxyProvider(_ provider: ProxyProviderViewState, scope: LiveCommandScope) {
+        guard matchesCurrentCommandScope(scope) else { return }
         let actionTitle = TrialCommandAction.providerHealthCheck.title(language: presentationLanguage)
         guard let router = selectedRouter else {
             operationState = .error(localized("operation.select_router_provider_health"))

@@ -88,7 +88,7 @@ enum WorkbenchInspectorSelection: Equatable, Sendable {
         case .none:
             nil
         case .proxyGroup, .proxyNode:
-            .proxies
+            .overview
         case .connection:
             .connections
         case .rule:
@@ -110,10 +110,9 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
     var selectedItemID: String?
     var scrollAnchorID: String?
     var activeTab: String?
-    var openGroupIDs: [String]
     var activeGroupID: String?
-    var groupFilters: [String: String]
-    var selectedGroupMemberIDs: [String: String]
+    var proxyMemberQuery: String
+    var inspectedProxyMemberID: String?
     var pendingConnectionSelection: WorkbenchConnectionNavigationSelection?
     var pendingRuleSelection: WorkbenchRuleNavigationSelection?
     var pendingProxySelection: WorkbenchProxyNavigationSelection?
@@ -125,10 +124,9 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
         selectedItemID: String? = nil,
         scrollAnchorID: String? = nil,
         activeTab: String? = nil,
-        openGroupIDs: [String] = [],
         activeGroupID: String? = nil,
-        groupFilters: [String: String] = [:],
-        selectedGroupMemberIDs: [String: String] = [:],
+        proxyMemberQuery: String = "",
+        inspectedProxyMemberID: String? = nil,
         pendingConnectionSelection: WorkbenchConnectionNavigationSelection? = nil,
         pendingRuleSelection: WorkbenchRuleNavigationSelection? = nil,
         pendingProxySelection: WorkbenchProxyNavigationSelection? = nil
@@ -139,10 +137,9 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
         self.selectedItemID = selectedItemID
         self.scrollAnchorID = scrollAnchorID
         self.activeTab = activeTab
-        self.openGroupIDs = openGroupIDs
         self.activeGroupID = activeGroupID
-        self.groupFilters = groupFilters
-        self.selectedGroupMemberIDs = selectedGroupMemberIDs
+        self.proxyMemberQuery = proxyMemberQuery
+        self.inspectedProxyMemberID = inspectedProxyMemberID
         self.pendingConnectionSelection = pendingConnectionSelection
         self.pendingRuleSelection = pendingRuleSelection
         self.pendingProxySelection = pendingProxySelection
@@ -151,9 +148,9 @@ struct WorkbenchDestinationWorkspace: Equatable, Sendable {
     mutating func clearSessionBoundState() {
         selectedItemID = nil
         scrollAnchorID = nil
-        openGroupIDs.removeAll(keepingCapacity: false)
         activeGroupID = nil
-        selectedGroupMemberIDs.removeAll(keepingCapacity: false)
+        proxyMemberQuery = ""
+        inspectedProxyMemberID = nil
         pendingConnectionSelection = nil
         pendingRuleSelection = nil
         pendingProxySelection = nil
@@ -174,10 +171,9 @@ private final class WorkbenchWorkspaceState {
     private(set) var selectedItemID: String?
     private(set) var scrollAnchorID: String?
     private(set) var activeTab: String?
-    private(set) var openGroupIDs: [String]
     private(set) var activeGroupID: String?
-    private(set) var groupFilters: [String: String]
-    private(set) var selectedGroupMemberIDs: [String: String]
+    private(set) var proxyMemberQuery: String
+    private(set) var inspectedProxyMemberID: String?
     private(set) var pendingConnectionSelection: WorkbenchConnectionNavigationSelection?
     private(set) var pendingRuleSelection: WorkbenchRuleNavigationSelection?
     private(set) var pendingProxySelection: WorkbenchProxyNavigationSelection?
@@ -189,10 +185,9 @@ private final class WorkbenchWorkspaceState {
         selectedItemID = workspace.selectedItemID
         scrollAnchorID = workspace.scrollAnchorID
         activeTab = workspace.activeTab
-        openGroupIDs = workspace.openGroupIDs
         activeGroupID = workspace.activeGroupID
-        groupFilters = workspace.groupFilters
-        selectedGroupMemberIDs = workspace.selectedGroupMemberIDs
+        proxyMemberQuery = workspace.proxyMemberQuery
+        inspectedProxyMemberID = workspace.inspectedProxyMemberID
         pendingConnectionSelection = workspace.pendingConnectionSelection
         pendingRuleSelection = workspace.pendingRuleSelection
         pendingProxySelection = workspace.pendingProxySelection
@@ -206,10 +201,9 @@ private final class WorkbenchWorkspaceState {
             selectedItemID: selectedItemID,
             scrollAnchorID: scrollAnchorID,
             activeTab: activeTab,
-            openGroupIDs: openGroupIDs,
             activeGroupID: activeGroupID,
-            groupFilters: groupFilters,
-            selectedGroupMemberIDs: selectedGroupMemberIDs,
+            proxyMemberQuery: proxyMemberQuery,
+            inspectedProxyMemberID: inspectedProxyMemberID,
             pendingConnectionSelection: pendingConnectionSelection,
             pendingRuleSelection: pendingRuleSelection,
             pendingProxySelection: pendingProxySelection
@@ -230,13 +224,12 @@ private final class WorkbenchWorkspaceState {
             scrollAnchorID = workspace.scrollAnchorID
         }
         if activeTab != workspace.activeTab { activeTab = workspace.activeTab }
-        if openGroupIDs != workspace.openGroupIDs { openGroupIDs = workspace.openGroupIDs }
         if activeGroupID != workspace.activeGroupID {
             activeGroupID = workspace.activeGroupID
         }
-        if groupFilters != workspace.groupFilters { groupFilters = workspace.groupFilters }
-        if selectedGroupMemberIDs != workspace.selectedGroupMemberIDs {
-            selectedGroupMemberIDs = workspace.selectedGroupMemberIDs
+        if proxyMemberQuery != workspace.proxyMemberQuery { proxyMemberQuery = workspace.proxyMemberQuery }
+        if inspectedProxyMemberID != workspace.inspectedProxyMemberID {
+            inspectedProxyMemberID = workspace.inspectedProxyMemberID
         }
         if pendingConnectionSelection != workspace.pendingConnectionSelection {
             pendingConnectionSelection = workspace.pendingConnectionSelection
@@ -598,6 +591,7 @@ final class WorkbenchWorkspaceStore {
         let owner = selection == .none
             ? nil
             : destination ?? selection.owningDestination
+        guard selection == .none || owner?.supportsInspector == true else { return }
         if inspectorSelection != selection {
             inspectorSelection = selection
         }
@@ -920,7 +914,6 @@ private struct PersistedWorkspace: Codable, Equatable, Sendable {
     var filters: [String: String] = [:]
     var sort: [WorkbenchWorkspaceSort] = []
     var activeTab: String?
-    var groupFilters: [String: String] = [:]
 
     init() {}
 
@@ -929,7 +922,6 @@ private struct PersistedWorkspace: Codable, Equatable, Sendable {
         filters = workspace.filters
         sort = workspace.sort
         activeTab = workspace.activeTab
-        groupFilters = workspace.groupFilters
     }
 
     var workspace: WorkbenchDestinationWorkspace {
@@ -937,8 +929,7 @@ private struct PersistedWorkspace: Codable, Equatable, Sendable {
             searchText: searchText,
             filters: filters,
             sort: sort,
-            activeTab: activeTab,
-            groupFilters: groupFilters
+            activeTab: activeTab
         )
     }
 

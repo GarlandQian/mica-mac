@@ -12,6 +12,7 @@ struct WorkbenchConnectionPulseStrip: View {
             regularLayout
             compactLayout
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
         .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,7 +108,7 @@ struct WorkbenchConnectionPulseStrip: View {
             value: uploadValue,
             detail: uploadDetail,
             systemImage: "arrow.up",
-            tint: MicaTheme.textSecondary
+            tint: MicaTheme.Chart.upload
         )
     }
 
@@ -117,7 +118,7 @@ struct WorkbenchConnectionPulseStrip: View {
             value: downloadValue,
             detail: downloadDetail,
             systemImage: "arrow.down",
-            tint: MicaTheme.textSecondary
+            tint: MicaTheme.Chart.download
         )
     }
 

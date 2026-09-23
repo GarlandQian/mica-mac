@@ -342,7 +342,7 @@ struct SessionStreamStateTests {
             itemCount: 2
         )
 
-        model.updateProxyProvider(source)
+        model.updateProxyProvider(source, scope: commandScope(for: model))
 
         #expect(model.providerTask == nil)
         #expect(model.updatingProviderName == nil)
@@ -374,7 +374,7 @@ struct SessionStreamStateTests {
             itemCount: 2
         )
 
-        model.healthCheckProxyProvider(source)
+        model.healthCheckProxyProvider(source, scope: commandScope(for: model))
 
         #expect(model.providerTask == nil)
         #expect(model.checkingProviderName == nil)

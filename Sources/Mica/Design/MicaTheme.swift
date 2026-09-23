@@ -3,24 +3,18 @@ import SwiftUI
 
 // MARK: - Tokens
 
-/// Mica Ops design tokens (task 08-17 design.md §2). One consolidated namespace
-/// for color, typography, spacing, shape, and motion. Introduced additively in
-/// Phase 1; the previous token system was deleted in Phase 7.3, and the shared
-/// Workbench primitives moved into `MicaThemeComponents.swift` in Phase 4B.
-///
-/// Rules (design.md §2): the accent never decorates; status colors never brand;
-/// text contrast stays >= 4.5:1 (primary) and >= 3:1 (secondary/large data).
+/// Shared appearance, typography, and layout for the native workspace.
 enum MicaTheme {
     // MARK: Color
 
     /// Window background.
-    static let canvas = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x0D0E10))
+    static let canvas = Color(micaLight: rgb(0xFAFAFB), dark: rgb(0x151618))
     /// Panels and sidebar selections.
-    static let surface = Color(micaLight: rgb(0xF5F6F7), dark: rgb(0x15171A))
+    static let surface = Color(micaLight: rgb(0xF0F1F3), dark: rgb(0x1D1F22))
     /// Inspector and popovers.
-    static let surfaceRaised = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x1C1F23))
+    static let surfaceRaised = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x25282C))
     /// Opaque hairlines only.
-    static let separator = Color(micaLight: rgb(0xD9DBDF), dark: rgb(0x2A2D32))
+    static let separator = Color(micaLight: rgb(0xD9DCE1), dark: rgb(0x34373C))
 
     /// System-compatible text ramps; both appearances resolve through the
     /// system label colors so contrast tracks the user's accessibility settings.
@@ -28,8 +22,19 @@ enum MicaTheme {
     static let textSecondary = Color(nsColor: .secondaryLabelColor)
     static let textTertiary = Color(nsColor: .tertiaryLabelColor)
 
-    /// Signal teal: selection, active path, primary action, live indicator ONLY.
-    static let accent = Color(micaLight: rgb(0x0B8F66), dark: rgb(0x34D1A3))
+    /// Follow the user's macOS accent preference for selection and commands.
+    static let accent = Color(nsColor: .controlAccentColor)
+
+    enum Chart {
+        static let upload = Color(nsColor: .systemTeal)
+        static let download = Color(nsColor: .systemBlue)
+        static let connections = Color(nsColor: .systemOrange)
+    }
+
+    enum Topology {
+        static let nodeSurface = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x282C32))
+        static let headerSurface = Color(micaLight: rgb(0xE8EBEF), dark: rgb(0x23262B))
+    }
 
     /// Controller-reported status ONLY; system equivalents keep both
     /// appearances and increase-contrast adaptations for free.
@@ -37,10 +42,7 @@ enum MicaTheme {
     static let statusWarning = Color(nsColor: .systemOrange)
     static let statusError = Color(nsColor: .systemRed)
 
-    /// Muted column identity tints for the overview topology flow graph
-    /// (task 08-23). Hues dodge the teal accent and the vivid status colors
-    /// and stay desaturated, so controller-reported status always reads above
-    /// the flow encoding.
+    /// Muted category colors distinguish routing stages from live status.
     enum ColumnTint {
         /// Sources: muted slate blue.
         static let source = Color(micaLight: rgb(0x5B7089), dark: rgb(0x7E93B0))
@@ -72,9 +74,7 @@ enum MicaTheme {
 }
 
 extension Color {
-    /// Dynamic light/dark color created in code (design.md §2) - no asset
-    /// catalog. Mirrors the `adaptive(light:dark:)` provider pattern in
-    /// superseded workbench token file.
+    /// Resolve colors against the current native appearance.
     init(micaLight light: NSColor, dark: NSColor) {
         self.init(
             nsColor: NSColor(name: nil) { appearance in
@@ -112,14 +112,12 @@ extension MicaTheme {
 // MARK: - Typography
 
 extension MicaTheme {
-    /// Type scale (design.md §2). UI roles render SF Pro at 11/12/13/15/17 with
+    /// UI roles render SF Pro at 11/12/13/15/17 with
     /// semibold titles plus 22/28 hero values. `data*` roles render SF Mono
     /// (`Font.system(design: .monospaced)`) with tabular numerals and are the only roles
     /// allowed for live data (latency, rates, IPs, ports, counts, timestamps).
     ///
-    /// Every role scales through `AppFontScale.pointSize(for:)` - the same
-    /// multiplier the superseded scaled-font modifier applied - so the user's
-    /// font-scale preference keeps working for MicaTheme text.
+    /// Every role respects the user's font-scale preference.
     enum TextRole: Sendable, Equatable {
         case caption
         case label
@@ -180,8 +178,6 @@ extension MicaTheme {
         let size = pointSize(for: role, scale: scale)
         let resolvedWeight = weight ?? role.defaultWeight
         if role.isMonospaced {
-            // SF Mono: the SDK spells `Font.monospacedSystem` as `.monospaced`
-            // design on the system font (the face the superseded scaled-font modifier used for data).
             return .system(size: size, weight: resolvedWeight, design: .monospaced)
         }
         return .system(size: size, weight: resolvedWeight, design: .default)
@@ -207,9 +203,7 @@ private struct MicaThemeFontModifier: ViewModifier {
 }
 
 extension View {
-    /// Applies a MicaTheme text role, scaled by the user's font-scale
-    /// preference via the same `AppFontScale` multiplier the superseded
-    /// scaled-font modifier applied.
+    /// Applies a text role using the user's font-scale preference.
     func micaThemeFont(_ role: MicaTheme.TextRole, weight: Font.Weight? = nil) -> some View {
         modifier(MicaThemeFontModifier(role: role, weight: weight))
     }
@@ -218,7 +212,7 @@ extension View {
 // MARK: - Spacing, Shape, Metrics
 
 extension MicaTheme {
-    /// 4pt baseline grid (design.md §2).
+    /// Four-point baseline grid.
     enum Spacing {
         static let space1: CGFloat = 4
         static let space2: CGFloat = 8
@@ -239,71 +233,45 @@ extension MicaTheme {
     }
 
     enum Metrics {
-        /// Density-first data-list row heights (design.md §2 typography).
+        /// Compact rows retain room for keyboard focus and selection.
         static let dataRowHeightMin: CGFloat = 22
         static let dataRowHeightMax: CGFloat = 28
 
-        /// Compact icon-button bounds (Phase 4 migration of
-        /// superseded bounds token; same value).
+        /// Compact pointer-control bounds.
         static let iconControlSize: CGFloat = 28
-        /// Group-module corner radius (Phase 4 migration of
-        /// superseded bounds token; same value).
         static let moduleRadius: CGFloat = 8
-        /// Dense-cell corner radius (Phase 4 migration of
-        /// superseded bounds token; same value).
         static let badgeRadius: CGFloat = 5
-        /// Minimum height for standalone controls (Phase 4B migration of
-        /// superseded bounds token; same value).
+        /// Minimum height for standalone controls.
         static let controlMinHeight: CGFloat = 28
-        /// Fixed command-bar height (Phase 4B migration of
-        /// superseded bounds token; same value).
+        /// Commands can grow vertically when controls wrap.
         static let commandBarHeight: CGFloat = 40
-        /// Horizontal padding for window chrome strips (Phase 4B migration of
-        /// superseded bounds token; same value).
         static let chromeHorizontalPadding: CGFloat = 12
 
-        /// Compact page horizontal padding (Phase 5C migration of
-        /// superseded bounds token; same value).
         static let compactPagePadding: CGFloat = 12
-        /// Regular page horizontal padding (Phase 5C migration of
-        /// superseded bounds token; same value).
         static let regularPagePadding: CGFloat = 16
-        /// Width threshold switching compact to regular page padding (Phase 5C
-        /// migration of superseded bounds token; same value).
         static let wideThreshold: CGFloat = 720
 
-        /// Page horizontal padding for a content width (Phase 5C migration of
-        /// superseded bounds token; same value).
         static func pagePadding(for width: CGFloat) -> CGFloat {
             width < wideThreshold ? compactPagePadding : regularPagePadding
         }
 
-        /// Fixed status-bar height (Phase 6A migration of
-        /// superseded bounds token; same value).
-        static let statusBarHeight: CGFloat = 34
-        /// Inspector column width limits (Phase 6A migration of
-        /// superseded bounds token; same value).
+        static let statusBarHeight: CGFloat = 28
+        /// Inspector widths remain independent of the data workspace.
         static let inspectorMin: CGFloat = 300
         static let inspectorIdeal: CGFloat = 360
         static let inspectorMax: CGFloat = 480
-        /// Management form label column width (Phase 6A migration of
-        /// superseded bounds token; same value).
         static let formLabelWidth: CGFloat = 176
-        /// Management form control maximum width (Phase 6A migration of
-        /// superseded bounds token; same value).
         static let formControlMax: CGFloat = 360
-        /// Sidebar column width limits (Phase 7 migration of
-        /// superseded bounds token; same value).
-        static let sidebarMin: CGFloat = 176
-        static let sidebarIdeal: CGFloat = 196
-        static let sidebarMax: CGFloat = 232
+        static let sidebarMin: CGFloat = 188
+        static let sidebarIdeal: CGFloat = 216
+        static let sidebarMax: CGFloat = 280
     }
 }
 
 // MARK: - Motion
 
 extension MicaTheme {
-    /// State-change motion only: 120-200ms ease-out (design.md §2). No idle
+    /// State-change motion only: 120-200ms ease-out. No idle
     /// loops exist in this system; callers must gate every animation on
     /// `accessibilityReduceMotion` (use `micaStateChangeAnimation`).
     enum Motion {

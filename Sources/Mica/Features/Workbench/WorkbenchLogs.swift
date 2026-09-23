@@ -22,16 +22,7 @@ struct WorkbenchLogsView: View {
     @Environment(\.micaAppLanguage) private var language
     @Binding var searchText: String
 
-    @State private var projectionCache = WorkbenchLogProjectionCache()
-    @State private var selectedRowID: String?
-    @State private var logLevel: LogSessionLevel = .all
-    @State private var followNewest = true
-    @State private var followCadence = WorkbenchLogFollowCadence()
-    @State private var restoredScrollAnchorID: String?
-    @State private var scrollRequest: WorkbenchDataScrollRequest?
-    @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
-    @State private var isProjectionActive = false
-    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
+    @State private var model = WorkbenchLogsModel()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 760,
@@ -47,69 +38,32 @@ struct WorkbenchLogsView: View {
             pageContent
         }
         .onAppear {
-            let projectionCacheBinding = $projectionCache
-            workspaceStore.logEntryResolver = { id in
-                projectionCacheBinding.wrappedValue.row(id: id)
+            workspaceStore.logEntryResolver = { [weak model] id in
+                model?.row(id: id)
             }
-            if let selectedRowID {
+            restoreWorkspace()
+            synchronizePresentation()
+            if let selectedRowID = model.selectedRowID {
                 workspaceStore.selectInspector(.log(id: selectedRowID))
             }
-            isProjectionActive = true
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
         .onDisappear {
             workspaceStore.logEntryResolver = nil
-            isProjectionActive = false
-            followCadence.cancel()
+            model.deactivate()
         }
-        .onChange(of: appModel.selectedRouterID) {
-            projectionCache.reset()
-            followCadence.cancel()
-            scrollRequest = nil
-            accessibilityCursor.reset()
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
+        .onChange(of: presentationRequest) { _, request in
+            if model.scope != request.scope {
+                restoreWorkspace()
+            }
+            synchronizePresentation()
         }
-        .onChange(of: appModel.controllerSessionPresentation.generation) {
-            projectionCache.reset()
-            followCadence.cancel()
-            scrollRequest = nil
-            accessibilityCursor.reset()
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-        }
-        .onChange(of: appModel.logsCatalog.entriesRevision) {
-            rebuildRows(reconcileSelection: true)
-        }
-        .onChange(of: logLevel) {
+        .onChange(of: model.level) {
             persistLogLevel()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
         }
-        .onChange(of: searchText) {
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-        }
-        .onChange(of: language) {
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-        }
-        .onChange(of: followNewest) { _, follows in
+        .onChange(of: model.followsNewest) { _, follows in
             persistFollowNewest(follows)
-            reconcileAccessibilityWindow()
-            if !follows {
-                followCadence.cancel()
-            }
         }
-        .onChange(of: selectedRowID) { _, selection in
-            if selection != nil {
-                followNewest = false
-            }
-            reconcileAccessibilityWindow(revealing: selection)
+        .onChange(of: model.selectedRowID) { _, selection in
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.log(id: selection))
@@ -118,8 +72,8 @@ struct WorkbenchLogsView: View {
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in
-            if case .none = selection, selectedRowID != nil {
-                selectedRowID = nil
+            if case .none = selection, model.selectedRowID != nil {
+                model.select(nil)
             }
         }
     }
@@ -133,7 +87,7 @@ struct WorkbenchLogsView: View {
             WorkbenchCommandSummary(
                 symbolName: "text.alignleft",
                 titleKey: "dashboard.tab_logs",
-                value: String(rows.count),
+                value: String(model.rows.count),
                 detail: appModel.dashboardSessionControls.logsPresentationPaused
                     ? MicaStrings.localizedKey(
                         "traffic.log_presentation_paused_detail",
@@ -145,10 +99,11 @@ struct WorkbenchLogsView: View {
             Picker(
                 MicaStrings.localizedKey("traffic.log_level", language: language),
                 selection: Binding(
-                    get: { logLevel },
+                    get: { model.level },
                     set: { level in
                         guard let commandScope else { return }
-                        logLevel = level
+                        guard appModel.matchesCurrentCommandScope(commandScope) else { return }
+                        model.setLevel(level)
                         appModel.setControllerLogLevel(level, scope: commandScope)
                     }
                 )
@@ -173,7 +128,7 @@ struct WorkbenchLogsView: View {
 
             Toggle(
                 MicaStrings.localizedKey("traffic.follow_bottom", language: language),
-                isOn: $followNewest
+                isOn: Binding(get: { model.followsNewest }, set: { model.setFollowing($0) })
             )
             .toggleStyle(.checkbox)
             .disabled(!supportsLogs)
@@ -194,11 +149,11 @@ struct WorkbenchLogsView: View {
             WorkbenchIconCommand(
                 titleKey: "traffic.clear_logs",
                 systemImage: "trash",
-                isEnabled: supportsLogs && !allRows.isEmpty && !appModel.isBusy,
+                isEnabled: supportsLogs && model.sourceCount > 0 && !appModel.isBusy,
                 role: .destructive
             ) {
                 appModel.clearControllerLogs()
-                selectedRowID = nil
+                model.select(nil)
             }
         }
     }
@@ -255,24 +210,26 @@ struct WorkbenchLogsView: View {
         let generation = appModel.controllerSessionPresentation.generation
         let localization = MicaStrings.localizationContext(for: language)
         let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
-            scope: WorkbenchTableAccessibilityScope(
+            scope: WorkbenchSessionIdentity(
                 controllerID: controllerID,
                 generation: generation
             ),
             title: localization.localizedKey("dashboard.tab_logs"),
-            sourceRows: rows,
-            window: accessibilityWindow,
-            selectedRowID: selectedRowID,
+            sourceRows: model.rows,
+            window: model.accessibilityWindow,
+            selectedRowID: model.selectedRowID,
             localization: localization,
             summary: WorkbenchLogProjection.accessibilitySummary
         )
         return WorkbenchDataTableViewport(
             generation: generation,
-            restorationID: restoredScrollAnchorID,
-            request: scrollRequest,
+            restorationID: model.restoredScrollAnchorID,
+            request: model.scrollRequest,
             anchor: .bottom,
-            interaction: tableInteraction,
-            onInteractionBegan: { followNewest = false },
+            interaction: model.interaction,
+            rowIndex: { id in model.rows.firstIndex { $0.id == id } },
+            rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
+            onInteractionBegan: { model.setFollowing(false) },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -282,31 +239,28 @@ struct WorkbenchLogsView: View {
             }
         ) {
             WorkbenchDataResponsive(budget: Self.widthBudget) { mode in
-                Table(rows, selection: $selectedRowID) {
+                Table(model.rows, selection: selectionBinding) {
                     switch mode {
                     case .full:
-                        TableColumn(MicaStrings.localizedKey("traffic.log_received_time", language: language)) { row in
-                            logTimestamp(row)
+                        TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
+                            logPayload(row)
                         }
-                        .width(min: 104, ideal: 120)
+                        .width(min: 320, ideal: 720)
 
                         TableColumn(MicaStrings.localizedKey("traffic.log_level", language: language)) { row in
                             logLevel(row)
                         }
-                        .width(min: 82, ideal: 104)
+                        .width(min: 82, ideal: 96, max: 124)
 
                         TableColumn(MicaStrings.localizedKey("traffic.log_type", language: language)) { row in
                             logType(row)
                         }
-                        .width(min: 112, ideal: 148)
+                        .width(min: 112, ideal: 136, max: 180)
 
-                        TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
-                            WorkbenchDataText(
-                                value: row.payloadText,
-                                role: .dataLabel
-                            )
+                        TableColumn(MicaStrings.localizedKey("traffic.log_received_time", language: language)) { row in
+                            logTimestamp(row)
                         }
-                        .width(min: 320, ideal: 720)
+                        .width(min: 104, ideal: 120, max: 148)
 
                     case .compact:
                         TableColumn(MicaStrings.localizedKey("traffic.log_section_event", language: language)) { row in
@@ -337,38 +291,21 @@ struct WorkbenchLogsView: View {
                 }
             }
         }
-        .onChange(of: rows.last?.id, initial: true) { _, newestID in
-            requestAutoScroll(to: newestID)
-        }
-        .task(id: followCadence.pendingDeadline) {
-            guard let pendingDeadline = followCadence.pendingDeadline else { return }
+        .task(id: model.followRequest) {
+            guard let request = model.followRequest else { return }
             let remainingMilliseconds = Int64(
-                ceil(max(0, pendingDeadline.timeIntervalSinceNow * 1_000))
+                ceil(max(0, request.deadline.timeIntervalSinceNow * 1_000))
             )
             if remainingMilliseconds > 0 {
                 try? await Task.sleep(for: .milliseconds(remainingMilliseconds))
             }
-            guard !Task.isCancelled,
-                  let pendingNewestRowID = followCadence.consume(
-                    isEnabled: followNewest,
-                    hasSelection: selectedRowID != nil
-                  ) else {
-                return
-            }
-            scrollRequest = WorkbenchDataScrollRequest(id: pendingNewestRowID)
-        }
-        .onChange(of: followNewest) { _, follows in
-            if follows {
-                scrollToNewest()
-            } else {
-                followCadence.cancel()
-            }
+            guard !Task.isCancelled else { return }
+            model.consumeFollow(request)
         }
         .safeAreaInset(edge: .bottom, alignment: .trailing) {
-            if !followNewest {
+            if !model.followsNewest {
                 Button {
-                    followNewest = true
-                    selectedRowID = nil
+                    model.jumpToNewest()
                 } label: {
                     MicaLabel("traffic.jump_to_newest", systemImage: "arrow.down.to.line")
                 }
@@ -379,14 +316,27 @@ struct WorkbenchLogsView: View {
         }
     }
 
-    private func logTimestamp(_ row: WorkbenchLogRow) -> some View {
+    private func logPayload(_ row: WorkbenchLogRow) -> some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
             severityRail(row)
             WorkbenchDataText(
-                value: row.receivedTimeText,
-                role: .dataCaption
+                value: row.payloadText,
+                role: .dataLabel
             )
         }
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height,
+            maxHeight: WorkbenchDataRowGeometry.height,
+            alignment: .leading
+        )
+    }
+
+    private func logTimestamp(_ row: WorkbenchLogRow) -> some View {
+        WorkbenchDataText(
+            value: row.receivedTimeText,
+            role: .dataCaption,
+            tone: .secondary
+        )
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
             maxHeight: WorkbenchDataRowGeometry.height,
@@ -431,41 +381,7 @@ struct WorkbenchLogsView: View {
     }
 
     private func compactLogEvent(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
-            severityRail(row)
-
-            WorkbenchDataText(
-                value: row.receivedTimeText,
-                role: .dataCaption,
-                tone: .secondary
-            )
-            .frame(width: 82, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 1) {
-                WorkbenchDataText(
-                    value: row.levelText,
-                    role: .dataCaption,
-                    weight: .semibold
-                )
-                if row.typeText != row.levelText {
-                    WorkbenchDataText(
-                        value: row.typeText,
-                        role: .dataCaption,
-                        tone: .secondary
-                    )
-                }
-            }
-            .frame(width: 86, alignment: .leading)
-
-            WorkbenchDataText(
-                value: row.payloadText,
-                role: .dataLabel
-            )
-        }
-        .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height
-        )
+        stackedLogEvent(row)
     }
 
     private func stackedLogEvent(_ row: WorkbenchLogRow) -> some View {
@@ -473,23 +389,23 @@ struct WorkbenchLogsView: View {
             severityRail(row)
 
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: MicaTheme.Spacing.space2) {
-                    Text(verbatim: row.receivedTimeText)
-                        .foregroundStyle(.secondary)
-                    Text(verbatim: row.levelText)
-                        .foregroundStyle(.primary)
-                    if row.typeText != row.levelText {
-                        Text(verbatim: row.typeText)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .micaThemeFont(.dataCaption)
-                .lineLimit(1)
-
                 Text(verbatim: row.payloadText)
                     .micaThemeFont(.dataLabel)
                     .lineLimit(1)
                     .textSelection(.enabled)
+
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    Text(verbatim: row.levelText)
+                        .foregroundStyle(row.severity.tint)
+                    if row.typeText != row.levelText {
+                        Text(verbatim: row.typeText)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(verbatim: row.receivedTimeText)
+                        .foregroundStyle(.secondary)
+                }
+                .micaThemeFont(.dataCaption)
+                .lineLimit(1)
             }
         }
         .frame(
@@ -516,48 +432,33 @@ struct WorkbenchLogsView: View {
         }
     }
 
-    private func rebuildRows(reconcileSelection: Bool) {
-        guard isProjectionActive else { return }
-        let previousRows = projectionCache.allRows
-        let previousSelection = selectedRowID
-        projectionCache.project(
-            entries: appModel.logsCatalog.entries,
+    private var presentationRequest: WorkbenchLogsPresentationRequest {
+        WorkbenchLogsPresentationRequest(
+            scope: WorkbenchSessionIdentity(
+                controllerID: appModel.selectedRouterID,
+                generation: appModel.controllerSessionPresentation.generation
+            ),
             revision: appModel.logsCatalog.entriesRevision,
-            level: logLevel,
             query: searchText,
-            language: language,
-            change: appModel.logsCatalog.lastChange,
-            isActive: isProjectionActive
+            language: language
         )
+    }
 
-        if reconcileSelection {
-            selectedRowID = projectionCache.reconciledSelection(
-                previousSelection,
-                previousRows: previousRows
-            )
-        }
-        switch projectionCache.accessibilityOrderChange {
-        case .unchanged:
-            break
-        case .replace:
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-        case .prefixDelta(let droppedCount):
-            accessibilityCursor.applyPrefixDelta(
-                totalCount: rows.count,
-                droppedCount: droppedCount,
-                followsNewest: followNewest,
-                idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
-            )
-        }
+    private func synchronizePresentation() {
+        model.update(catalog: appModel.logsCatalog, request: presentationRequest)
+    }
+
+    private var selectionBinding: Binding<String?> {
+        Binding(get: { model.selectedRowID }, set: { model.select($0) })
     }
 
     private var state: WorkbenchDataState {
         WorkbenchDataStateResolver.logs(
             hasController: appModel.selectedRouter != nil,
             isSupported: supportsLogs,
-            sourceCount: allRows.count,
-            visibleCount: rows.count,
-            isFiltering: logLevel != .all || searchText.dataNonEmpty != nil,
+            sourceCount: model.sourceCount,
+            visibleCount: model.rows.count,
+            isFiltering: model.level != .all || searchText.dataNonEmpty != nil,
             streamState: appModel.liveStreamState,
             sessionState: appModel.controllerSessionPresentation.state,
             language: language
@@ -578,60 +479,14 @@ struct WorkbenchLogsView: View {
         supportsLogs || appModel.supportsUnifiedAction(.setLogLevel)
     }
 
-    private func scrollToNewest() {
-        guard let id = rows.last?.id else { return }
-        followCadence.recordImmediateScroll(to: id)
-        scrollRequest = WorkbenchDataScrollRequest(id: id)
-    }
-
-    private var accessibilityWindow: WorkbenchAccessibilityWindow {
-        WorkbenchAccessibilityWindow.resolve(
-            totalCount: rows.count,
-            preferredLowerBound: accessibilityCursor.lowerBound
-        )
-    }
-
-    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
-        accessibilityCursor.reconcile(
-            orderedIDs: rows.map(\.id),
-            revealing: selectionID,
-            followsNewest: followNewest
-        )
-    }
-
-    private func moveAccessibilityWindow(to lowerBound: Int) {
-        followNewest = false
-        accessibilityCursor.move(
-            to: lowerBound,
-            totalCount: rows.count,
-            idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
-        )
-    }
-
     private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
-        let currentScope = WorkbenchTableAccessibilityScope(
+        let currentScope = WorkbenchSessionIdentity(
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         )
         guard intent.scope == currentScope else { return }
 
-        switch intent {
-        case .selectRow(let id, _):
-            guard projectionCache.visibleRows.contains(where: { $0.id == id }) else { return }
-            selectedRowID = id
-        case .movePage(let lowerBound, _):
-            moveAccessibilityWindow(to: lowerBound)
-        case .setSort, .performNamedAction:
-            break
-        }
-    }
-
-    private func requestAutoScroll(to newestID: String?) {
-        followCadence.request(
-            newestRowID: newestID,
-            isEnabled: followNewest,
-            hasSelection: selectedRowID != nil
-        )
+        model.handleAccessibility(intent)
     }
 
     private var localizedStaleMessage: String? {
@@ -653,19 +508,20 @@ struct WorkbenchLogsView: View {
             controllerID: controllerID,
             destination: .logs
         )
-        let storedLevel = workspace.filters["level"].flatMap(LogSessionLevel.init(rawValue:))
-        logLevel = storedLevel.map {
-            availableLogLevels.contains($0) ? $0 : .all
-        } ?? appModel.controllerLogLevel
-        followNewest = workspace.filters["followNewest"].flatMap(Bool.init) ?? true
-        selectedRowID = workspace.selectedItemID
-        restoredScrollAnchorID = controllerID.flatMap {
+        let scrollAnchorID = controllerID.flatMap {
             workspaceStore.scrollAnchorID(
                 controllerID: $0,
                 generation: generation,
                 destination: .logs
             )
         }
+        model.activate(
+            scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation),
+            workspace: workspace,
+            scrollAnchorID: scrollAnchorID,
+            defaultLevel: appModel.controllerLogLevel,
+            availableLevels: availableLogLevels
+        )
     }
 
     private func persistLogLevel() {
@@ -673,7 +529,7 @@ struct WorkbenchLogsView: View {
             controllerID: appModel.selectedRouterID,
             destination: .logs
         ) { workspace in
-            workspace.filters["level"] = logLevel.rawValue
+            workspace.filters["level"] = model.level.rawValue
         }
     }
 
@@ -713,13 +569,6 @@ struct WorkbenchLogsView: View {
         )
     }
 
-    private var allRows: [WorkbenchLogRow] {
-        projectionCache.allRows
-    }
-
-    private var rows: [WorkbenchLogRow] {
-        projectionCache.visibleRows
-    }
 }
 
 /// Log detail content rendered by the workspace inspector container

@@ -33,49 +33,29 @@ public enum SurgeHttpAPIError: Error, LocalizedError, Sendable {
 
 public actor SurgeHttpAPIClient {
     private let profile: RouterProfile
-    private let apiKey: String?
-    private let transport: any ControllerHTTPTransport
-    private let selfSignedCertificateDelegate: SurgeSelfSignedCertificateDelegate?
+    private let http: ControllerHTTPRequestExecutor<SurgeEndpoint>
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
     public init(profile: RouterProfile, apiKey: String? = nil, session: URLSession? = nil) {
         self.profile = profile
-        self.apiKey = apiKey
-
-        if let session {
-            self.transport = URLSessionControllerHTTPTransport(session: session)
-            self.selfSignedCertificateDelegate = nil
-        } else {
-            let configuration = URLSessionConfiguration.default
-            configuration.timeoutIntervalForRequest = 8
-            configuration.timeoutIntervalForResource = 20
-
-            if profile.scheme == .https, profile.tlsPolicy == .allowSelfSigned {
-                let delegate = SurgeSelfSignedCertificateDelegate()
-                let session = URLSession(
-                    configuration: configuration,
-                    delegate: delegate,
-                    delegateQueue: nil
-                )
-                self.transport = URLSessionControllerHTTPTransport(session: session)
-                self.selfSignedCertificateDelegate = delegate
-            } else {
-                let session = URLSession(configuration: configuration)
-                self.transport = URLSessionControllerHTTPTransport(session: session)
-                self.selfSignedCertificateDelegate = nil
-            }
-        }
-
+        let session = session ?? URLSessionControllerHTTPTransport.makeSession(for: profile)
+        self.http = ControllerHTTPRequestExecutor(
+            profile: profile,
+            authentication: .apiKey(apiKey),
+            transport: URLSessionControllerHTTPTransport(session: session)
+        )
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
     }
 
     init(profile: RouterProfile, apiKey: String? = nil, dataLoader: @escaping SurgeHTTPDataLoader) {
         self.profile = profile
-        self.apiKey = apiKey
-        self.transport = ClosureControllerHTTPTransport(loader: dataLoader)
-        self.selfSignedCertificateDelegate = nil
+        self.http = ControllerHTTPRequestExecutor(
+            profile: profile,
+            authentication: .apiKey(apiKey),
+            transport: ClosureControllerHTTPTransport(loader: dataLoader)
+        )
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
     }
@@ -186,124 +166,15 @@ public actor SurgeHttpAPIClient {
         }
     }
 
-    private func request<Response: Decodable>(
+    private func request<Response: Decodable & Sendable>(
         _ endpoint: SurgeEndpoint,
         body: Data? = nil
     ) async throws -> Response {
-        let request = try makeURLRequest(endpoint, body: body)
-        let (data, response) = try await loadData(for: request)
-        try validate(response: response)
-
-        guard !data.isEmpty else {
-            throw SurgeHttpAPIError.emptyResponse
-        }
-
-        do {
-            return try decoder.decode(Response.self, from: data)
-        } catch {
-            throw SurgeHttpAPIError.malformedResponse(endpoint.pathDescription)
-        }
+        try await http.decode(endpoint, body: body, using: decoder)
     }
 
     private func requestNoContent(_ endpoint: SurgeEndpoint, body: Data? = nil) async throws {
-        let request = try makeURLRequest(endpoint, body: body)
-        let (_, response) = try await loadData(for: request)
-        try validate(response: response)
-    }
-
-    private func loadData(for request: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await transport.data(for: request)
-        } catch {
-            let mapped = Self.clientError(for: error)
-            if case .connectionFailure(.cancelled) = mapped {
-                throw CancellationError()
-            }
-            throw mapped
-        }
-    }
-
-    private func makeURLRequest(_ endpoint: SurgeEndpoint, body: Data? = nil) throws -> URLRequest {
-        let baseURL: URL
-        do {
-            baseURL = try profile.baseURL()
-        } catch {
-            throw SurgeHttpAPIError.invalidURL(endpoint.pathDescription)
-        }
-        let url = try endpoint.url(relativeTo: baseURL)
-        var request = URLRequest(url: url, timeoutInterval: 8)
-        request.httpMethod = endpoint.method.rawValue
-        request.httpBody = body
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        if body != nil {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-
-        if let apiKey, !apiKey.isEmpty {
-            request.setValue(apiKey, forHTTPHeaderField: "X-Key")
-        }
-
-        return request
-    }
-
-    private func validate(response: URLResponse) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SurgeHttpAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200..<300:
-            return
-        case 401, 403:
-            throw SurgeHttpAPIError.unauthorized
-        default:
-            throw SurgeHttpAPIError.unexpectedStatus(httpResponse.statusCode)
-        }
-    }
-
-    private static func clientError(for error: Error) -> SurgeHttpAPIError {
-        if let error = error as? SurgeHttpAPIError {
-            return error
-        }
-        if let error = error as? URLError {
-            return clientError(for: error)
-        }
-        let nsError = error as NSError
-        if nsError.domain == NSURLErrorDomain {
-            return clientError(for: URLError(URLError.Code(rawValue: nsError.code)))
-        }
-        if error is CancellationError {
-            return .connectionFailure(.cancelled)
-        }
-        return .connectionFailure(.other)
-    }
-
-    private static func clientError(for error: URLError) -> SurgeHttpAPIError {
-        switch error.code {
-        case .cancelled:
-            .connectionFailure(.cancelled)
-        case .cannotFindHost:
-            .connectionFailure(.hostNotFound)
-        case .cannotConnectToHost:
-            .connectionFailure(.connectionRefused)
-        case .timedOut:
-            .connectionFailure(.timedOut)
-        case .secureConnectionFailed,
-             .serverCertificateHasBadDate,
-             .serverCertificateUntrusted,
-             .serverCertificateHasUnknownRoot,
-             .serverCertificateNotYetValid,
-             .clientCertificateRejected,
-             .clientCertificateRequired:
-            .connectionFailure(.tlsTrustFailed)
-        case .networkConnectionLost:
-            .connectionFailure(.other)
-        case .notConnectedToInternet:
-            .connectionFailure(.networkUnavailable)
-        default:
-            .connectionFailure(.other)
-        }
+        _ = try await http.data(for: endpoint, body: body, allowsEmptyResponse: true)
     }
 }
 
@@ -424,18 +295,13 @@ private struct SurgeKillRequest: Encodable {
     }
 }
 
-private final class SurgeSelfSignedCertificateDelegate: NSObject, URLSessionDelegate {
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let serverTrust = challenge.protectionSpace.serverTrust else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-
-        completionHandler(.useCredential, URLCredential(trust: serverTrust))
+extension SurgeHttpAPIError: ControllerHTTPRequestFailure {
+    var connectionFailureReason: ControllerConnectionFailureReason? {
+        guard case .connectionFailure(let reason) = self else { return nil }
+        return reason
     }
+}
+
+extension SurgeEndpoint: ControllerHTTPEndpoint {
+    typealias Failure = SurgeHttpAPIError
 }

@@ -10,17 +10,22 @@ struct WorkbenchRuleDecisionPathRail: View {
     let onOpenTarget: () -> Void
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            ScrollView(.horizontal) {
                 horizontalPath
-                Spacer(minLength: MicaTheme.Spacing.space4)
-                statistics
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.bottom, MicaTheme.Spacing.space1)
             }
+            .scrollIndicators(.automatic)
+            .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                compactPath
+            ScrollView(.horizontal) {
                 statistics
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.bottom, MicaTheme.Spacing.space1)
             }
+            .scrollIndicators(.automatic)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, MicaTheme.Spacing.space3)
         .padding(.vertical, MicaTheme.Spacing.space2)
@@ -33,31 +38,15 @@ struct WorkbenchRuleDecisionPathRail: View {
     private var horizontalPath: some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
             typeStep
+                .frame(minWidth: 130, maxWidth: 180)
             WorkbenchDecisionPathConnector()
             payloadStep
+                .frame(minWidth: 170, maxWidth: 260)
             WorkbenchDecisionPathConnector()
             targetStep
+                .frame(minWidth: 140, maxWidth: 220)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var compactPath: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            typeStep
-            compactConnector
-            payloadStep
-            compactConnector
-            targetStep
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var compactConnector: some View {
-        Image(systemName: "chevron.down")
-            .micaThemeFont(.caption, weight: .semibold)
-            .foregroundStyle(.tertiary)
-            .padding(.leading, 10)
-            .accessibilityHidden(true)
     }
 
     private var typeStep: some View {
@@ -98,24 +87,11 @@ struct WorkbenchRuleDecisionPathRail: View {
     }
 
     private var statistics: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaTheme.Spacing.space4) {
-                statusReadout
-                activityReadout
-                hitReadout
-                missReadout
-            }
-
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
-                HStack(spacing: MicaTheme.Spacing.space4) {
-                    statusReadout
-                    activityReadout
-                }
-                HStack(spacing: MicaTheme.Spacing.space4) {
-                    hitReadout
-                    missReadout
-                }
-            }
+        HStack(spacing: MicaTheme.Spacing.space4) {
+            statusReadout
+            activityReadout
+            hitReadout
+            missReadout
         }
     }
 

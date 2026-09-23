@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.31.0 - 2026-09-23
+
+### Workbench
+
+- Refined Overview topology presentation with focused and complete display modes, route summaries, viewport-aware sizing, and improved dense-path navigation.
+- Hardened live-session task supervision, command scopes, generation ownership, cross-surface navigation, and workspace lifecycle handling.
+- Expanded controller projections and Surge connection-route data while preserving reported order, optionality, and credential boundaries.
+
+### Verification
+
+- Added regression coverage for topology summaries, route projections, live-session ownership, navigation, rendering, and performance behavior.
+- Release build and the complete offline test suite pass.
+
 ## 0.30.0 - 2026-09-13
 
 ### Workbench

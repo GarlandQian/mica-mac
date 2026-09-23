@@ -76,6 +76,39 @@ struct WorkbenchDataScrollRequest: Equatable {
     }
 }
 
+struct WorkbenchDataScrollDelivery: Equatable {
+    let generation: UUID
+    let request: WorkbenchDataScrollRequest?
+    let restorationID: String?
+}
+
+struct WorkbenchDataScrollDeliveryState {
+    private var previous: WorkbenchDataScrollDelivery?
+
+    mutating func target(
+        for delivery: WorkbenchDataScrollDelivery,
+        isUserScrolling: Bool
+    ) -> String? {
+        let previous = self.previous
+        self.previous = delivery
+        if previous?.generation != delivery.generation {
+            return delivery.request?.id ?? (isUserScrolling ? nil : delivery.restorationID)
+        }
+        if previous?.request?.token != delivery.request?.token, let request = delivery.request {
+            return request.id
+        }
+        if previous?.restorationID != delivery.restorationID, !isUserScrolling {
+            return delivery.restorationID
+        }
+        return nil
+    }
+}
+
+private struct WorkbenchDataScrollReadiness: Equatable {
+    let delivery: WorkbenchDataScrollDelivery
+    let tableID: ObjectIdentifier?
+}
+
 enum WorkbenchDataScrollTransition: Equatable {
     case began
     case ended
@@ -146,7 +179,7 @@ private struct WorkbenchScrollPerformanceModifier: ViewModifier {
 final class WorkbenchDataInteractionCoordinator {
     private(set) var isUserScrolling = false
 
-    fileprivate func apply(_ transition: WorkbenchDataScrollTransition) {
+    func apply(_ transition: WorkbenchDataScrollTransition) {
         switch transition {
         case .began:
             isUserScrolling = true
@@ -170,9 +203,14 @@ struct WorkbenchDataTableViewport<Content: View>: View {
     let onInteractionEnded: () -> Void
     let onAnchorCommit: (String?) -> Void
     private let content: Content
+    private let rowIndex: (String) -> Int?
+    private let rowID: (Int) -> String?
 
     @State private var anchorID: String?
     @State private var phaseState = WorkbenchDataScrollPhaseState()
+    @State private var deliveryState = WorkbenchDataScrollDeliveryState()
+    @State private var tableLifecycle = WorkbenchNativeTableLifecycle()
+    @State private var readyTableID: ObjectIdentifier?
 
     init(
         generation: UUID,
@@ -180,6 +218,8 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         request: WorkbenchDataScrollRequest? = nil,
         anchor: UnitPoint = .top,
         interaction: WorkbenchDataInteractionCoordinator,
+        rowIndex: @escaping (String) -> Int?,
+        rowID: @escaping (Int) -> String?,
         onInteractionBegan: @escaping () -> Void = {},
         onInteractionEnded: @escaping () -> Void = {},
         onAnchorCommit: @escaping (String?) -> Void = { _ in },
@@ -190,6 +230,8 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         self.request = request
         self.anchor = anchor
         self.interaction = interaction
+        self.rowIndex = rowIndex
+        self.rowID = rowID
         self.onInteractionBegan = onInteractionBegan
         self.onInteractionEnded = onInteractionEnded
         self.onAnchorCommit = onAnchorCommit
@@ -198,33 +240,53 @@ struct WorkbenchDataTableViewport<Content: View>: View {
 
     var body: some View {
         content
-            .scrollPosition(id: $anchorID, anchor: anchor)
-            .onAppear {
-                if anchorID == nil {
-                    anchorID = restorationID
+                .background {
+                    WorkbenchTableLifecycleMarker(lifecycle: tableLifecycle, edge: .before, onReady: {
+                        readyTableID = $0
+                    }, onInteraction: handleNativeScroll)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
-            }
-            .onChange(of: generation) {
-                finishInteractionIfNeeded()
-                anchorID = restorationID
-            }
-            .onChange(of: restorationID) { _, nextID in
-                if !phaseState.isUserScrolling {
-                    anchorID = nextID
+                .overlay {
+                    WorkbenchTableLifecycleMarker(lifecycle: tableLifecycle, edge: .after, onReady: {
+                        readyTableID = $0
+                    }, onInteraction: handleNativeScroll)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
-            }
-            .onChange(of: request) { _, nextRequest in
-                if let nextRequest {
-                    anchorID = nextRequest.id
+                .task(id: WorkbenchDataScrollReadiness(delivery: scrollDelivery, tableID: readyTableID)) {
+                    let delivery = scrollDelivery
+                    guard readyTableID != nil else { return }
+                    await Task.yield()
+                    guard !Task.isCancelled,
+                          let target = deliveryState.target(
+                            for: delivery,
+                            isUserScrolling: phaseState.isUserScrolling
+                          ) else { return }
+                    anchorID = target
+                    tableLifecycle.scrollToRow { rowIndex(target) }
                 }
-            }
-            .onScrollPhaseChange { _, phase in
-                handleScrollPhase(phase)
-            }
-            .onDisappear {
-                finishInteractionIfNeeded()
-                onAnchorCommit(anchorID)
-            }
+                .onChange(of: generation) {
+                    tableLifecycle.cancelScroll()
+                    finishInteractionIfNeeded()
+                    anchorID = nil
+                }
+                .onScrollPhaseChange { _, phase in
+                    handleScrollPhase(phase)
+                }
+                .onDisappear {
+                    tableLifecycle.cancelScroll()
+                    finishInteractionIfNeeded()
+                    commitVisibleAnchor()
+                }
+    }
+
+    private var scrollDelivery: WorkbenchDataScrollDelivery {
+        WorkbenchDataScrollDelivery(
+            generation: generation,
+            request: request,
+            restorationID: restorationID
+        )
     }
 
     private func handleScrollPhase(_ phase: ScrollPhase) {
@@ -240,8 +302,25 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         }
 
         if phase == .idle {
-            onAnchorCommit(anchorID)
+            commitVisibleAnchor()
         }
+    }
+
+    private func handleNativeScroll(_ transition: WorkbenchDataScrollTransition) {
+        if let changed = phaseState.update(isUserScrolling: transition == .began) {
+            apply(changed)
+        }
+        if transition == .ended {
+            commitVisibleAnchor()
+        }
+    }
+
+    private func commitVisibleAnchor() {
+        if let index = tableLifecycle.visibleRowIndex(preferringLast: anchor.y > 0.5),
+           let id = rowID(index) {
+            anchorID = id
+        }
+        onAnchorCommit(anchorID)
     }
 
     private func finishInteractionIfNeeded() {

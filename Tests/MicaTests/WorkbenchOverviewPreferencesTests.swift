@@ -252,7 +252,7 @@ struct WorkbenchOverviewPreferencesTests {
         #expect(snapshot.kind == .policyGroup)
         #expect(snapshot.title == "Auto")
         #expect(snapshot.sections.map(\.id) == [
-            "overview", "transport", "testing", "reported-fields",
+            "overview", "protocol", "transport", "testing", "reported-fields",
         ])
         #expect(snapshot.fields.contains { $0.id == "member-count" })
         #expect(snapshot.fields.contains { $0.id == "members" && $0.value == "Tokyo" })
