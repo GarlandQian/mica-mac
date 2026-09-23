@@ -29,6 +29,8 @@ jobs:
           test "${sdk_version%%.*}" -ge 27
       - name: Source and localization contracts
         run: node scripts/verify-real-controller-source.mjs
+      - name: Resolve package dependencies
+        run: swift package resolve
       - name: Test
         run: swift test --disable-automatic-resolution
       - name: Build
