@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/frontend/workbench-ui-contract.md", "reason": "Current authoritative UI contract being replaced; defines existing file ownership, destinations, and behavior that the redesign must preserve or deliberately supersede."}
-{"file": ".trellis/spec/frontend/live-session-controller-contract.md", "reason": "Session generation, capability gating, and controller-selection invariants the new UI must keep intact."}
-{"file": ".trellis/spec/backend/controller-data-contract.md", "reason": "Controller-reported data visibility/ordering/optionality rules that the rebuilt surfaces must keep honoring."}
-{"file": ".trellis/tasks/08-17-global-ui-redesign/design.md", "reason": "Approved-direction candidate: Mica Ops tokens, chrome/IA, surface direction, and engineering boundaries for implementation."}
-{"file": ".trellis/tasks/08-16-dashboard-visual-hover-details/design.md", "reason": "Research: documents the retained topology geometry/hit-testing engine and overview preferences model that the redesign reuses."}

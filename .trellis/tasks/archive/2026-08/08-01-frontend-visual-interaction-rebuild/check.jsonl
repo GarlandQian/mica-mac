@@ -1,2 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量门槛：构建/测试/HIG/本地化/对比度验证标准"}
-{"file": ".trellis/spec/frontend/live-session-controller-contract.md", "reason": "控制器数据边界：不得加 mock、不得动 DTO/认证、展示值必须真实上报"}

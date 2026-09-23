@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/workbench-ui-contract.md", "reason": "Replace only the Overview presentation contract while preserving native navigation, full-visible data, accessibility, and performance boundaries."}
-{"file": ".trellis/spec/frontend/live-session-controller-contract.md", "reason": "Keep generation, stale/disconnect, visibility cadence, and session clearing semantics unchanged while recomposing the dashboard."}
-{"file": ".trellis/spec/backend/controller-data-contract.md", "reason": "Preserve controller-reported values, optionality, capabilities, and source ordering through every personalized module."}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Keep persisted layout DTO validation, shared committed state, window-local draft state, and rendered modules at explicit boundaries."}
-{"file": ".trellis/tasks/07-30-overview-visual-polish/research/overview-source-audit.md", "reason": "Use the verified current Overview composition, state ownership, source assertions, and integration points."}
-{"file": ".trellis/tasks/07-30-vertical-scroll-jank/research/vertical-scroll-source-audit.md", "reason": "Preserve the measured single-scroll, chart, topology, and invalidation corrections inherited by this task."}

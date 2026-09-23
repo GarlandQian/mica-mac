@@ -1,7 +1,0 @@
-{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"策略组是有序选择工作区；本任务必须复用单一外层滚动、右侧 inspector、Mica Ops token、交互和可访问性约束。"}
-{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"定位和健康投影必须遵守 controller ID、session generation、快照保留、滚动期间延迟发布和操作安全契约。"}
-{"file":".trellis/spec/backend/controller-data-contract.md","reason":"健康摘要和节点定位只能使用真实可选字段、控制器顺序和具体运行时 capability，不能重排或补造数据。"}
-{"file":"docs/DEVELOPMENT.md","reason":"提供本项目的 Swift build/test、源代码验证和离线性能验证门禁。"}
-{"file":".trellis/tasks/08-25-policy-group-health-navigation/research/live-session-functional-audit.md","reason":"收录 Mihomo shared-runtime 冻结、refresh lane 连坐、freshness 倒退和 duplicate connection rate 的触发序列与测试缺口。"}
-{"file":".trellis/tasks/08-25-policy-group-health-navigation/research/swiftui-workbench-bug-audit.md","reason":"收录策略组滚动目标、健康语义、真实失败原因和辅助功能缺陷。"}
-{"file":".trellis/tasks/08-25-policy-group-health-navigation/research/current-diff-functional-audit.md","reason":"收录当前差异的跨页定位、空状态、多筛选和工具栏语义缺陷以及已通过门禁。"}
