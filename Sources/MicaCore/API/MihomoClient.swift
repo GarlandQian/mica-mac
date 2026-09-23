@@ -41,6 +41,9 @@ public actor MihomoClient {
     private let http: ControllerHTTPRequestExecutor<MihomoEndpoint>
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    // Scoped to this immutable controller client, and established only after
+    // an actual legacy endpoint succeeds. New sessions probe the aggregate API.
+    private var smartWeightsUsesLegacyEndpoint = false
 
     public init(profile: RouterProfile, secret: String? = nil, session: URLSession? = nil) {
         let session = session ?? URLSessionControllerHTTPTransport.makeSession(for: profile)
@@ -99,7 +102,9 @@ public actor MihomoClient {
     }
 
     public func smartWeights() async throws -> SmartWeightsResponse {
-        try await request(.smartWeights)
+        let response: SmartWeightsResponse = try await request(.smartWeights)
+        smartWeightsUsesLegacyEndpoint = false
+        return response
     }
 
     public func smartGroupWeights(group: String) async throws -> SmartGroupWeightsResponse {
@@ -107,16 +112,30 @@ public actor MihomoClient {
     }
 
     public func smartWeights(forGroups groupNames: [String]) async throws -> SmartWeightsResponse {
+        try Task.checkCancellation()
+        if smartWeightsUsesLegacyEndpoint {
+            if let fallback = try await legacySmartWeights(forGroups: groupNames) {
+                return fallback
+            }
+            // The previously working legacy API may have disappeared after a
+            // controller upgrade. Probe the aggregate once without a second sweep.
+            smartWeightsUsesLegacyEndpoint = false
+            return try await smartWeights()
+        }
         do {
             return try await smartWeights()
         } catch let aggregateError as MihomoClientError {
-            guard case .unexpectedStatus = aggregateError else {
+            // The Smart fork reports 503 when its shared cache is unavailable;
+            // retrying every group only multiplies that same outage. Only a
+            // missing aggregate route is evidence for the older per-group API.
+            guard case .unexpectedStatus(404) = aggregateError else {
                 throw aggregateError
             }
 
             guard let fallback = try await legacySmartWeights(forGroups: groupNames) else {
                 throw aggregateError
             }
+            smartWeightsUsesLegacyEndpoint = true
             return fallback
         }
     }
@@ -440,38 +459,59 @@ public actor MihomoClient {
     }
 
     private func legacySmartWeights(forGroups groupNames: [String]) async throws -> SmartWeightsResponse? {
-        try await withThrowingTaskGroup(
+        var seen: Set<String> = []
+        let uniqueGroups = groupNames.filter { seen.insert($0).inserted }
+        return try await withThrowingTaskGroup(
             of: SmartWeightFallbackResult.self,
             returning: SmartWeightsResponse?.self
         ) { taskGroup in
-            for groupName in groupNames {
-                taskGroup.addTask {
-                    do {
-                        let response = try await self.smartGroupWeights(group: groupName)
-                        return SmartWeightFallbackResult(
-                            groupName: groupName,
-                            weights: response.weights
-                        )
-                    } catch is CancellationError {
-                        throw CancellationError()
-                    } catch MihomoClientError.connectionFailure(.cancelled) {
-                        throw CancellationError()
-                    } catch {
-                        return SmartWeightFallbackResult(groupName: groupName, weights: nil)
-                    }
-                }
+            var iterator = uniqueGroups.makeIterator()
+            for _ in 0 ..< min(8, uniqueGroups.count) {
+                try Task.checkCancellation()
+                guard let groupName = iterator.next() else { break }
+                addSmartWeightTask(groupName, to: &taskGroup)
             }
 
             var didLoadAnyGroup = false
             var weightsByGroup: [String: [SmartNodeRankSnapshot]] = [:]
-            for try await result in taskGroup {
-                guard let weights = result.weights else { continue }
-                didLoadAnyGroup = true
-                weightsByGroup[result.groupName] = weights
+            while let result = try await taskGroup.next() {
+                try Task.checkCancellation()
+                if let weights = result.weights {
+                    didLoadAnyGroup = true
+                    weightsByGroup[result.groupName] = weights
+                }
+                if let groupName = iterator.next() {
+                    addSmartWeightTask(groupName, to: &taskGroup)
+                }
             }
 
             guard didLoadAnyGroup else { return nil }
             return SmartWeightsResponse(weights: weightsByGroup)
+        }
+    }
+
+    private func addSmartWeightTask(
+        _ groupName: String,
+        to taskGroup: inout ThrowingTaskGroup<SmartWeightFallbackResult, any Error>
+    ) {
+        taskGroup.addTask {
+            do {
+                let response = try await self.smartGroupWeights(group: groupName)
+                return SmartWeightFallbackResult(groupName: groupName, weights: response.weights)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as MihomoClientError {
+                switch error {
+                case .unexpectedStatus(400), .unexpectedStatus(404), .malformedResponse, .emptyResponse:
+                    // A removed/non-Smart group or one malformed payload may
+                    // coexist with valid results from the remaining groups.
+                    return SmartWeightFallbackResult(groupName: groupName, weights: nil)
+                default:
+                    // Authentication, rate limits, outages and transport failures
+                    // affect the controller, so stop scheduling further groups.
+                    throw error
+                }
+            }
         }
     }
 

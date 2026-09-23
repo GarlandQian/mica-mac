@@ -118,6 +118,105 @@ final class WorkbenchTableScrollTests: XCTestCase {
         XCTAssertEqual(driver.lastCommittedAnchor, "row-\(lastVisible)")
     }
 
+    func testRealUnphasedWheelBurstCoalescesUntilTheLastTickIsIdle() async throws {
+        let driver = TableScrollFixtureDriver(request: WorkbenchDataScrollRequest(id: "row-39"))
+        let fixture = makeFixture(driver: driver)
+        defer { tearDown(fixture) }
+        let table = try await waitForTable(in: fixture.host)
+        try await waitForVisibleRow(39, table: table, host: fixture.host, context: "wheel setup")
+        let scroll = try XCTUnwrap(table.enclosingScrollView)
+        let initial = scroll.contentView.bounds.origin.y
+        for _ in 0..<6 {
+            try sendWheel(delta: 12, to: scroll)
+            XCTAssertEqual(driver.scrollBegins, 1)
+            XCTAssertEqual(driver.scrollEnds, 0)
+            try await Task.sleep(for: .milliseconds(40))
+        }
+        XCTAssertNotEqual(scroll.contentView.bounds.origin.y, initial,
+                          "The production native table must really move; no scroll notifications are synthesized.")
+        XCTAssertEqual(driver.scrollEnds, 0, "Each new wheel tick extends the same idle deadline.")
+        try await waitForWheelEnd(driver)
+        XCTAssertEqual(driver.scrollBegins, 1)
+        XCTAssertEqual(driver.scrollEnds, 1)
+        let visible = min(NSMaxRange(table.rows(in: table.visibleRect)) - 1, table.numberOfRows - 1)
+        XCTAssertEqual(driver.lastCommittedAnchor, "row-\(visible)")
+    }
+
+    func testRealWheelIsScopedAndExplicitNavigationCancelsItsPendingIdle() async throws {
+        let driver = TableScrollFixtureDriver(request: WorkbenchDataScrollRequest(id: "row-39"))
+        let fixture = makeFixture(driver: driver, includesSibling: true)
+        defer { tearDown(fixture) }
+        _ = try await waitForTable(in: fixture.host)
+        let tables = nativeTables(in: fixture.host)
+        let sibling = try XCTUnwrap(tables.first?.enclosingScrollView)
+        let target = try XCTUnwrap(tables.last)
+        try await waitForVisibleRow(39, table: target, host: fixture.host, context: "wheel scope setup")
+        let siblingOrigin = sibling.contentView.bounds.origin.y
+        try sendWheel(delta: -24, to: sibling)
+        XCTAssertNotEqual(sibling.contentView.bounds.origin.y, siblingOrigin)
+        XCTAssertEqual(driver.scrollBegins, 0)
+
+        try sendWheel(delta: 24, to: XCTUnwrap(target.enclosingScrollView))
+        XCTAssertEqual(driver.scrollBegins, 1)
+        driver.request = WorkbenchDataScrollRequest(id: "row-0")
+        try await waitForVisibleRow(0, table: target, host: fixture.host, context: "explicit navigation during wheel burst")
+        XCTAssertEqual(driver.scrollEnds, 1)
+        try await Task.sleep(for: .milliseconds(240))
+        XCTAssertEqual(driver.scrollEnds, 1, "The canceled idle task must not finish a replacement interaction.")
+        XCTAssertTrue(NSLocationInRange(0, target.rows(in: target.visibleRect)))
+    }
+
+    func testExplicitGestureRemainsActiveUntilItsEndNotification() async throws {
+        let driver = TableScrollFixtureDriver(request: WorkbenchDataScrollRequest(id: "row-39"))
+        let fixture = makeFixture(driver: driver)
+        defer { tearDown(fixture) }
+        let table = try await waitForTable(in: fixture.host)
+        try await waitForVisibleRow(39, table: table, host: fixture.host, context: "gesture setup")
+        let scroll = try XCTUnwrap(table.enclosingScrollView)
+        // This is a controlled gesture-lifecycle test. Mixing an unphased
+        // native wheel with a synthetic gesture begin allows AppKit's delayed
+        // wheel-end notification to end that different input sequence.
+        // Real unphased-wheel delivery is covered by the adjacent tests.
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
+        NotificationCenter.default.post(name: NSScrollView.didLiveScrollNotification, object: scroll)
+        XCTAssertEqual(driver.scrollBegins, 1)
+        try await Task.sleep(for: .milliseconds(240))
+        XCTAssertEqual(driver.scrollBegins, 1)
+        XCTAssertEqual(driver.scrollEnds, 0)
+        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        XCTAssertEqual(driver.scrollEnds, 1)
+    }
+
+    func testDetachingViewportCancelsTheWheelIdleCallback() async throws {
+        let driver = TableScrollFixtureDriver(request: WorkbenchDataScrollRequest(id: "row-39"))
+        let fixture = makeFixture(driver: driver)
+        let table = try await waitForTable(in: fixture.host)
+        try await waitForVisibleRow(39, table: table, host: fixture.host, context: "detach setup")
+        try sendWheel(delta: 12, to: XCTUnwrap(table.enclosingScrollView))
+        XCTAssertEqual(driver.scrollBegins, 1)
+        tearDown(fixture)
+        await Task.yield()
+        let endedAtDetach = driver.scrollEnds
+        try await Task.sleep(for: .milliseconds(240))
+        XCTAssertEqual(driver.scrollEnds, endedAtDetach)
+    }
+
+    private func sendWheel(delta: Int32, to scroll: NSScrollView) throws {
+        let cgEvent = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+                                           wheelCount: 1, wheel1: delta, wheel2: 0, wheel3: 0))
+        cgEvent.setIntegerValueField(.scrollWheelEventIsContinuous, value: 0)
+        cgEvent.setIntegerValueField(.scrollWheelEventScrollPhase, value: 0)
+        scroll.scrollWheel(with: try XCTUnwrap(NSEvent(cgEvent: cgEvent)))
+    }
+
+    private func waitForWheelEnd(_ driver: TableScrollFixtureDriver) async throws {
+        for _ in 0..<30 {
+            if driver.scrollEnds > 0 { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(driver.scrollEnds, 1, "A mouse-wheel burst must release deferred updates after idle.")
+    }
+
     private func makeFixture(driver: TableScrollFixtureDriver, includesSibling: Bool = false) -> (host: NSView, window: NSWindow) {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: TableScrollFixture(driver: driver, includesSibling: includesSibling))

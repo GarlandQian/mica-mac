@@ -26,11 +26,8 @@ struct WorkbenchRulesView: View {
             commands: { commandBar },
             supplementary: {
                 if let selectedRow = model.selectedRow {
-                    WorkbenchRuleDecisionPathRail(
-                        projection: WorkbenchRuleDecisionPathProjection(
-                            row: selectedRow
-                        ),
-                        targetIsNavigable: policyTarget(for: selectedRow) != nil,
+                    WorkbenchSelectedRuleDecisionPath(
+                        row: selectedRow,
                         onOpenTarget: {
                             openTargetPolicyGroup(for: selectedRow)
                         }
@@ -39,6 +36,15 @@ struct WorkbenchRulesView: View {
             }
         ) {
             pageContent
+        }
+        .background {
+            WorkbenchRulesCatalogObserver {
+                model.update(presentationInput)
+                consumeRuleNavigation()
+            }
+            WorkbenchRuleConnectionsObserver {
+                model.update(presentationInput)
+            }
         }
         .onAppear {
             let pageModel = model
@@ -57,13 +63,6 @@ struct WorkbenchRulesView: View {
             restoreWorkspace()
             model.update(presentationInput)
             consumeRuleNavigation()
-        }
-        .onChange(of: appModel.rulesCatalog.rules) {
-            model.update(presentationInput)
-            consumeRuleNavigation()
-        }
-        .onChange(of: appModel.connectionsStructureRevision) {
-            model.update(presentationInput)
         }
         .onChange(of: searchText) {
             model.update(presentationInput)
@@ -194,6 +193,11 @@ struct WorkbenchRulesView: View {
             interaction: model.tableInteraction,
             rowIndex: { id in model.rows.firstIndex { $0.id == id } },
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
+            onInteractionEnded: {
+                model.finishDeferredPresentation(
+                    identity: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation)
+                )
+            },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -529,16 +533,6 @@ struct WorkbenchRulesView: View {
             && appModel.supportsUnifiedAction(.setRuleDisabled)
     }
 
-    private func policyTarget(
-        for row: WorkbenchRuleRow
-    ) -> ProxyGroupOccurrence? {
-        WorkbenchRulePolicyTargetResolver.resolve(
-            target: row.rule.proxy,
-            catalog: appModel.policyGroupCatalog,
-            visibility: preferences.globalGroupVisibility
-        )
-    }
-
     private func openTargetPolicyGroup(for row: WorkbenchRuleRow) {
         let groups = ProxyProjection.arrangedGroups(
             appModel.policyGroupCatalog.groups,
@@ -743,6 +737,62 @@ struct WorkbenchRulesView: View {
         }
     }
 
+}
+
+/// Policy changes can affect navigation availability without changing any
+/// rule row. Keep that live dependency local to the selected route rail.
+private struct WorkbenchSelectedRuleDecisionPath: View {
+    @Environment(AppModel.self) private var appModel
+    @EnvironmentObject private var preferences: AppPreferencesStore
+
+    let row: WorkbenchRuleRow
+    let onOpenTarget: () -> Void
+
+    var body: some View {
+        WorkbenchRuleDecisionPathRail(
+            projection: WorkbenchRuleDecisionPathProjection(row: row),
+            targetIsNavigable: WorkbenchRulePolicyTargetResolver.resolve(
+                target: row.rule.proxy,
+                catalog: appModel.policyGroupCatalog,
+                visibility: preferences.globalGroupVisibility
+            ) != nil,
+            onOpenTarget: onOpenTarget
+        )
+    }
+}
+
+/// Snapshot intake stays outside the visual Table's observation scope so
+/// scroll-time coalescing also avoids rebuilding the unchanged page tree.
+private struct WorkbenchRulesCatalogObserver: View {
+    @Environment(AppModel.self) private var appModel
+
+    let onRules: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: appModel.rulesCatalog.rules) {
+                onRules()
+            }
+    }
+}
+
+private struct WorkbenchRuleConnectionsObserver: View {
+    @Environment(AppModel.self) private var appModel
+
+    let onConnections: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: appModel.connectionsStructureRevision) {
+                onConnections()
+            }
+    }
 }
 
 enum WorkbenchRuleAccessibilityMutationResolver {

@@ -8,11 +8,13 @@ extension AppModel {
     }
 
     var canTestSelectedRouter: Bool {
-        hasSelectedLiveSession && !isBusy && refreshTask == nil
+        !isLoadingPersistedState && hasSelectedLiveSession && !isBusy && refreshTask == nil
     }
 
     var canRefreshSelectedRouter: Bool {
-        hasSelectedLiveSession
+        guard !isLoadingPersistedState else { return false }
+        if canRetryPersistedStateLoading { return true }
+        return hasSelectedLiveSession
             && !isBusy
             && !liveSessionTasks.contains(.manualRefresh)
             && !controllerSessionPresentation.controls.dashboardUpdatesPaused
@@ -40,18 +42,25 @@ extension AppModel {
     }
 
     func systemWillSleep() {
+        guard !sessionSuspendedForSleep else { return }
         sessionSuspendedForSleep = true
         leaveLiveSession(reason: .sleep)
     }
 
     func systemDidWake() {
+        guard sessionSuspendedForSleep else { return }
         sessionSuspendedForSleep = false
         guard mainWindowCount > 0, let router = selectedRouter else { return }
         enterLiveSession(for: router)
     }
 
     func enterLiveSession(for router: RouterProfile) {
-        guard selectedRouterID == router.id else { return }
+        guard selectedRouterID == router.id, !isLoadingPersistedState else { return }
+        guard !failedSecretRouterIDs.contains(router.id) else {
+            presentPersistedStateLoadFailure()
+            connectionState = .failed(localized("operation.profiles_load_failed"))
+            return
+        }
 
         cancelLiveSessionTasks()
         controllerSession.begin(controllerID: router.id)
@@ -277,7 +286,8 @@ extension AppModel {
         case .surgeCompatible:
             let projected = projectedSurgeDashboard(
                 controllerSession.surgeRawSnapshot,
-                connectionRatesReceivedAt: controllerSession.surgeConnectionRatesReceivedAt
+                connectionRatesReceivedAt: controllerSession.surgeConnectionRatesReceivedAt,
+                domains: [.connections, .insight]
             )
             dashboard.connections = projected.connections
             dashboard.traffic = projected.traffic
@@ -1413,7 +1423,8 @@ extension AppModel {
         let snapshot = controllerSession.surgeRawSnapshot
         let projected = projectedSurgeDashboard(
             snapshot,
-            connectionRatesReceivedAt: controllerSession.surgeConnectionRatesReceivedAt
+            connectionRatesReceivedAt: controllerSession.surgeConnectionRatesReceivedAt,
+            domains: domains
         )
 
         if domains.contains(.metadata) {

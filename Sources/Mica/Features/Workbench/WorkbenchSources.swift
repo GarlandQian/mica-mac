@@ -52,25 +52,14 @@ struct WorkbenchSourcesView: View {
         ) {
             pageContent
         }
-        .onAppear {
-            workspaceStore.sourceRowResolver = { [weak model] id in
-                model?.row(id: id)
-            }
-            restoreWorkspace()
-            model.update(presentationInput)
-            if let selectedRowID = model.selectedRowID {
-                workspaceStore.selectInspector(.source(id: selectedRowID))
-            }
-        }
-        .onDisappear {
-            workspaceStore.sourceRowResolver = nil
-            model.deactivate()
-        }
-        .onChange(of: presentationInput) { _, input in
-            if model.scope != input.scope {
-                restoreWorkspace()
-            }
-            model.update(input)
+        .background {
+            WorkbenchSourcesCatalogObserver(
+                appModel: appModel,
+                workspaceStore: workspaceStore,
+                model: model,
+                query: searchText,
+                language: language
+            )
         }
         .onChange(of: model.kind) {
             persistKind()
@@ -225,6 +214,11 @@ struct WorkbenchSourcesView: View {
             interaction: model.interaction,
             rowIndex: { id in model.rows.firstIndex { $0.id == id } },
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
+            onInteractionEnded: {
+                model.finishDeferredPresentation(
+                    scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation)
+                )
+            },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -471,18 +465,6 @@ struct WorkbenchSourcesView: View {
         .accessibilityLabel(row.healthCheckAvailabilityText)
     }
 
-    private var presentationInput: WorkbenchSourcesPresentationInput {
-        WorkbenchSourcesPresentationInput(
-            scope: WorkbenchSessionIdentity(
-                controllerID: appModel.selectedRouterID,
-                generation: appModel.controllerSessionPresentation.generation
-            ),
-            sources: appModel.providersCatalog.providers,
-            query: searchText,
-            language: language
-        )
-    }
-
     private var selectionBinding: Binding<String?> {
         Binding(get: { model.selectedRowID }, set: { model.select($0) })
     }
@@ -531,33 +513,6 @@ struct WorkbenchSourcesView: View {
         state.staleMessage.map {
             MicaStrings.localized("data.stale_detail \($0)", language: language)
         }
-    }
-
-    private func restoreWorkspace() {
-        let controllerID = appModel.selectedRouterID
-        let generation = appModel.controllerSessionPresentation.generation
-        if let controllerID {
-            workspaceStore.activateSession(
-                controllerID: controllerID,
-                generation: generation
-            )
-        }
-        let workspace = workspaceStore.workspace(
-            controllerID: controllerID,
-            destination: .sources
-        )
-        let scrollAnchorID = controllerID.flatMap {
-            workspaceStore.scrollAnchorID(
-                controllerID: $0,
-                generation: generation,
-                destination: .sources
-            )
-        }
-        model.activate(
-            scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation),
-            workspace: workspace,
-            scrollAnchorID: scrollAnchorID
-        )
     }
 
     private func persistKind() {

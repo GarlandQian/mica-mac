@@ -147,7 +147,15 @@ final class AppModel {
     var providerUpdateAllProgress: ProviderUpdateAllProgress?
     var providerHealthCheckFailures: [String: String] = [:]
     var controllerHealth: ControllerHealthSnapshot
-    var unifiedSnapshot: UnifiedControllerSnapshot = .empty
+    var unifiedSnapshot: UnifiedControllerSnapshot = .empty {
+        didSet {
+            let support = UnifiedControllerSupportSnapshot(snapshot: unifiedSnapshot)
+            if support != unifiedControllerSupport {
+                unifiedControllerSupport = support
+            }
+        }
+    }
+    private(set) var unifiedControllerSupport: UnifiedControllerSupportSnapshot?
     var surgeSnapshot: SurgeControlSnapshot = .empty
     var changingSurgeOutbound = false
     var testingSurgePolicyGroup: String?
@@ -237,12 +245,16 @@ final class AppModel {
     @ObservationIgnored var lastRuntimePublicationRevisions: [LiveSessionPublicationDomain: UInt64] = [:]
     @ObservationIgnored var lastRuntimeConnectionRevisions = LiveSessionConnectionRevisions()
     @ObservationIgnored var lastRuntimeLogSequence: UInt64 = 0
+    @ObservationIgnored var lastPresentedRuntimeLogSequence: UInt64 = 0
     @ObservationIgnored var sessionRefreshCoordinator: SessionRefreshCoordinator?
     @ObservationIgnored var sessionMihomoClient: MihomoClient?
     @ObservationIgnored var sessionSurgeClient: SurgeHttpAPIClient?
     @ObservationIgnored var controllerSecrets: [RouterProfile.ID: String]
     @ObservationIgnored var didLoadPersistedState = false
     var didFinishLoadingPersistedState = false
+    var isLoadingPersistedState = false
+    var persistedStateLoadFailed = false
+    var failedSecretRouterIDs: Set<RouterProfile.ID> = []
     @ObservationIgnored var mainWindowCount = 0
     @ObservationIgnored var sessionSuspendedForSleep = false
 
@@ -2216,6 +2228,10 @@ final class AppModel {
     }
 
     func refreshSelectedRouter() {
+        if canRetryPersistedStateLoading {
+            loadPersistedState()
+            return
+        }
         requestImmediateSessionRefresh(isUserInitiated: true)
     }
 

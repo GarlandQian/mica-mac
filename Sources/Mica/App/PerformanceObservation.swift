@@ -35,6 +35,8 @@ enum MicaPerformanceOperation: Int, CaseIterable, Sendable {
     case topologyAccessibilityPresentation
     case scrollPhase
     case dataTableEvaluation
+    case proxyPageEvaluation
+    case topologyViewportEvaluation
     case refreshFlight
     case retryBackoff
     case transportClientCreation
@@ -61,7 +63,7 @@ enum MicaPerformanceOperation: Int, CaseIterable, Sendable {
             .topology
         case .scrollPhase:
             .interaction
-        case .dataTableEvaluation:
+        case .dataTableEvaluation, .proxyPageEvaluation, .topologyViewportEvaluation:
             .rendering
         case .refreshFlight:
             .refresh
@@ -114,6 +116,10 @@ enum MicaPerformanceOperation: Int, CaseIterable, Sendable {
             "Scroll Phase"
         case .dataTableEvaluation:
             "Data Table Evaluation"
+        case .proxyPageEvaluation:
+            "Proxy Page Evaluation"
+        case .topologyViewportEvaluation:
+            "Topology Viewport Evaluation"
         case .refreshFlight:
             "Refresh Flight"
         case .retryBackoff:

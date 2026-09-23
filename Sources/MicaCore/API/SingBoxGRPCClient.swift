@@ -9,13 +9,16 @@ nonisolated public struct SingBoxGRPCStream<Value: Sendable>: AsyncSequence, Sen
     public struct AsyncIterator: AsyncIteratorProtocol {
         private var base: AsyncThrowingStream<Value, Error>.Iterator
         private let cancelOperation: @Sendable () -> Void
+        private let didConsumeOperation: @Sendable () -> Void
 
         fileprivate init(
             base: AsyncThrowingStream<Value, Error>.Iterator,
-            cancelOperation: @Sendable @escaping () -> Void
+            cancelOperation: @Sendable @escaping () -> Void,
+            didConsumeOperation: @Sendable @escaping () -> Void
         ) {
             self.base = base
             self.cancelOperation = cancelOperation
+            self.didConsumeOperation = didConsumeOperation
         }
 
         public mutating func next(
@@ -27,7 +30,11 @@ nonisolated public struct SingBoxGRPCStream<Value: Sendable>: AsyncSequence, Sen
             }
             let cancelOperation = cancelOperation
             return try await withTaskCancellationHandler {
-                try await base.next(isolation: actor)
+                let value = try await base.next(isolation: actor)
+                if value != nil {
+                    didConsumeOperation()
+                }
+                return value
             } onCancel: {
                 cancelOperation()
             }
@@ -36,20 +43,27 @@ nonisolated public struct SingBoxGRPCStream<Value: Sendable>: AsyncSequence, Sen
 
     private let base: AsyncThrowingStream<Value, Error>
     private let cancelOperation: @Sendable () -> Void
+    private let didConsumeOperation: @Sendable () -> Void
     private let isTerminatedOperation: @Sendable () -> Bool
 
     fileprivate init(
         base: AsyncThrowingStream<Value, Error>,
         cancelOperation: @Sendable @escaping () -> Void,
+        didConsumeOperation: @Sendable @escaping () -> Void,
         isTerminatedOperation: @Sendable @escaping () -> Bool
     ) {
         self.base = base
         self.cancelOperation = cancelOperation
+        self.didConsumeOperation = didConsumeOperation
         self.isTerminatedOperation = isTerminatedOperation
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(base: base.makeAsyncIterator(), cancelOperation: cancelOperation)
+        AsyncIterator(
+            base: base.makeAsyncIterator(),
+            cancelOperation: cancelOperation,
+            didConsumeOperation: didConsumeOperation
+        )
     }
 
     public func cancel() {
@@ -290,7 +304,7 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
     }
 
     func logStream() -> SingBoxGRPCStream<SingBoxLogBatch> {
-        makeStream(bufferingPolicy: .bufferingNewest(32)) { continuation in
+        makeStream(backpressureCapacity: 32) { continuation in
             try await client.subscribeLog(
                 Google_Protobuf_Empty(),
                 metadata: metadata,
@@ -390,7 +404,7 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
         let interval = try Self.nanoseconds(forMilliseconds: intervalMilliseconds)
         let request = Daemon_SubscribeConnectionsRequest.with { $0.interval = interval }
 
-        return makeStream(bufferingPolicy: .bufferingNewest(64)) { continuation in
+        return makeStream(backpressureCapacity: 64) { continuation in
             try await client.subscribeConnections(
                 request,
                 metadata: metadata,
@@ -491,17 +505,23 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
     }
 
     private func makeStream<Value: Sendable>(
-        bufferingPolicy: AsyncThrowingStream<Value, Error>.Continuation.BufferingPolicy,
+        bufferingPolicy: AsyncThrowingStream<Value, Error>.Continuation.BufferingPolicy = .bufferingNewest(1),
+        backpressureCapacity: Int? = nil,
         operation: @Sendable @escaping (
-            AsyncThrowingStream<Value, Error>.Continuation
+            SingBoxStreamSink<Value>
         ) async throws -> Void
     ) -> SingBoxGRPCStream<Value> {
         let cancellation = SingBoxStreamCancellation()
-        let base = AsyncThrowingStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let backpressure = backpressureCapacity.map(SingBoxStreamBackpressure.init)
+        let policy = backpressureCapacity.map {
+            AsyncThrowingStream<Value, Error>.Continuation.BufferingPolicy.bufferingOldest($0)
+        } ?? bufferingPolicy
+        let base = AsyncThrowingStream(bufferingPolicy: policy) { continuation in
+            let sink = SingBoxStreamSink(continuation: continuation, backpressure: backpressure)
             let task = Task {
                 defer { cancellation.markTerminated() }
                 do {
-                    try await operation(continuation)
+                    try await operation(sink)
                     continuation.finish()
                 } catch {
                     if Task.isCancelled {
@@ -514,11 +534,16 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
             cancellation.install(task)
             continuation.onTermination = { @Sendable _ in
                 cancellation.cancel()
+                backpressure?.cancel()
             }
         }
         return SingBoxGRPCStream(
             base: base,
-            cancelOperation: { cancellation.cancel() },
+            cancelOperation: {
+                cancellation.cancel()
+                backpressure?.cancel()
+            },
+            didConsumeOperation: { backpressure?.release() },
             isTerminatedOperation: { cancellation.isTerminated }
         )
     }
@@ -536,7 +561,7 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
 
     private static func consume<Message: Sendable, Value: Sendable>(
         _ messages: RPCAsyncSequence<Message, any Error>,
-        into continuation: AsyncThrowingStream<Value, Error>.Continuation,
+        into sink: SingBoxStreamSink<Value>,
         transform: @Sendable @escaping (Message) -> Value
     ) async throws {
         let completion = AsyncThrowingStream<Void, Error>.makeStream(
@@ -545,7 +570,7 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
         let consumer = Task {
             do {
                 for try await message in messages {
-                    continuation.yield(transform(message))
+                    try await sink.yield(transform(message))
                 }
                 completion.continuation.finish()
             } catch {
@@ -581,6 +606,91 @@ struct SingBoxStartedServiceAdapter<Client: Daemon_StartedService.ClientProtocol
             return SingBoxGRPCError.rpc(code: error.code.rawValue, message: error.message)
         }
         return SingBoxGRPCError.transport(String(describing: error))
+    }
+}
+
+private struct SingBoxStreamSink<Value: Sendable>: Sendable {
+    let continuation: AsyncThrowingStream<Value, Error>.Continuation
+    let backpressure: SingBoxStreamBackpressure?
+
+    func yield(_ value: Value) async throws {
+        try await backpressure?.acquire()
+        try Task.checkCancellation()
+        switch continuation.yield(value) {
+        case .enqueued:
+            break
+        case .dropped where backpressure != nil:
+            // Lossless streams must restart if their admission invariant is
+            // ever broken; silently discarding a reset/closed event is unsafe.
+            throw SingBoxGRPCError.transport("sing-box incremental stream buffer overflow")
+        case .dropped:
+            break
+        case .terminated:
+            throw CancellationError()
+        @unknown default:
+            throw SingBoxGRPCError.transport("sing-box stream rejected a frame")
+        }
+    }
+}
+
+/// Admission for the single RPC producer. Buffered batches consume permits
+/// until the iterator receives them, so the producer stops reading from gRPC
+/// when its bounded buffer is full. There is at most one suspended producer.
+final class SingBoxStreamBackpressure: @unchecked Sendable {
+    private let lock = NSLock()
+    private var available: Int
+    private var waiter: CheckedContinuation<Void, any Error>?
+    private var isCancelled = false
+
+    init(capacity: Int) {
+        precondition(capacity > 0)
+        available = capacity
+    }
+
+    func acquire() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                lock.lock()
+                if isCancelled {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                } else if available > 0 {
+                    available -= 1
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    precondition(waiter == nil, "Only one producer may await stream capacity")
+                    waiter = continuation
+                    lock.unlock()
+                }
+            }
+        } onCancel: {
+            self.cancel()
+        }
+    }
+
+    func release() {
+        lock.lock()
+        guard !isCancelled else {
+            lock.unlock()
+            return
+        }
+        let waiter = waiter
+        self.waiter = nil
+        if waiter == nil {
+            available += 1
+        }
+        lock.unlock()
+        waiter?.resume()
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let waiter = waiter
+        self.waiter = nil
+        lock.unlock()
+        waiter?.resume(throwing: CancellationError())
     }
 }
 

@@ -61,24 +61,33 @@ enum WorkbenchSourceProjection {
         from sources: [ProxyProviderViewState],
         language: AppLanguage
     ) -> [WorkbenchSourceRow] {
+        var timestamps = WorkbenchSourceTimestampCache()
+        return rows(from: sources, language: language, timestamps: &timestamps)
+    }
+
+    fileprivate static func rows(
+        from sources: [ProxyProviderViewState],
+        language: AppLanguage,
+        timestamps: inout WorkbenchSourceTimestampCache
+    ) -> [WorkbenchSourceRow] {
+        timestamps.synchronize(with: sources)
+        let dateStyle = WorkbenchDataFormat.providerTimestampStyle(language: language)
+        let localization = MicaStrings.localizationContext(for: language)
+        let notReported = localization.localizedKey("overview.config_not_reported")
+        let proxyKind = localization.localizedKey("traffic.provider_kind_proxy")
+        let ruleKind = localization.localizedKey("traffic.provider_kind_rule")
+        let updatable = localization.localizedKey("traffic.provider_updatable_yes")
+        let readOnly = localization.localizedKey("traffic.provider_updatable_no")
+        let healthCheckAvailable = localization.localizedKey("traffic.provider_health_check_available")
+        let healthCheckUnavailable = localization.localizedKey("traffic.provider_health_check_unavailable")
         var identities = WorkbenchStableRowIdentityBuilder(
             reportedIDs: sources.map(\.id)
         )
         return sources.enumerated().map { index, source in
-            let kindText = MicaStrings.localizedKey(
-                source.kind == .proxy
-                    ? "traffic.provider_kind_proxy"
-                    : "traffic.provider_kind_rule",
-                language: language
-            )
-            let updatedText = WorkbenchDataFormat.providerUpdatedAt(
-                source.updatedAt,
-                language: language
-            ) ?? MicaStrings.localizedKey("overview.config_not_reported", language: language)
-            let typeText = WorkbenchDataFormat.reported(
-                source.type,
-                language: language
-            )
+            let kindText = source.kind == .proxy ? proxyKind : ruleKind
+            let updatedText = timestamps.value(for: source.updatedAt)?.formatted(using: dateStyle)
+                ?? notReported
+            let typeText = source.type.dataNonEmpty ?? notReported
             let configurationDetailText = WorkbenchDataFormat.joined([
                 source.vehicleType,
                 source.format,
@@ -89,18 +98,9 @@ enum WorkbenchSourceProjection {
                 configurationDetailText,
             ]) ?? typeText
             let itemCountText = String(source.itemCount)
-            let updatableText = MicaStrings.localizedKey(
-                source.updatable
-                    ? "traffic.provider_updatable_yes"
-                    : "traffic.provider_updatable_no",
-                language: language
-            )
-            let healthCheckAvailabilityText = MicaStrings.localizedKey(
-                source.supportsHealthCheck
-                    ? "traffic.provider_health_check_available"
-                    : "traffic.provider_health_check_unavailable",
-                language: language
-            )
+            let updatableText = source.updatable ? updatable : readOnly
+            let healthCheckAvailabilityText = source.supportsHealthCheck
+                ? healthCheckAvailable : healthCheckUnavailable
             let identity = identities.make(
                 reportedID: source.id,
                 fallbackComponents: [
@@ -221,6 +221,37 @@ enum WorkbenchSourceProjectionUpdate {
     case visibleOnly
 }
 
+/// Retains only the distinct reported timestamps in the accepted source list.
+/// A count/status update can reuse parsing without retaining localized strings
+/// or accumulating timestamps from providers that have disappeared.
+fileprivate struct WorkbenchSourceTimestampCache {
+    private var values: [String: WorkbenchDataFormat.ProviderTimestamp] = [:]
+    private(set) var parseCount = 0
+
+    var retainedCount: Int { values.count }
+
+    mutating func synchronize(with sources: [ProxyProviderViewState]) {
+        var next: [String: WorkbenchDataFormat.ProviderTimestamp] = [:]
+        next.reserveCapacity(min(values.count, sources.count))
+        for source in sources {
+            guard let raw = WorkbenchDataFormat.reportedTimestamp(source.updatedAt),
+                  next[raw] == nil else { continue }
+            if let retained = values[raw] {
+                next[raw] = retained
+            } else {
+                next[raw] = WorkbenchDataFormat.parseProviderTimestamp(raw)
+                parseCount += 1
+            }
+        }
+        values = next
+    }
+
+    func value(for raw: String?) -> WorkbenchDataFormat.ProviderTimestamp? {
+        guard let raw = WorkbenchDataFormat.reportedTimestamp(raw) else { return nil }
+        return values[raw]
+    }
+}
+
 struct WorkbenchSourceProjectionCache {
     private(set) var allRows: [WorkbenchSourceRow] = []
     private(set) var visibleRows: [WorkbenchSourceRow] = []
@@ -230,11 +261,15 @@ struct WorkbenchSourceProjectionCache {
     private(set) var filterProjectionCount = 0
     private(set) var sortProjectionCount = 0
 
+    var timestampParseCount: Int { timestamps.parseCount }
+    var retainedTimestampCount: Int { timestamps.retainedCount }
+
     private var kind: ProviderSessionKind?
     private var query: String?
     private var sortOrder: [KeyPathComparator<WorkbenchSourceRow>] = []
     private var filteredSourceIndices: [Int] = []
     private var rowIndexByID: [String: Int] = [:]
+    private var timestamps = WorkbenchSourceTimestampCache()
 
     @discardableResult
     mutating func project(
@@ -251,7 +286,9 @@ struct WorkbenchSourceProjectionCache {
         let sourceChanged: Bool
         switch update {
         case .source:
-            allRows = WorkbenchSourceProjection.rows(from: sources, language: language)
+            allRows = WorkbenchSourceProjection.rows(
+                from: sources, language: language, timestamps: &timestamps
+            )
             updatableSourceCount = sources.lazy.filter(\.updatable).count
             rowIndexByID = Dictionary(
                 uniqueKeysWithValues: allRows.enumerated().map {

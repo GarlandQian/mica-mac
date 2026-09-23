@@ -17,7 +17,6 @@ final class ConnectionsWorkspaceModel {
     private(set) var identity: WorkbenchSessionIdentity?
     private(set) var isActive = false
     private var cache = WorkbenchConnectionProjectionCache()
-    private var cadence = WorkbenchConnectionMetricSortCadence()
     private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
     private(set) var navigationDirectory = WorkbenchConnectionNavigationDirectory()
     private(set) var restoredScrollAnchorID: String?
@@ -39,20 +38,30 @@ final class ConnectionsWorkspaceModel {
             selectedRowID = nil
             closeIntent = nil
             scrollRequest = nil
-            cadence.cancel()
+            deferredInput = nil
+            presentedConfiguration = nil
             accessibilityCursor.reset()
         }
     }
 
     @ObservationIgnored private var acceptedMetricsRevision: UInt64?
     @ObservationIgnored private var acceptedClosedRevision: UInt64?
+    @ObservationIgnored private var deferredInput: ConnectionsWorkspaceInput?
+    @ObservationIgnored private var deferredReconcilesSelection = true
+    @ObservationIgnored private var presentedConfiguration: PresentationConfiguration?
+
+    private struct PresentationConfiguration: Equatable {
+        let scope: ConnectionSessionTab
+        let query: String
+        let language: AppLanguage
+        let sortOrder: [KeyPathComparator<WorkbenchConnectionRow>]
+    }
 
     var allRows: [WorkbenchConnectionRow] { cache.allRows }
     var rows: [WorkbenchConnectionRow] { cache.visibleRows }
     var pulse: WorkbenchConnectionPulseProjection { cache.pulseProjection }
     var closeGroups: [WorkbenchConnectionCloseGroup] { cache.closeGroups }
     var selectedRow: WorkbenchConnectionRow? { cache.row(id: selectedRowID) }
-    var metricSortDeadline: Date? { cadence.pendingDeadline }
     var staticProjectionCount: Int { cache.staticProjectionCount }
     var accessibilityWindow: WorkbenchAccessibilityWindow {
         WorkbenchAccessibilityWindow.resolve(
@@ -68,7 +77,6 @@ final class ConnectionsWorkspaceModel {
     ) {
         if self.identity != identity {
             cache.reset()
-            cadence.cancel()
             closeIntent = nil
             scrollRequest = nil
             accessibilityCursor.reset()
@@ -76,7 +84,10 @@ final class ConnectionsWorkspaceModel {
             navigationDirectory = WorkbenchConnectionNavigationDirectory()
             acceptedMetricsRevision = nil
             acceptedClosedRevision = nil
+            presentedConfiguration = nil
         }
+        deferredInput = nil
+        tableInteraction.apply(.ended)
         self.identity = identity
         isActive = true
         scope = workspace.activeTab.flatMap(ConnectionSessionTab.init(rawValue:)) ?? .active
@@ -87,14 +98,15 @@ final class ConnectionsWorkspaceModel {
 
     func deactivate() {
         isActive = false
-        cadence.cancel()
+        deferredInput = nil
+        tableInteraction.apply(.ended)
     }
 
     @discardableResult
     func update(
         _ input: ConnectionsWorkspaceInput,
         reconcileSelection: Bool = true,
-        now: Date = Date()
+        forcePresentation: Bool = false
     ) -> Bool {
         guard isActive, input.identity == identity else { return false }
         if scope == .active {
@@ -107,6 +119,32 @@ final class ConnectionsWorkspaceModel {
                 return false
             }
             acceptedClosedRevision = input.closedRevision
+        }
+
+        let configuration = PresentationConfiguration(
+            scope: scope,
+            query: input.query,
+            language: input.language,
+            sortOrder: sortOrder
+        )
+        if tableInteraction.isUserScrolling, !forcePresentation,
+           presentedConfiguration == configuration {
+            // Keep only the newest complete snapshot. The cache falls back to
+            // that snapshot when a skipped revision makes its delta obsolete.
+            deferredInput = input
+            deferredReconcilesSelection = reconcileSelection
+            return true
+        }
+        deferredInput = nil
+        presentedConfiguration = configuration
+
+        if let intent = closeIntent,
+           closeTargets(
+                for: intent.target,
+                currentConnections: input.catalog.connections,
+                identity: input.identity
+           ) == nil {
+            closeIntent = nil
         }
 
         let previousRows = allRows
@@ -123,14 +161,8 @@ final class ConnectionsWorkspaceModel {
             sortOrder: sortOrder,
             language: input.language,
             change: input.catalog.lastChange,
-            deferMetricSorting: tableInteraction.isUserScrolling,
             isActive: isActive
         )
-        if cache.hasDeferredMetricSort {
-            cadence.schedule(now: now)
-        } else {
-            cadence.cancel()
-        }
         if reconcileSelection {
             selectedRowID = WorkbenchDataSelection.reconciled(
                 previousSelection,
@@ -159,15 +191,34 @@ final class ConnectionsWorkspaceModel {
         visibility: GlobalGroupVisibility,
         identity: WorkbenchSessionIdentity
     ) {
+        updateRuleNavigation(rules: rules, identity: identity)
+        updatePolicyNavigation(catalog: catalog, visibility: visibility, identity: identity)
+    }
+
+    func updateRuleNavigation(
+        rules: [RuleViewState],
+        identity: WorkbenchSessionIdentity
+    ) {
         guard isActive, self.identity == identity else { return }
-        navigationDirectory = WorkbenchConnectionNavigationDirectory(
-            rules: rules,
-            groups: ProxyProjection.arrangedGroups(
-                catalog.groups,
-                mode: catalog.mode,
-                visibility: visibility
-            )
+        var directory = navigationDirectory
+        guard directory.replaceRules(rules) else { return }
+        navigationDirectory = directory
+    }
+
+    func updatePolicyNavigation(
+        catalog: PolicyGroupCatalogSnapshot,
+        visibility: GlobalGroupVisibility,
+        identity: WorkbenchSessionIdentity
+    ) {
+        guard isActive, self.identity == identity else { return }
+        let groups = ProxyProjection.arrangedGroups(
+            catalog.groups,
+            mode: catalog.mode,
+            visibility: visibility
         )
+        var directory = navigationDirectory
+        guard directory.replaceGroups(groups) else { return }
+        navigationDirectory = directory
     }
 
     func row(id: String?) -> WorkbenchConnectionRow? { cache.row(id: id) }
@@ -193,6 +244,37 @@ final class ConnectionsWorkspaceModel {
         )
     }
 
+    /// A paused table keeps its original action targets. An ID reused by the
+    /// controller must never turn that target into a different connection.
+    func closeTargets(
+        for target: WorkbenchConnectionCloseIntent.Target,
+        currentConnections: [ConnectionSnapshot],
+        identity: WorkbenchSessionIdentity
+    ) -> [ConnectionSnapshot]? {
+        guard isActive, self.identity == identity, scope == .active else { return nil }
+        let requested: [ConnectionSnapshot]
+        switch target {
+        case .connection(let id):
+            guard let row = row(id: id) else { return nil }
+            requested = [row.connection]
+        case .group(let id):
+            guard let group = closeGroups.first(where: { $0.id == id }) else { return nil }
+            requested = group.connections
+        case .all:
+            return currentConnections
+        }
+        let requestedIDs = Set(requested.map(\.id))
+        guard !requestedIDs.isEmpty, requestedIDs.count == requested.count,
+              requestedIDs.allSatisfy({ $0.dataNonEmpty != nil }) else { return nil }
+        var currentByID: [String: ConnectionSnapshot] = [:]
+        for connection in currentConnections where requestedIDs.contains(connection.id) {
+            guard currentByID.updateValue(connection, forKey: connection.id) == nil else { return nil }
+        }
+        let current = requested.compactMap { currentByID[$0.id] }
+        guard ConnectionsCatalogSnapshot.structuresMatch(requested, current) else { return nil }
+        return requested
+    }
+
     /// Return the query that makes an exact navigation target visible.
     func reveal(
         _ selection: WorkbenchConnectionNavigationSelection,
@@ -201,13 +283,14 @@ final class ConnectionsWorkspaceModel {
         guard isActive, input.identity == identity, scope == .active,
               selection.controllerID == input.identity.controllerID,
               selection.generation == input.identity.generation,
+              update(input, reconcileSelection: false, forcePresentation: true),
               let row = allRows.first(where: {
                   selection.matches(sourceIndex: $0.sourceIndex, reportedConnectionID: $0.connection.id)
               }) else { return nil }
         var next = input
         if cache.visibleIndex(id: row.id) == nil {
             next.query = ""
-            guard update(next, reconcileSelection: false) else { return nil }
+            guard update(next, reconcileSelection: false, forcePresentation: true) else { return nil }
         }
         guard cache.visibleIndex(id: row.id) != nil else { return nil }
         selectedRowID = row.id
@@ -215,22 +298,10 @@ final class ConnectionsWorkspaceModel {
         return next.query
     }
 
-    func commitScheduledMetricSort(
-        identity: WorkbenchSessionIdentity,
-        deadline: Date,
-        now: Date = Date()
-    ) {
-        guard isActive, self.identity == identity,
-              cadence.pendingDeadline == deadline, cadence.consume(now: now) else { return }
-        finishDeferredMetricSort(identity: identity)
-    }
-
-    func finishDeferredMetricSort(identity: WorkbenchSessionIdentity) {
-        guard isActive, self.identity == identity else { return }
-        cadence.cancel()
-        if cache.commitDeferredMetricSort() {
-            reconcileAccessibilityWindow()
-        }
+    func finishDeferredPresentation(identity: WorkbenchSessionIdentity) {
+        guard isActive, self.identity == identity, !tableInteraction.isUserScrolling,
+              let input = deferredInput else { return }
+        update(input, reconcileSelection: deferredReconcilesSelection)
     }
 
     func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {

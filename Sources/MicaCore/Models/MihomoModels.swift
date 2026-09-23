@@ -205,37 +205,29 @@ public struct SmartGroupWeightsResponse: Codable, Equatable, Sendable {
 }
 
 private struct JSONKeyOrderScanner {
-    private static let valueDelimiters: Set<Character> = [",", "}", "]"]
-
-    private var text: String
-    private var index: String.Index
-
-    private init(text: String) {
-        self.text = text
-        self.index = text.startIndex
-    }
+    private let bytes: [UInt8]
+    private var index = 0
+    private let decoder = JSONDecoder()
 
     static func objectKeyOrder(for key: String, in data: Data) -> [String] {
-        guard let text = String(data: data, encoding: .utf8) else {
-            return []
-        }
-
-        var scanner = JSONKeyOrderScanner(text: text)
+        // The response has already passed JSONDecoder validation. Walk UTF-8
+        // punctuation without decoding strings inside values a second time.
+        var scanner = JSONKeyOrderScanner(bytes: Array(data))
         scanner.skipWhitespace()
-        guard scanner.consume("{") else {
+        guard scanner.consume(123) else {
             return []
         }
 
         while !scanner.isAtEnd {
             scanner.skipWhitespace()
-            if scanner.consume("}") {
+            if scanner.consume(125) {
                 return []
             }
             guard let rootKey = scanner.readString() else {
                 return []
             }
             scanner.skipWhitespace()
-            guard scanner.consume(":") else {
+            guard scanner.consume(58) else {
                 return []
             }
             scanner.skipWhitespace()
@@ -244,40 +236,43 @@ private struct JSONKeyOrderScanner {
             }
             scanner.skipValue()
             scanner.skipWhitespace()
-            _ = scanner.consume(",")
+            _ = scanner.consume(44)
         }
 
         return []
     }
 
     private var isAtEnd: Bool {
-        index >= text.endIndex
+        index >= bytes.count
     }
 
     private mutating func skipWhitespace() {
-        while !isAtEnd, text[index].isWhitespace {
-            text.formIndex(after: &index)
+        while !isAtEnd {
+            switch bytes[index] {
+            case 9, 10, 13, 32: index += 1
+            default: return
+            }
         }
     }
 
-    private mutating func consume(_ character: Character) -> Bool {
-        guard !isAtEnd, text[index] == character else {
+    private mutating func consume(_ byte: UInt8) -> Bool {
+        guard !isAtEnd, bytes[index] == byte else {
             return false
         }
 
-        text.formIndex(after: &index)
+        index += 1
         return true
     }
 
     private mutating func readObjectKeys() -> [String] {
-        guard consume("{") else {
+        guard consume(123) else {
             return []
         }
 
         var keys: [String] = []
         while !isAtEnd {
             skipWhitespace()
-            if consume("}") {
+            if consume(125) {
                 return keys
             }
             guard let key = readString() else {
@@ -285,15 +280,15 @@ private struct JSONKeyOrderScanner {
             }
             keys.append(key)
             skipWhitespace()
-            guard consume(":") else {
+            guard consume(58) else {
                 return keys
             }
             skipValue()
             skipWhitespace()
-            if consume(",") {
+            if consume(44) {
                 continue
             }
-            if consume("}") {
+            if consume(125) {
                 return keys
             }
         }
@@ -307,79 +302,49 @@ private struct JSONKeyOrderScanner {
             return
         }
 
-        switch text[index] {
-        case "{":
-            skipObject()
-        case "[":
-            skipArray()
-        case "\"":
-            _ = readString()
-        default:
-            while !isAtEnd, !Self.valueDelimiters.contains(text[index]) {
-                text.formIndex(after: &index)
-            }
-        }
-    }
-
-    private mutating func skipObject() {
-        guard consume("{") else {
-            return
-        }
-
+        var depth = 0
         while !isAtEnd {
-            skipWhitespace()
-            if consume("}") {
+            switch bytes[index] {
+            case 34:
+                _ = stringToken()
+                if depth == 0 { return }
+            case 123, 91:
+                depth += 1
+                index += 1
+            case 125, 93:
+                guard depth > 0 else { return }
+                depth -= 1
+                index += 1
+                if depth == 0 { return }
+            case 44 where depth == 0:
                 return
+            default:
+                index += 1
             }
-            _ = readString()
-            skipWhitespace()
-            _ = consume(":")
-            skipValue()
-            skipWhitespace()
-            _ = consume(",")
-        }
-    }
-
-    private mutating func skipArray() {
-        guard consume("[") else {
-            return
-        }
-
-        while !isAtEnd {
-            skipWhitespace()
-            if consume("]") {
-                return
-            }
-            skipValue()
-            skipWhitespace()
-            _ = consume(",")
         }
     }
 
     private mutating func readString() -> String? {
-        guard !isAtEnd, text[index] == "\"" else {
-            return nil
+        guard let token = stringToken() else { return nil }
+        if !token.escaped {
+            return String(decoding: bytes[(token.range.lowerBound + 1)..<(token.range.upperBound - 1)], as: UTF8.self)
         }
+        return try? decoder.decode(String.self, from: Data(bytes[token.range]))
+    }
 
-        let tokenStart = index
-        text.formIndex(after: &index)
-        var isEscaped = false
-
+    private mutating func stringToken() -> (range: Range<Int>, escaped: Bool)? {
+        guard consume(34) else { return nil }
+        let tokenStart = index - 1
+        var escaped = false
         while !isAtEnd {
-            let character = text[index]
-            text.formIndex(after: &index)
-
-            if isEscaped {
-                isEscaped = false
-                continue
-            }
-            if character == "\\" {
-                isEscaped = true
-                continue
-            }
-            if character == "\"" {
-                let token = String(text[tokenStart..<index])
-                return try? JSONDecoder().decode(String.self, from: Data(token.utf8))
+            let byte = bytes[index]
+            index += 1
+            if byte == 92 {
+                escaped = true
+                guard !isAtEnd else { return nil }
+                index += 1
+            } else if byte == 34 {
+                return (tokenStart..<index, escaped)
             }
         }
 

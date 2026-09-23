@@ -224,6 +224,168 @@ final class SingBoxGRPCClientTests: XCTestCase {
         XCTAssertTrue(probe.serverStreamEnded)
     }
 
+    func testSlowConnectionConsumerPreservesNewUpdateClosedAndResetBatches() async throws {
+        let recorder = SingBoxFixtureRecorder()
+        let frames = (0 ..< 192).map { index in
+            Daemon_ConnectionEvents.with {
+                $0.reset = index == 0 || index == 96
+                $0.events = [Daemon_ConnectionEvent.with {
+                    $0.id = "connection-\(index / 3)"
+                    $0.type = [.connectionEventNew, .connectionEventUpdate, .connectionEventClosed][index % 3]
+                    $0.uplinkDelta = Int64(index)
+                    $0.downlinkDelta = Int64(index * 2)
+                    if index % 3 == 0 {
+                        $0.connection = Daemon_Connection.with { $0.id = "connection-\(index / 3)" }
+                    }
+                }]
+            }
+        }
+        let service = SingBoxFixtureService(recorder: recorder, connectionFrames: frames)
+
+        try await withFixtureClient(service: service) { adapter in
+            let stream = try adapter.connectionStream(intervalMilliseconds: 1)
+            defer { stream.cancel() }
+            // Let the server produce more than the previous 64-batch buffer
+            // before consumption begins, then keep the consumer deliberately slow.
+            try await recorder.waitForWrites("connections-written", minimum: 65)
+            XCTAssertFalse(stream.isTerminated, "A full incremental buffer must backpressure its finite producer")
+            var received: [SingBoxConnectionEventBatch] = []
+            for try await batch in stream {
+                received.append(batch)
+                try await Task.sleep(for: .milliseconds(1))
+            }
+
+            XCTAssertEqual(received.count, frames.count)
+            XCTAssertEqual(received.flatMap(\.events).map(\.uplinkDeltaBytes), (0 ..< 192).map { Int64($0) })
+            XCTAssertEqual(received.flatMap(\.events).map { $0.type.rawValue }, (0 ..< 192).map { $0 % 3 })
+            XCTAssertEqual(received.enumerated().filter { $0.element.reset }.map(\.offset), [0, 96])
+        }
+    }
+
+    func testSlowLogConsumerPreservesEveryBatchAndResetInOrder() async throws {
+        let recorder = SingBoxFixtureRecorder()
+        let frames = (0 ..< 96).map { index in
+            Daemon_Log.with {
+                $0.reset = index == 0 || index == 48
+                $0.messages = [Daemon_Log.Message.with {
+                    $0.level = .info
+                    $0.message = "log-\(index)"
+                }]
+            }
+        }
+        let service = SingBoxFixtureService(recorder: recorder, logFrames: frames)
+
+        try await withFixtureClient(service: service) { adapter in
+            let stream = adapter.logStream()
+            defer { stream.cancel() }
+            try await recorder.waitForWrites("logs-written", minimum: 33)
+            var received: [SingBoxLogBatch] = []
+            for try await batch in stream {
+                received.append(batch)
+                try await Task.sleep(for: .milliseconds(1))
+            }
+
+            XCTAssertEqual(received.flatMap(\.messages).map(\.message), (0 ..< 96).map { "log-\($0)" })
+            XCTAssertEqual(received.enumerated().filter { $0.element.reset }.map(\.offset), [0, 48])
+        }
+    }
+
+    func testCancellingFullIncrementalStreamStopsProducerWithoutAConsumer() async throws {
+        let recorder = SingBoxFixtureRecorder()
+        let service = SingBoxFixtureService(
+            recorder: recorder,
+            connectionFrames: (0 ..< 192).map { index in
+                Daemon_ConnectionEvents.with {
+                    $0.events = [Daemon_ConnectionEvent.with { $0.id = "connection-\(index)" }]
+                }
+            }
+        )
+
+        try await withFixtureClient(service: service) { adapter in
+            let stream = try adapter.connectionStream(intervalMilliseconds: 1)
+            try await recorder.waitForWrites("connections-written", minimum: 65)
+            stream.cancel()
+            let ended = try await waitUntil { stream.isTerminated }
+            XCTAssertTrue(ended, "Cancelling a full buffer must release its suspended producer")
+        }
+    }
+
+    func testIncrementalConsumerCancellationStopsAnOpenRPC() async throws {
+        let recorder = SingBoxFixtureRecorder()
+        let service = SingBoxFixtureService(
+            recorder: recorder,
+            holdLogStreamOpen: true,
+            logFrames: [Daemon_Log.with { $0.reset = true }]
+        )
+        try await withFixtureClient(service: service) { adapter in
+            let stream = adapter.logStream()
+            let received = expectation(description: "Received first log batch")
+            let finished = expectation(description: "Consumer cancelled")
+            let consumer = Task {
+                defer { finished.fulfill() }
+                do {
+                    var iterator = stream.makeAsyncIterator()
+                    _ = try await iterator.next()
+                    received.fulfill()
+                    _ = try await iterator.next()
+                } catch is CancellationError {
+                    // Cancellation may end the iterator or throw.
+                } catch {
+                    XCTFail("Unexpected cancellation error: \(error)")
+                }
+            }
+            await fulfillment(of: [received], timeout: 2)
+            consumer.cancel()
+            await fulfillment(of: [finished], timeout: 2)
+            let ended = try await waitUntil { stream.isTerminated }
+            XCTAssertTrue(ended)
+        }
+    }
+
+    func testCancellingBackpressuredProducerResumesCapacityWait() async throws {
+        let backpressure = SingBoxStreamBackpressure(capacity: 1)
+        try await backpressure.acquire()
+        let finished = expectation(description: "Suspended producer cancelled")
+        let producer = Task {
+            defer { finished.fulfill() }
+            do {
+                try await backpressure.acquire()
+                XCTFail("A full buffer cannot admit another batch")
+            } catch is CancellationError {
+            } catch {
+                XCTFail("Unexpected capacity error: \(error)")
+            }
+        }
+        await Task.yield()
+        producer.cancel()
+        await fulfillment(of: [finished], timeout: 2)
+        backpressure.release()
+        do {
+            try await backpressure.acquire()
+            XCTFail("A cancelled producer must not accept more batches")
+        } catch is CancellationError {
+        }
+    }
+
+    func testAlreadyCancelledProducerDoesNotWaitForCapacity() async throws {
+        let backpressure = SingBoxStreamBackpressure(capacity: 1)
+        try await backpressure.acquire()
+        let finished = expectation(description: "Already cancelled producer finished")
+        let producer = Task {
+            defer { finished.fulfill() }
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                try await backpressure.acquire()
+                XCTFail("An already cancelled producer must not acquire capacity")
+            } catch is CancellationError {
+            } catch {
+                XCTFail("Unexpected capacity error: \(error)")
+            }
+        }
+        await fulfillment(of: [finished], timeout: 2)
+        producer.cancel()
+    }
+
     private func withFixtureClient<Result: Sendable>(
         service: SingBoxFixtureService,
         operation: (
@@ -265,6 +427,16 @@ private actor SingBoxFixtureRecorder {
     func values() -> [String: String] {
         storage
     }
+
+    func waitForWrites(_ key: String, minimum: Int) async throws {
+        for _ in 0 ..< 200 {
+            if (Int(storage[key] ?? "0") ?? 0) >= minimum {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        throw SingBoxGRPCError.transport("Fixture did not produce \(minimum) batches")
+    }
 }
 
 private final class SingBoxCancellationProbe: @unchecked Sendable {
@@ -301,6 +473,9 @@ private struct SingBoxFixtureService: SingBoxFixtureServiceDefaults {
     let recorder: SingBoxFixtureRecorder
     var holdStatusStreamOpen = false
     var cancellationProbe: SingBoxCancellationProbe?
+    var holdLogStreamOpen = false
+    var connectionFrames: [Daemon_ConnectionEvents]?
+    var logFrames: [Daemon_Log]?
 
     func getVersion(
         request: Google_Protobuf_Empty,
@@ -353,6 +528,16 @@ private struct SingBoxFixtureService: SingBoxFixtureServiceDefaults {
         response: RPCWriter<Daemon_Log>,
         context: ServerContext
     ) async throws {
+        if let logFrames {
+            for (index, frame) in logFrames.enumerated() {
+                try await response.write(frame)
+                await recorder.record("logs-written", value: String(index + 1))
+            }
+            if holdLogStreamOpen {
+                try await context.cancellation.cancelled
+            }
+            return
+        }
         try await response.write(
             Daemon_Log.with {
                 $0.reset = true
@@ -433,6 +618,13 @@ private struct SingBoxFixtureService: SingBoxFixtureServiceDefaults {
         context: ServerContext
     ) async throws {
         await recorder.record("connections-interval", value: String(request.interval))
+        if let connectionFrames {
+            for (index, frame) in connectionFrames.enumerated() {
+                try await response.write(frame)
+                await recorder.record("connections-written", value: String(index + 1))
+            }
+            return
+        }
         let connection = Daemon_Connection.with {
             $0.id = "connection-42"
             $0.inbound = "mixed-in"

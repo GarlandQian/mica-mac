@@ -37,25 +37,14 @@ struct WorkbenchLogsView: View {
         ) {
             pageContent
         }
-        .onAppear {
-            workspaceStore.logEntryResolver = { [weak model] id in
-                model?.row(id: id)
-            }
-            restoreWorkspace()
-            synchronizePresentation()
-            if let selectedRowID = model.selectedRowID {
-                workspaceStore.selectInspector(.log(id: selectedRowID))
-            }
-        }
-        .onDisappear {
-            workspaceStore.logEntryResolver = nil
-            model.deactivate()
-        }
-        .onChange(of: presentationRequest) { _, request in
-            if model.scope != request.scope {
-                restoreWorkspace()
-            }
-            synchronizePresentation()
+        .background {
+            WorkbenchLogsCatalogObserver(
+                appModel: appModel,
+                workspaceStore: workspaceStore,
+                model: model,
+                query: searchText,
+                language: language
+            )
         }
         .onChange(of: model.level) {
             persistLogLevel()
@@ -230,6 +219,11 @@ struct WorkbenchLogsView: View {
             rowIndex: { id in model.rows.firstIndex { $0.id == id } },
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onInteractionBegan: { model.setFollowing(false) },
+            onInteractionEnded: {
+                model.finishDeferredPresentation(
+                    scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation)
+                )
+            },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -432,22 +426,6 @@ struct WorkbenchLogsView: View {
         }
     }
 
-    private var presentationRequest: WorkbenchLogsPresentationRequest {
-        WorkbenchLogsPresentationRequest(
-            scope: WorkbenchSessionIdentity(
-                controllerID: appModel.selectedRouterID,
-                generation: appModel.controllerSessionPresentation.generation
-            ),
-            revision: appModel.logsCatalog.entriesRevision,
-            query: searchText,
-            language: language
-        )
-    }
-
-    private func synchronizePresentation() {
-        model.update(catalog: appModel.logsCatalog, request: presentationRequest)
-    }
-
     private var selectionBinding: Binding<String?> {
         Binding(get: { model.selectedRowID }, set: { model.select($0) })
     }
@@ -493,35 +471,6 @@ struct WorkbenchLogsView: View {
         state.staleMessage.map {
             MicaStrings.localized("data.stale_detail \($0)", language: language)
         }
-    }
-
-    private func restoreWorkspace() {
-        let controllerID = appModel.selectedRouterID
-        let generation = appModel.controllerSessionPresentation.generation
-        if let controllerID {
-            workspaceStore.activateSession(
-                controllerID: controllerID,
-                generation: generation
-            )
-        }
-        let workspace = workspaceStore.workspace(
-            controllerID: controllerID,
-            destination: .logs
-        )
-        let scrollAnchorID = controllerID.flatMap {
-            workspaceStore.scrollAnchorID(
-                controllerID: $0,
-                generation: generation,
-                destination: .logs
-            )
-        }
-        model.activate(
-            scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation),
-            workspace: workspace,
-            scrollAnchorID: scrollAnchorID,
-            defaultLevel: appModel.controllerLogLevel,
-            availableLevels: availableLogLevels
-        )
     }
 
     private func persistLogLevel() {

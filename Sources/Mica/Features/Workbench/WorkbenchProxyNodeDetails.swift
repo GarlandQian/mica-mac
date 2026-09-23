@@ -1,4 +1,5 @@
 import MicaCore
+import Observation
 import SwiftUI
 
 struct ProxyNodeDetailIdentity: Hashable {
@@ -144,6 +145,81 @@ struct ProxyNodeHoverRequest: Equatable {
 
     var previewCandidateID: String? {
         isScrolling || memberID == inspectedMemberID ? nil : memberID
+    }
+}
+
+/// The page passes this reference without observing its fields. Pointer movement
+/// therefore invalidates the preview leaf and the two affected rows, not the
+/// directory, command bar, accessibility catalog, and whole node list.
+@MainActor
+@Observable
+final class ProxyNodeHoverState {
+    private(set) var memberID: String?
+
+    func setHovered(_ memberID: String, isHovered: Bool) {
+        if isHovered {
+            self.memberID = memberID
+        } else if self.memberID == memberID {
+            self.memberID = nil
+        }
+    }
+
+    func reset() {
+        memberID = nil
+    }
+}
+
+/// The delayed preview owns its state locally. Keep the current hover candidate
+/// while scrolling so a stationary pointer resumes its preview after scrolling.
+struct ProxyNodeHoverOverlay: View {
+    @Environment(\.micaAppLanguage) private var language
+    @State private var previewMemberID: String?
+
+    let state: ProxyNodeHoverState
+    let scrollInteractionTracker: ProxyScrollInteractionTracker
+    let presentation: ProxyActiveGroupPresentation
+    let anchors: [String: Anchor<CGRect>]
+
+    var body: some View {
+        GeometryReader { geometry in
+            if !scrollInteractionTracker.isScrolling,
+               let previewMemberID,
+               previewMemberID == state.memberID,
+               previewMemberID != presentation.inspectedMemberID,
+               let anchor = anchors[previewMemberID],
+               let member = presentation.members.first(where: { $0.id == previewMemberID }) {
+                let snapshot = ProxyNodeInspectionProjection.snapshot(
+                    member: member, in: presentation.occurrence, language: language
+                )
+                if let layout = ProxyNodePreviewLayout.resolve(
+                    viewport: geometry.size,
+                    anchor: geometry[anchor],
+                    fieldCount: snapshot.fields.count
+                ) {
+                    ProxyNodeHoverPreview(snapshot: snapshot, size: layout.frame.size)
+                        .offset(x: layout.frame.minX, y: layout.frame.minY)
+                }
+            }
+        }
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .task(id: request) {
+            previewMemberID = nil
+            let candidateRequest = request
+            guard let candidate = candidateRequest.previewCandidateID else { return }
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled, candidateRequest == request else { return }
+            previewMemberID = candidate
+        }
+    }
+
+    private var request: ProxyNodeHoverRequest {
+        ProxyNodeHoverRequest(
+            memberID: state.memberID,
+            isScrolling: scrollInteractionTracker.isScrolling,
+            inspectedMemberID: presentation.inspectedMemberID
+        )
     }
 }
 

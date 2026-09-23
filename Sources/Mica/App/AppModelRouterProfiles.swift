@@ -40,8 +40,6 @@ extension AppModel {
         let draftProfile = draft.profile
         let commandID = beginCommand(.saveRouter, router: draftProfile, summary: localized("operation.saving_profile"))
         let isExistingRouter = routers.contains { $0.id == draftProfile.id }
-        let affectsSelectedSession = selectedRouterID == draftProfile.id
-        let shouldActivateAfterInsert = !isExistingRouter && selectedRouter == nil
         let originalRouters = routers
         let originalCachedSecret = controllerSecrets[draftProfile.id]
         operationState = .working(localized("operation.saving_profile"), action: TrialCommandAction.saveRouter.title(language: presentationLanguage), target: draftProfile.displayName)
@@ -93,10 +91,13 @@ extension AppModel {
             } else {
                 controllerSecrets.removeValue(forKey: profile.id)
             }
+            failedSecretRouterIDs.remove(profile.id)
 
-            if affectsSelectedSession {
+            // Selection can change in another window while persistence awaits.
+            // Reconcile the committed profile with the selection at commit time.
+            if selectedRouterID == profile.id {
                 replaceSelectedRouterSession(with: profile)
-            } else if shouldActivateAfterInsert {
+            } else if !isExistingRouter && selectedRouter == nil {
                 selectRouter(profile)
             }
 
@@ -136,7 +137,6 @@ extension AppModel {
         }
         var nextRouters = originalRouters
         nextRouters.remove(at: originalIndex)
-        let deletingActiveRouter = selectedRouterID == router.id
         let replacement = nextRouters.indices.contains(originalIndex)
             ? nextRouters[originalIndex]
             : nextRouters.last
@@ -154,9 +154,10 @@ extension AppModel {
 
             routers = nextRouters
             controllerSecrets.removeValue(forKey: router.id)
+            failedSecretRouterIDs.remove(router.id)
             trialSessions.removeValue(forKey: router.id)
 
-            if deletingActiveRouter {
+            if selectedRouterID == router.id {
                 if let replacement {
                     selectRouter(replacement)
                 } else {
@@ -255,16 +256,40 @@ extension AppModel {
         }
     }
 
+    var canRetryPersistedStateLoading: Bool {
+        !isLoadingPersistedState
+            && (persistedStateLoadFailed || !failedSecretRouterIDs.isEmpty)
+    }
+
     func loadPersistedState() {
-        guard !didLoadPersistedState else {
-            return
-        }
+        guard !isLoadingPersistedState,
+              !didLoadPersistedState || !failedSecretRouterIDs.isEmpty else { return }
 
-        didLoadPersistedState = true
-
+        isLoadingPersistedState = true
+        persistedStateLoadFailed = false
         loadTask = Task { [self] in
-            try? await routerProfileMutationCoordinator.run { [self] in
-                await loadPersistedStateTransaction()
+            defer { loadTask = nil }
+            do {
+                try await routerProfileMutationCoordinator.run { [self] in
+                    if didLoadPersistedState {
+                        await retryFailedSecretReads()
+                    } else {
+                        await loadPersistedStateTransaction()
+                    }
+                }
+            } catch {
+                persistedStateLoadFailed = !didLoadPersistedState
+                presentPersistedStateLoadFailure()
+            }
+            isLoadingPersistedState = false
+            // Use the latest selection: a different window may have selected
+            // another profile while a retry was waiting for the secret store.
+            if didLoadPersistedState,
+               controllerSession.controllerID == nil,
+               mainWindowCount > 0,
+               !sessionSuspendedForSleep,
+               let router = selectedRouter {
+                enterLiveSession(for: router)
             }
         }
     }
@@ -272,17 +297,11 @@ extension AppModel {
     private func loadPersistedStateTransaction() async {
         do {
             let loadedProfiles = try await profileStore.loadProfiles()
-
-            if loadedProfiles.isEmpty {
-                routers = []
-                selectedRouterID = nil
-                persistSelectedRouterID(nil)
-                operationState = nil
-                didFinishLoadingPersistedState = true
-                return
-            }
+            let secrets = await loadCachedSecrets(for: loadedProfiles)
 
             routers = loadedProfiles
+            controllerSecrets = secrets.values
+            failedSecretRouterIDs = secrets.failedIDs
             let restoredID = persistedSelectedRouterID()
             let restoredRouter = loadedProfiles.first { $0.id == restoredID }
                 ?? loadedProfiles.first
@@ -297,26 +316,53 @@ extension AppModel {
             providerUpdateFailures = [:]
             providerHealthCheckFailures = [:]
             controllerHealth = .idle(language: presentationLanguage)
+            didLoadPersistedState = true
             didFinishLoadingPersistedState = true
-            try await loadCachedSecrets(for: loadedProfiles)
             operationState = nil
-            if let restoredRouter, mainWindowCount > 0, !sessionSuspendedForSleep {
-                enterLiveSession(for: restoredRouter)
+            if !failedSecretRouterIDs.isEmpty {
+                presentPersistedStateLoadFailure()
             }
         } catch {
-            operationState = .error(localized("operation.profiles_load_failed"), nextStep: localized("action.edit_router"))
+            persistedStateLoadFailed = true
+            presentPersistedStateLoadFailure()
         }
     }
 
-    private func loadCachedSecrets(for profiles: [RouterProfile]) async throws {
-        controllerSecrets = [:]
-
-        for profile in profiles {
-            guard profile.secretReference != nil else {
-                continue
+    private func loadCachedSecrets(
+        for profiles: [RouterProfile]
+    ) async -> (values: [RouterProfile.ID: String], failedIDs: Set<RouterProfile.ID>) {
+        var values: [RouterProfile.ID: String] = [:]
+        var failedIDs: Set<RouterProfile.ID> = []
+        for profile in profiles where profile.secretReference != nil {
+            do {
+                values[profile.id] = try await secretStore.secret(for: profile.id)
+            } catch {
+                failedIDs.insert(profile.id)
             }
+        }
+        return (values, failedIDs)
+    }
 
-            controllerSecrets[profile.id] = try await secretStore.secret(for: profile.id)
+    private func retryFailedSecretReads() async {
+        let profiles = routers.filter { failedSecretRouterIDs.contains($0.id) }
+        let secrets = await loadCachedSecrets(for: profiles)
+        for profile in profiles where !secrets.failedIDs.contains(profile.id) {
+            controllerSecrets[profile.id] = secrets.values[profile.id]
+            failedSecretRouterIDs.remove(profile.id)
+        }
+        operationState = nil
+        if !failedSecretRouterIDs.isEmpty {
+            presentPersistedStateLoadFailure()
+        }
+    }
+
+    func presentPersistedStateLoadFailure() {
+        let message = localized("operation.profiles_load_failed")
+        let selectedSecretFailed = selectedRouterID.map(failedSecretRouterIDs.contains) ?? false
+        if persistedStateLoadFailed || selectedSecretFailed {
+            operationState = .error(message, nextStep: localized("action.refresh"))
+        } else {
+            operationState = .partial(message, nextStep: localized("action.refresh"))
         }
     }
 

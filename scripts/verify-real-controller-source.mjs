@@ -1461,7 +1461,8 @@ assertIncludes(overviewTopologyView, "struct OverviewTopologyLabelBand", "Topolo
 assertExcludes(overviewTopologyView, "snapshot.activeSelection == nil ? 0 : 0.34", "Topology must not dim the graph through a full-size overlay (task 08-20 R6)");
 assertIncludes(overviewTopologyView, "struct OverviewTopologyHitBand", "Topology hit testing must have an isolated invalidation boundary");
 assertIncludes(overviewTopologyView, "stageConnectionNavigation(", "Topology paths must open the matching connection in the same window");
-assertIncludes(overviewTopologyView, "runtime.interaction.snapshot.isHovering", "Topology hover must freeze only the presented snapshot");
+// Snapshot freeze, empty-state recovery and observation boundaries are exercised
+// by OverviewInteractionContinuityTests; they need not live in this view file.
 assertIncludes(overviewTopologyView, "runtime.isPaused", "Topology must provide explicit presentation pause");
 assertIncludes(overviewTopologyView, "runtime.showCompleteGraph()", "Topology must provide same-window access to the complete graph");
 assertIncludes(overviewTopologyView, "runtime.returnToOverview()", "Topology drill-down must provide an explicit return to the summary");
@@ -1504,10 +1505,10 @@ for (const chartContract of [
   "struct OverviewConnectionBaseChart",
   "AreaPlot(",
   ".chartXScale(domain: dateDomain)",
-  "connections: appModel.connectionCountTimeline.samples",
 ]) {
   assertIncludes(overviewTelemetry, chartContract, `Overview charts must retain Zashboard-aligned real-data interaction through ${chartContract}`);
 }
+assertIncludes(overviewWindowRuntime, "connections: appModel.connectionCountTimeline.samples", "The timeline intake must consume real connection-count samples");
 assertIncludes(operationSessionModels, "final class ControllerSessionPresentationState", "SwiftUI session state must use a field-granular observable reference");
 assertIncludes(operationSessionModels, "if state != session.state", "Session presentation must guard state publication");
 assertIncludes(operationSessionModels, "if runtime != session.runtime", "Session presentation must guard runtime publication independently");
@@ -1964,7 +1965,8 @@ assertOrdered(proxyAccessibleMember, ["return Button {", "onInspectMember(", ".a
   "VoiceOver default activation must inspect; switching must be a separately named action");
 assertIncludes(proxyRootContent, "ProxyInlineNodeDetails(snapshot:", "Inspected node parameters must render inline using the complete detail projection");
 assertIncludes(proxyRootContent, ".id(ProxyNodeDetailIdentity(", "Inline sensitive-field state must be bound to controller, generation, group, and member identity");
-assertIncludes(proxyRootContent, "ProxyNodeHoverPreview(snapshot:", "Node hover must provide a lightweight reported-field preview");
+assertIncludes(proxyRootContent, "ProxyNodeHoverOverlay(", "Node hover must isolate preview observation from the policy page");
+assertIncludes(sourceSection(proxyNodeDetails, "struct ProxyNodeHoverOverlay", "struct ProxyNodePreviewLayout"), "ProxyNodeHoverPreview(snapshot:", "Node hover must provide a lightweight reported-field preview");
 assertIncludes(proxyNodeDetails, "ForEach(snapshot.sections)", "Inline details must include every projected field section");
 assertIncludes(proxyNodeDetails, "ForEach(section.fields)", "Inline details must include every reported field within each section");
 assertIncludes(proxyNodeDetails, "WorkbenchPolicyInspectionFieldRow(field: field, layout: .compact)", "Inline detail must retain the shared sensitive-value renderer in a compact key-value layout");
@@ -2302,7 +2304,7 @@ assert(count(dataPages, "filtered.sorted(using: sortOrder)") === 3, "Only Connec
 const logProjection = sourceSection(logPresentation, "enum WorkbenchLogProjection", "struct WorkbenchLogProjectionCache");
 assertExcludes(logProjection, ".sorted", "Logs must preserve incoming order");
 assertIncludes(logProjection, "return entries.map", "Log rows must retain incoming controller order");
-const logTableSource = sourceSection(logsRoot, "private var logStream", "private var presentationRequest");
+const logTableSource = sourceSection(logsRoot, "private var logStream", "private var selectionBinding");
 for (const logColumnContract of [
   '"traffic.log_received_time"',
   '"traffic.log_level"',
@@ -2353,7 +2355,7 @@ for (const connectionNavigationContract of [
     `Connection-to-rule and policy navigation must retain ${connectionNavigationContract}`,
   );
 }
-const sourceTableSource = sourceSection(sourcesRoot, "private var sourceTable", "private var presentationInput");
+const sourceTableSource = sourceSection(sourcesRoot, "private var sourceTable", "private var selectionBinding");
 assertIncludes(sourceTableSource, "sourceStatus(row)", "Sources must retain a quiet lifecycle state column");
 assertExcludes(sourceTableSource, "WorkbenchStatusBadge(", "Source scan rows must not render lifecycle state as a boxed badge");
 assertIncludes(sourceDetails, "private var lifecycleReadouts", "Selected sources must expose a compact lifecycle summary");

@@ -32,13 +32,8 @@ extension DashboardSnapshot {
             )
         }
 
-        let requestIDs = Self.surgeRequestDisplayIDs(for: snapshot.activeRequests)
-        let connections = Self.surgeRequestConnections(
-            for: snapshot.activeRequests,
-            displayIDs: requestIDs,
-            ruleKey: "traffic.surge_active_request",
-            metadataType: "surge-http-api",
-            language: language
+        let connections = Self.surgeActiveRequestConnections(
+            for: snapshot.activeRequests, language: language
         )
 
         let ruleIDs = Self.surgeRuleDisplayIDs(for: snapshot.rules)
@@ -72,6 +67,36 @@ extension DashboardSnapshot {
 
     static func surgeRequestDisplayID(for request: SurgeActiveRequest) -> String {
         visibleRequestIDs(prefix: "surge-request", requests: [request]).first ?? "surge-request-unavailable"
+    }
+
+    static func surgeActiveRequestConnections(
+        for requests: [SurgeActiveRequest],
+        language: AppLanguage = MicaStrings.appLanguage
+    ) -> [ConnectionSnapshot] {
+        surgeRequestConnections(
+            for: requests,
+            displayIDs: surgeRequestDisplayIDs(for: requests),
+            ruleKey: "traffic.surge_active_request",
+            metadataType: "surge-http-api",
+            language: language
+        )
+    }
+
+    /// Near-live samples only report connections and traffic. Retain the last
+    /// published slow domains rather than rebuilding every policy and rule.
+    mutating func replaceSurgeConnections(
+        with snapshot: SurgeControlSnapshot,
+        includingInsight: Bool,
+        language: AppLanguage = MicaStrings.appLanguage
+    ) {
+        connections = Self.surgeActiveRequestConnections(
+            for: snapshot.activeRequests, language: language
+        )
+        traffic = TrafficSnapshot(upload: snapshot.traffic.upload, download: snapshot.traffic.download)
+        if includingInsight {
+            insight.updateConnections(connections, structureChanged: true, metricsChanged: true)
+            insight.updateTraffic(traffic)
+        }
     }
 
     static func surgeRecentRequestConnections(

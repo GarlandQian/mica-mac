@@ -86,8 +86,7 @@ struct WorkbenchPolicyGroupsView: View {
     @State private var presentationCoordinator = ProxyCatalogPresentationCoordinator()
     @State private var scrollInteractionTracker = ProxyScrollInteractionTracker()
     @State private var healthFilter: ProxyHealthFilter = .all
-    @State private var hoveredMemberID: String?
-    @State private var previewMemberID: String?
+    @State private var hoverPreview = ProxyNodeHoverState()
     @State private var reveal: WorkbenchProxyNavigationReveal?
     @State private var lastScrolledRevealToken: UUID?
     @State private var pendingNavigation: WorkbenchProxyNavigationSelection?
@@ -95,6 +94,7 @@ struct WorkbenchPolicyGroupsView: View {
     @State private var unresolvedReason: WorkbenchProxyUnresolvedReason?
 
     var body: some View {
+        let _ = MicaPerformanceObservation.recordDebug(.proxyPageEvaluation)
         WorkbenchPageScaffold {
             VStack(spacing: 0) {
                 commandBar
@@ -117,21 +117,11 @@ struct WorkbenchPolicyGroupsView: View {
             consumePendingProxyNavigation()
         }
         .onDisappear {
-            presentationCoordinator.reset()
-            hoveredMemberID = nil
-            previewMemberID = nil
+            scrollInteractionTracker.reset(coordinator: presentationCoordinator)
+            hoverPreview.reset()
         }
         .onChange(of: model.activeGroup?.id) { _, _ in
-            hoveredMemberID = nil
-            previewMemberID = nil
-        }
-        .task(id: hoverRequest) {
-            previewMemberID = nil
-            let request = hoverRequest
-            guard let candidate = request.previewCandidateID else { return }
-            try? await Task.sleep(for: .milliseconds(280))
-            guard !Task.isCancelled, request == hoverRequest else { return }
-            previewMemberID = candidate
+            hoverPreview.reset()
         }
         .onChange(of: presentationInput) { _, _ in
             synchronizePresentation()
@@ -242,6 +232,11 @@ struct WorkbenchPolicyGroupsView: View {
                     .accessibilityRepresentation {
                         accessibilityCatalog(index: model.directoryAccessibilityIndex)
                     }
+                    .proxyScrollInteraction(
+                        in: .directory,
+                        coordinator: presentationCoordinator,
+                        tracker: scrollInteractionTracker
+                    )
                     .onChange(of: workspace.activeGroupID) { _, groupID in
                         if let groupID { proxy.scrollTo(groupID, anchor: .center) }
                     }
@@ -321,12 +316,6 @@ struct WorkbenchPolicyGroupsView: View {
                     ForEach(presentation.members) { member in
                         VStack(spacing: 0) {
                             nodeRow(member, in: presentation)
-                                .anchorPreference(
-                                    key: ProxyNodePreviewAnchorKey.self,
-                                    value: .bounds
-                                ) {
-                                    hoveredMemberID == member.id ? [member.id: $0] : [:]
-                                }
                             if presentation.inspectedMemberID == member.id {
                                 inlineDetails(member, in: presentation)
                             }
@@ -353,34 +342,13 @@ struct WorkbenchPolicyGroupsView: View {
                 coordinator: presentationCoordinator,
                 tracker: scrollInteractionTracker
             )
-            .onScrollPhaseChange { _, phase in
-                if phase != .idle {
-                    previewMemberID = nil
-                }
-            }
             .overlayPreferenceValue(ProxyNodePreviewAnchorKey.self) { anchors in
-                GeometryReader { geometry in
-                    if !scrollInteractionTracker.isScrolling,
-                       let previewMemberID,
-                       previewMemberID != presentation.inspectedMemberID,
-                       let anchor = anchors[previewMemberID],
-                       let member = presentation.members.first(where: { $0.id == previewMemberID }) {
-                        let snapshot = ProxyNodeInspectionProjection.snapshot(
-                            member: member, in: presentation.occurrence, language: language
-                        )
-                        if let layout = ProxyNodePreviewLayout.resolve(
-                            viewport: geometry.size,
-                            anchor: geometry[anchor],
-                            fieldCount: snapshot.fields.count
-                        ) {
-                            ProxyNodeHoverPreview(snapshot: snapshot, size: layout.frame.size)
-                                .offset(x: layout.frame.minX, y: layout.frame.minY)
-                        }
-                    }
-                }
-                .clipped()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                ProxyNodeHoverOverlay(
+                    state: hoverPreview,
+                    scrollInteractionTracker: scrollInteractionTracker,
+                    presentation: presentation,
+                    anchors: anchors
+                )
             }
             .task(id: reveal) {
                 guard let reveal else { return }
@@ -433,8 +401,7 @@ struct WorkbenchPolicyGroupsView: View {
                 testMember(member.id, in: presentation.id, scope: scope)
             },
             onHoverChanged: { isHovered in
-                if isHovered { hoveredMemberID = member.id }
-                else if hoveredMemberID == member.id { hoveredMemberID = nil }
+                hoverPreview.setHovered(member.id, isHovered: isHovered)
             }
         )
     }
@@ -452,14 +419,6 @@ struct WorkbenchPolicyGroupsView: View {
             groupID: presentation.id,
             memberID: member.id
         ))
-    }
-
-    private var hoverRequest: ProxyNodeHoverRequest {
-        ProxyNodeHoverRequest(
-            memberID: hoveredMemberID,
-            isScrolling: scrollInteractionTracker.isScrolling,
-            inspectedMemberID: workspace.inspectedProxyMemberID
-        )
     }
 
     private var currentCommandScope: LiveCommandScope? {
@@ -700,14 +659,9 @@ struct WorkbenchPolicyGroupsView: View {
             ? lastScrolledRevealToken
             : nil
 
-        scrollInteractionTracker.end(
-            in: .nodes,
-            coordinator: presentationCoordinator
-        )
-        presentationCoordinator.reset()
+        scrollInteractionTracker.reset(coordinator: presentationCoordinator)
         model.reset()
-        hoveredMemberID = nil
-        previewMemberID = nil
+        hoverPreview.reset()
         reveal = retainedReveal
         lastScrolledRevealToken = retainedScrolledToken
         pendingNavigation = retainedPendingNavigation
@@ -742,8 +696,7 @@ struct WorkbenchPolicyGroupsView: View {
               model.groupProjection.arrangedGroups.contains(where: { $0.id == groupID })
         else { return }
         beginTransientPresentationInteraction()
-        hoveredMemberID = nil
-        previewMemberID = nil
+        hoverPreview.reset()
         workspaceStore.update(
             controllerID: appModel.selectedRouterID,
             destination: .proxies
@@ -831,7 +784,6 @@ struct WorkbenchPolicyGroupsView: View {
             stored.activeGroupID = groupID
             stored.inspectedProxyMemberID = stored.inspectedProxyMemberID == memberID ? nil : memberID
         }
-        previewMemberID = nil
         return occurrence
     }
 

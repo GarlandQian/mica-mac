@@ -293,16 +293,35 @@ enum WorkbenchDataFormat {
 
     static func providerUpdatedAt(_ raw: String?, language: AppLanguage) -> String? {
         guard let raw = reportedTimestamp(raw) else { return nil }
+        return parseProviderTimestamp(raw).formatted(
+            using: providerTimestampStyle(language: language)
+        )
+    }
+
+    /// Parsing is independent of locale and time zone. Callers may retain this
+    /// value while rebuilding localized presentation for their current context.
+    enum ProviderTimestamp {
+        case date(Date)
+        case verbatim(String)
+
+        func formatted(using style: Date.FormatStyle) -> String {
+            switch self {
+            case .date(let date): date.formatted(style)
+            case .verbatim(let raw): raw
+            }
+        }
+    }
+
+    static func parseProviderTimestamp(_ raw: String) -> ProviderTimestamp {
         let date = iso8601DateFormatter.withLock {
             $0.date(from: raw)
         }
-        if let date {
-            return date.formatted(
-                Date.FormatStyle(date: .abbreviated, time: .shortened)
-                    .locale(language.resolvedLocale)
-            )
-        }
-        return raw
+        return date.map(ProviderTimestamp.date) ?? .verbatim(raw)
+    }
+
+    static func providerTimestampStyle(language: AppLanguage) -> Date.FormatStyle {
+        Date.FormatStyle(date: .abbreviated, time: .shortened)
+            .locale(language.resolvedLocale)
     }
 
     static func reportedTimestamp(_ raw: String?) -> String? {

@@ -5,14 +5,31 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   swift:
-    runs-on: macos-15
+    runs-on: xcode-27
     steps:
-      - uses: actions/checkout@v4
-      - name: Swift version
-        run: swift --version
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify toolchain and runtime
+        run: |
+          swift --version
+          xcodebuild -version
+          macos_version="$(sw_vers -productVersion)"
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          test "${macos_version%%.*}" -ge 27
+          test "${sdk_version%%.*}" -ge 27
+      - name: Source and localization contracts
+        run: node scripts/verify-real-controller-source.mjs
       - name: Test
-        run: swift test
+        run: swift test --disable-automatic-resolution
       - name: Build
-        run: swift build
+        run: swift build --disable-automatic-resolution

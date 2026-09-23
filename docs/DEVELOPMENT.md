@@ -33,7 +33,78 @@ scripts/run-performance-benchmarks.sh before
 scripts/run-performance-benchmarks.sh after
 ```
 
-The command uses deterministic local fixtures, writes JSON under `tmp/codex/performance/<label>/`, and never reads profiles or contacts a controller. Compare matching case names and fixture counts; wall-clock build time is not comparable unless both runs start from an explicitly clean, identical scratch directory.
+The command uses deterministic local fixtures, writes JSON under `tmp/codex/performance/<label>/`, and never reads profiles or contacts a controller. It preserves the caller's HOME and uses a dedicated module cache. Wall-clock build time is not comparable unless both runs start from an explicitly clean, identical scratch directory.
+
+Compare two CPU reports or two scroll reports with the same schema:
+
+```bash
+node scripts/compare-performance.mjs \
+  tmp/codex/performance/before/mica-performance.json \
+  tmp/codex/performance/after/mica-performance.json
+node scripts/compare-performance.mjs \
+  tmp/codex/scroll-before/scroll-performance.json \
+  tmp/codex/scroll-after/scroll-performance.json --max-regression 1.25
+```
+
+The default reports after/before ratios without enforcing a performance budget.
+`--max-regression 1.25` fails when any CPU median/p95 or measured scroll tick/layout
+p95 exceeds 1.25 times its baseline. Exit codes are 0 for a comparable report
+(within budget when enabled), 1 for an exceeded budget, and 2 for invalid or
+incomparable input. Missing/extra/duplicate cases, non-Release builds, different
+OS/compiler metadata, fixtures, sample counts, or scroll input/viewport conditions
+are rejected, as are refreshing cases that never publish their fixture workload.
+Unknown compiler metadata is explicitly reported as unverifiable.
+Surfaces without verified displacement receive no verdict; they never count as
+passing measurements. A report containing only those surfaces is rejected.
+
+Both runs must still use the same machine under comparable idle conditions;
+the current report schemas have no hardware identity, so the script cannot
+verify this. Fixture counts do not prove fixture contents or program correctness:
+retain the correctness tests and inspect workload changes separately. These
+ratios measure CPU work and scheduling, not compositor frames, FPS, or touchpad
+gesture behavior.
+
+For main-actor controller refresh projection, use the opt-in tests below. The
+Mihomo case measures shared-node projection across groups; the Surge case
+compares complete and connection-domain projections of identical snapshots and
+asserts matching output. These are CPU measurements, not scrolling frame rates.
+
+```bash
+MICA_PERFORMANCE_LABEL=after \
+MICA_POLICY_REFRESH_REPORT="$PWD/tmp/codex/scroll-after/policy-refresh.json" \
+MICA_SURGE_PROJECTION_REPORT="$PWD/tmp/codex/scroll-after/surge-projection.json" \
+swift test -c release --scratch-path tmp/codex/performance/build \
+  --filter 'MihomoPolicyRefreshPerformanceTests|SurgeDomainProjectionPerformanceTests'
+```
+
+For actual production view layout while its viewport moves, run the separate
+offline window test:
+
+```bash
+MICA_SCROLL_LABEL=after MICA_SCROLL_DESTINATIONS=all MICA_SCROLL_SAMPLES=180 \
+MICA_SCROLL_OUTPUT_DIR="$PWD/tmp/codex/scroll-after" \
+swift test -c release --scratch-path tmp/codex/performance/build \
+  --filter WorkbenchScrollPerformanceTests
+```
+
+This mounts each of the ten Workbench pages in a test-owned 960x600 window with
+large deterministic catalogs. It compares stationary catalogs with prebuilt
+catalog publication at up to 10 Hz, a stress workload rather than production
+polling cadence. Each surface records its input mode, actual displacement,
+native live-scroll notifications, main-actor tick intervals and CPU layout/
+commit time. Public native wheel delivery falls back to programmatic clip-view
+movement when SwiftUI rejects synthetic wheel input. A surface that does not
+move fails its displacement assertion and is identified in the report; a page
+without an overflowing vertical surface has no scrolling result.
+
+These tests do not measure compositor frames or simulate a complete touchpad
+gesture and inertia. Unphased mouse wheels can produce live-scroll updates
+without begin/end notifications; record those updates separately to validate
+the idle-deadline path. Controlled begin/update/end notifications have separate
+session, ordering and action-target regression tests; they do not replace a
+physical touchpad and inertia check. Keep the machine
+idle and use identical fixtures and Release settings for before/after runs;
+never compile or run another UI test concurrently with a measurement.
 
 ## Native sing-box Dependencies
 

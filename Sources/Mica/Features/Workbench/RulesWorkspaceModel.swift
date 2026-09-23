@@ -34,8 +34,18 @@ final class RulesWorkspaceModel {
     @ObservationIgnored private var previousRules: [RuleViewState]?
     @ObservationIgnored private var previousLanguage: AppLanguage?
     @ObservationIgnored private var previousStructureRevision: UInt64?
+    @ObservationIgnored private var acceptedStructureRevision: UInt64?
+    @ObservationIgnored private var deferredInput: RulesWorkspaceInput?
+    @ObservationIgnored private var deferredReconcilesSelection = true
+    @ObservationIgnored private var presentedConfiguration: PresentationConfiguration?
     @ObservationIgnored private var visibleIDs: [String] = []
     @ObservationIgnored private var visiblePositions: [String: Int] = [:]
+
+    private struct PresentationConfiguration: Equatable {
+        let query: String
+        let language: AppLanguage
+        let sortOrder: [KeyPathComparator<WorkbenchRuleRow>]
+    }
 
     var allRows: [WorkbenchRuleRow] { cache.allRows }
     var rows: [WorkbenchRuleRow] { cache.visibleRows }
@@ -62,9 +72,13 @@ final class RulesWorkspaceModel {
             previousRules = nil
             previousLanguage = nil
             previousStructureRevision = nil
+            acceptedStructureRevision = nil
+            presentedConfiguration = nil
             visibleIDs = []
             visiblePositions = [:]
         }
+        deferredInput = nil
+        tableInteraction.apply(.ended)
         self.identity = identity
         isActive = true
         sortOrder = Self.sortOrder(from: workspace.sort)
@@ -74,14 +88,34 @@ final class RulesWorkspaceModel {
 
     func deactivate() {
         isActive = false
+        deferredInput = nil
+        tableInteraction.apply(.ended)
     }
 
     @discardableResult
-    func update(_ input: RulesWorkspaceInput, reconcileSelection: Bool = true) -> Bool {
+    func update(
+        _ input: RulesWorkspaceInput,
+        reconcileSelection: Bool = true,
+        forcePresentation: Bool = false
+    ) -> Bool {
         guard isActive, input.identity == identity,
-              previousStructureRevision.map({ input.structureRevision >= $0 }) ?? true else {
+              acceptedStructureRevision.map({ input.structureRevision >= $0 }) ?? true else {
             return false
         }
+        acceptedStructureRevision = input.structureRevision
+        let configuration = PresentationConfiguration(
+            query: input.query,
+            language: input.language,
+            sortOrder: sortOrder
+        )
+        if tableInteraction.isUserScrolling, !forcePresentation,
+           presentedConfiguration == configuration {
+            deferredInput = input
+            deferredReconcilesSelection = reconcileSelection
+            return true
+        }
+        deferredInput = nil
+        presentedConfiguration = configuration
         let update: WorkbenchRuleProjectionUpdate
         if previousRules != input.rules || previousLanguage != input.language {
             update = .source
@@ -152,6 +186,9 @@ final class RulesWorkspaceModel {
     ) -> String? {
         guard isActive, identity == input.identity,
               let controllerID = input.identity.controllerID,
+              selection.controllerID == controllerID,
+              selection.generation == input.identity.generation,
+              update(input, reconcileSelection: false, forcePresentation: true),
               let row = WorkbenchRuleNavigationResolver.resolve(
                   selection,
                   controllerID: controllerID,
@@ -161,12 +198,18 @@ final class RulesWorkspaceModel {
         var next = input
         if visiblePositions[row.id] == nil {
             next.query = ""
-            guard update(next, reconcileSelection: false) else { return nil }
+            guard update(next, reconcileSelection: false, forcePresentation: true) else { return nil }
         }
         guard visiblePositions[row.id] != nil else { return nil }
         selectedRowID = row.id
         scrollRequest = WorkbenchDataScrollRequest(id: row.id)
         return next.query
+    }
+
+    func finishDeferredPresentation(identity: WorkbenchSessionIdentity) {
+        guard isActive, self.identity == identity, !tableInteraction.isUserScrolling,
+              let input = deferredInput else { return }
+        update(input, reconcileSelection: deferredReconcilesSelection)
     }
 
     func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {

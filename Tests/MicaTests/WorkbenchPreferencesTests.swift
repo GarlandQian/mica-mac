@@ -155,6 +155,7 @@ struct WorkbenchPreferencesTests {
 
         #expect(!store.hasPendingPersistence)
         #expect(defaults.data(forKey: persistenceKey) != nil)
+        #if DEBUG
         #expect(
             MicaPerformanceObservation.counterSnapshot()[.workspacePersistence].eventCount
                 == 1
@@ -163,6 +164,11 @@ struct WorkbenchPreferencesTests {
             MicaPerformanceObservation.counterSnapshot()[.workspaceEncoding].eventCount
                 == 1
         )
+        #else
+        // Production builds intentionally omit these hot-path debug counters.
+        #expect(MicaPerformanceObservation.counterSnapshot()[.workspacePersistence].eventCount == 0)
+        #expect(MicaPerformanceObservation.counterSnapshot()[.workspaceEncoding].eventCount == 0)
+        #endif
 
         let restoredStore = WorkbenchWorkspaceStore(
             defaults: defaults,

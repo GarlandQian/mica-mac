@@ -128,14 +128,7 @@ struct OverviewTelemetrySection: View {
     let runtime: OverviewTelemetryRuntime
 
     var body: some View {
-        let projection = runtime.projectionCache.resolve(
-            generation: appModel.controllerSessionPresentation.generation,
-            window: runtime.timelineWindow,
-            traffic: appModel.trafficTimeline.samples,
-            memory: appModel.memoryTimeline.samples,
-            connections: appModel.connectionCountTimeline.samples,
-            isPaused: runtime.isPaused
-        )
+        let projection = runtime.resolveProjection(observing: appModel)
 
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             telemetryHeading(dates: projection.dates)
@@ -150,8 +143,8 @@ struct OverviewTelemetrySection: View {
         .onChange(of: preferredTimelineWindow) {
             runtime.synchronize(preferredWindow: preferredTimelineWindow)
         }
-        .onChange(of: projection.dates) { _, nextDates in
-            runtime.interaction.retainPinnedDate(in: nextDates)
+        .onChange(of: projection.selectionWindow, initial: true) { _, nextWindow in
+            runtime.interaction.retainPinnedDate(in: nextWindow)
         }
     }
 

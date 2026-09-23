@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class WorkbenchNativeTableLifecycle {
     enum Edge { case before, after }
+    private enum Interaction { case idle, gesture, wheel }
 
     private weak var before: NSView?
     private weak var after: NSView?
@@ -18,6 +19,11 @@ final class WorkbenchNativeTableLifecycle {
     private var lastScrollGeometry: CGRect?
     private var scrollCorrections = 0
     private var liveScrollObservations: [NSObjectProtocol] = []
+    private var interaction: Interaction = .idle
+    private var wheelIdleDeadline: ContinuousClock.Instant?
+    private var wheelIdleTask: Task<Void, Never>?
+    private var wheelIdleGeneration: UInt64 = 0
+    private var isCorrectingScroll = false
 
     func attach(
         _ marker: NSView,
@@ -51,10 +57,10 @@ final class WorkbenchNativeTableLifecycle {
         if before === marker { before = nil }
         if after === marker { after = nil }
         stopObservingFrame()
-        table = nil
-        reportedTableID = nil
         cancelScroll()
         removeInteractionObservers()
+        table = nil
+        reportedTableID = nil
         if before == nil, after == nil {
             onReady = { _ in }
             onInteraction = { _ in }
@@ -63,6 +69,7 @@ final class WorkbenchNativeTableLifecycle {
 
     func scrollToRow(resolving rowIndex: @escaping () -> Int?) {
         guard let table, table.window != nil else { return }
+        finishInteraction()
         pendingRowIndex = rowIndex
         lastScrollGeometry = nil
         scrollCorrections = 0
@@ -71,6 +78,11 @@ final class WorkbenchNativeTableLifecycle {
     }
 
     func cancelScroll() {
+        finishInteraction()
+        cancelPendingScroll()
+    }
+
+    private func cancelPendingScroll() {
         pendingRowIndex = nil
         lastScrollGeometry = nil
         scrollCorrections = 0
@@ -109,7 +121,9 @@ final class WorkbenchNativeTableLifecycle {
         }
         lastScrollGeometry = target
         scrollCorrections += 1
+        isCorrectingScroll = true
         table.scrollRowToVisible(index)
+        isCorrectingScroll = false
         scheduleInspection()
     }
 
@@ -158,19 +172,26 @@ final class WorkbenchNativeTableLifecycle {
 
     private func observeInteraction(of table: NSTableView) {
         guard let scrollView = table.enclosingScrollView else { return }
-        for (name, transition) in [
-            (NSScrollView.willStartLiveScrollNotification, WorkbenchDataScrollTransition.began),
-            (NSScrollView.didEndLiveScrollNotification, WorkbenchDataScrollTransition.ended),
-        ] {
+        for name in [NSScrollView.willStartLiveScrollNotification,
+                     NSScrollView.didLiveScrollNotification,
+                     NSScrollView.didEndLiveScrollNotification] {
             let observer = NotificationCenter.default.addObserver(
                 forName: name,
                 object: scrollView,
                 queue: .main
-            ) { [weak self] _ in
+            ) { [weak self, weak table, weak scrollView] _ in
                 MainActor.assumeIsolated {
-                    guard let self else { return }
-                    if transition == .began { self.cancelScroll() }
-                    self.onInteraction(transition)
+                    guard let self, let table, let scrollView,
+                          self.table === table, table.enclosingScrollView === scrollView,
+                          table.window != nil, !self.isCorrectingScroll else { return }
+                    switch name {
+                    case NSScrollView.willStartLiveScrollNotification:
+                        self.beginGesture()
+                    case NSScrollView.didLiveScrollNotification:
+                        self.didScroll(table: table)
+                    default:
+                        self.finishInteraction()
+                    }
                 }
             }
             liveScrollObservations.append(observer)
@@ -178,10 +199,67 @@ final class WorkbenchNativeTableLifecycle {
     }
 
     private func removeInteractionObservers() {
+        finishInteraction()
         for observer in liveScrollObservations {
             NotificationCenter.default.removeObserver(observer)
         }
         liveScrollObservations.removeAll()
+    }
+
+    private func beginGesture() {
+        cancelWheelIdle()
+        cancelPendingScroll()
+        let wasIdle = interaction == .idle
+        interaction = .gesture
+        if wasIdle { onInteraction(.began) }
+    }
+
+    private func didScroll(table: NSTableView) {
+        // A trackpad's explicit begin/end also brackets momentum. A quiet gap
+        // must not end that session. NSScrollView documents that legacy mice
+        // can emit didLive without a willStart/didEnd pair.
+        guard interaction != .gesture else { return }
+        let wasIdle = interaction == .idle
+        if wasIdle { cancelPendingScroll() }
+        interaction = .wheel
+        wheelIdleDeadline = ContinuousClock.now.advanced(by: .milliseconds(150))
+        if wasIdle { onInteraction(.began) }
+        guard wheelIdleTask == nil else { return }
+        let generation = wheelIdleGeneration
+        wheelIdleTask = Task { @MainActor [weak self, weak table] in
+            // Keep one sleeper per wheel burst. Further ticks only move the
+            // deadline; they do not cancel and allocate a task per event.
+            while !Task.isCancelled {
+                guard let self, let table, self.table === table,
+                      table.window != nil, self.interaction == .wheel,
+                      generation == self.wheelIdleGeneration,
+                      let deadline = self.wheelIdleDeadline else { return }
+                if deadline > ContinuousClock.now {
+                    do { try await Task.sleep(until: deadline, clock: .continuous) }
+                    catch { return }
+                    continue
+                }
+                self.wheelIdleTask = nil
+                self.wheelIdleDeadline = nil
+                self.interaction = .idle
+                self.onInteraction(.ended)
+                return
+            }
+        }
+    }
+
+    private func cancelWheelIdle() {
+        wheelIdleGeneration &+= 1
+        wheelIdleTask?.cancel()
+        wheelIdleTask = nil
+        wheelIdleDeadline = nil
+    }
+
+    private func finishInteraction() {
+        cancelWheelIdle()
+        guard interaction != .idle else { return }
+        interaction = .idle
+        onInteraction(.ended)
     }
 
     private func stopObservingFrame() {
