@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: xcode-27
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate release tag
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Check version metadata
+        run: |
+          release_version="${RELEASE_TAG#v}"
+          app_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Mica/App/Info.plist)
+          if [[ "$app_version" != "$release_version" ]]; then
+            echo "Tag $RELEASE_TAG does not match app version $app_version" >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
+
+      - name: Build release binary
+        run: swift build --configuration release
+
+      - name: Package unsigned DMG
+        run: |
+          package_root="$RUNNER_TEMP/mica-release"
+          app_bundle="$package_root/Mica.app"
+          dmg_root="$package_root/dmg-root"
+          bin_path="$(swift build --configuration release --show-bin-path)"
+          dmg_path="$package_root/Mica-${RELEASE_VERSION}-unsigned.dmg"
+
+          mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources" "$dmg_root"
+          cp "$bin_path/Mica" "$app_bundle/Contents/MacOS/Mica"
+          cp Sources/Mica/App/Info.plist "$app_bundle/Contents/Info.plist"
+          cp -R "$bin_path/Mica_Mica.bundle" "$app_bundle/Contents/Resources/Mica_Mica.bundle"
+          cp -R "$app_bundle" "$dmg_root/Mica.app"
+
+          hdiutil create \
+            -volname "Mica ${RELEASE_VERSION}" \
+            -srcfolder "$dmg_root" \
+            -ov \
+            -format UDZO \
+            "$dmg_path"
+          hdiutil verify "$dmg_path"
+
+          echo "DMG_PATH=$dmg_path" >> "$GITHUB_ENV"
+
+      - name: Prepare release notes
+        run: |
+          notes_path="$RUNNER_TEMP/release-notes.md"
+          awk -v version="$RELEASE_VERSION" '
+            $0 ~ "^## " version "([[:space:]]|-|$)" { found=1; next }
+            found && /^## / { exit }
+            found { print }
+            END { if (!found) exit 1 }
+          ' CHANGELOG.md > "$notes_path"
+
+          printf '\n### Distribution\n\nThis DMG is unsigned and not notarized. macOS may require the user to approve or bypass Gatekeeper before opening it.\n' >> "$notes_path"
+          echo "RELEASE_NOTES_PATH=$notes_path" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" "$DMG_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Mica $RELEASE_TAG" \
+            --notes-file "$RELEASE_NOTES_PATH"
