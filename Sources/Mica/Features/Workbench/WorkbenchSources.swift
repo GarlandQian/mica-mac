@@ -10,14 +10,7 @@ struct WorkbenchSourcesView: View {
     @Environment(\.micaAppLanguage) private var language
     @Binding var searchText: String
 
-    @State private var kind: ProviderSessionKind = .all
-    @State private var projectionCache = WorkbenchSourceProjectionCache()
-    @State private var selectedRowID: String?
-    @State private var sortOrder: [KeyPathComparator<WorkbenchSourceRow>] = []
-    @State private var restoredScrollAnchorID: String?
-    @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
-    @State private var isProjectionActive = false
-    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
+    @State private var model = WorkbenchSourcesModel()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 960,
@@ -25,6 +18,9 @@ struct WorkbenchSourcesView: View {
     )
 
     var body: some View {
+        let commandScope = model.scope.flatMap {
+            LiveCommandScope(controllerID: $0.controllerID, generation: $0.generation)
+        }
         WorkbenchDataBrowserScaffold(
             staleMessage: localizedStaleMessage,
             commands: { commandBar },
@@ -33,7 +29,7 @@ struct WorkbenchSourcesView: View {
                     WorkbenchProviderUpdateAllProgressView(progress: progress)
                 }
 
-                if let selectedRow {
+                if let selectedRow = model.selectedRow {
                     WorkbenchSourceFocusRail(
                         projection: WorkbenchSourceFocusProjection(row: selectedRow),
                         supportsUpdate: selectedRow.source.updatable,
@@ -43,10 +39,12 @@ struct WorkbenchSourcesView: View {
                         isUpdating: appModel.updatingProviderName == selectedRow.source.id,
                         isChecking: appModel.checkingProviderName == selectedRow.source.id,
                         update: {
-                            appModel.updateProxyProvider(selectedRow.source)
+                            guard let commandScope else { return }
+                            appModel.updateProxyProvider(selectedRow.source, scope: commandScope)
                         },
                         healthCheck: {
-                            appModel.healthCheckProxyProvider(selectedRow.source)
+                            guard let commandScope else { return }
+                            appModel.healthCheckProxyProvider(selectedRow.source, scope: commandScope)
                         }
                     )
                 }
@@ -55,52 +53,32 @@ struct WorkbenchSourcesView: View {
             pageContent
         }
         .onAppear {
-            let projectionCacheBinding = $projectionCache
-            workspaceStore.sourceRowResolver = { id in
-                projectionCacheBinding.wrappedValue.row(id: id)
+            workspaceStore.sourceRowResolver = { [weak model] id in
+                model?.row(id: id)
             }
-            if let selectedRowID {
+            restoreWorkspace()
+            model.update(presentationInput)
+            if let selectedRowID = model.selectedRowID {
                 workspaceStore.selectInspector(.source(id: selectedRowID))
             }
-            isProjectionActive = true
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true, update: .source)
         }
         .onDisappear {
             workspaceStore.sourceRowResolver = nil
-            isProjectionActive = false
+            model.deactivate()
         }
-        .onChange(of: appModel.selectedRouterID) {
-            projectionCache.reset()
-            accessibilityCursor.reset()
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true, update: .source)
+        .onChange(of: presentationInput) { _, input in
+            if model.scope != input.scope {
+                restoreWorkspace()
+            }
+            model.update(input)
         }
-        .onChange(of: appModel.controllerSessionPresentation.generation) {
-            projectionCache.reset()
-            accessibilityCursor.reset()
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true, update: .source)
-        }
-        .onChange(of: appModel.providersCatalog.providers) {
-            rebuildRows(reconcileSelection: true, update: .source)
-        }
-        .onChange(of: kind) {
+        .onChange(of: model.kind) {
             persistKind()
-            rebuildRows(reconcileSelection: true, update: .visibleOnly)
         }
-        .onChange(of: searchText) {
-            rebuildRows(reconcileSelection: true, update: .visibleOnly)
-        }
-        .onChange(of: sortOrder) {
+        .onChange(of: model.sortOrder) {
             persistSortOrder()
-            rebuildRows(reconcileSelection: true, update: .visibleOnly)
         }
-        .onChange(of: language) {
-            rebuildRows(reconcileSelection: true, update: .source)
-        }
-        .onChange(of: selectedRowID) { _, selection in
-            reconcileAccessibilityWindow(revealing: selection)
+        .onChange(of: model.selectedRowID) { _, selection in
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.source(id: selection))
@@ -109,8 +87,8 @@ struct WorkbenchSourcesView: View {
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in
-            if case .none = selection, selectedRowID != nil {
-                selectedRowID = nil
+            if case .none = selection, model.selectedRowID != nil {
+                model.select(nil)
             }
         }
     }
@@ -120,32 +98,19 @@ struct WorkbenchSourcesView: View {
             WorkbenchCommandSummary(
                 symbolName: "shippingbox",
                 titleKey: "dashboard.tab_providers",
-                value: String(rows.count),
+                value: String(model.rows.count),
                 detail: nil
             )
         } controls: {
-            Picker(
-                MicaStrings.localizedKey("traffic.source_kind", language: language),
-                selection: Binding(
-                    get: { kind },
-                    set: { next in
-                        guard next != kind else { return }
-                        selectedRowID = nil
-                        kind = next
-                    }
-                )
-            ) {
-                ForEach(ProviderSessionKind.allCases) { option in
-                    Text(MicaStrings.localizedKey(option.titleKey, language: language))
-                        .tag(option)
-                }
+            ViewThatFits(in: .horizontal) {
+                sourceKindPicker
+                    .pickerStyle(.segmented)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                sourceKindPicker
+                    .pickerStyle(.menu)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel(
-                MicaStrings.localizedKey("traffic.source_kind", language: language)
-            )
-            .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
             WorkbenchDataActivityIndicator(
                 isActive: appModel.reloadingProviders || appModel.providersSnapshotState.isLoading,
@@ -168,6 +133,26 @@ struct WorkbenchSourcesView: View {
                 appModel.reloadProviders()
             }
         }
+    }
+
+    private var sourceKindPicker: some View {
+        Picker(
+            MicaStrings.localizedKey("traffic.source_kind", language: language),
+            selection: Binding(
+                get: { model.kind },
+                set: { model.setKind($0) }
+            )
+        ) {
+            ForEach(ProviderSessionKind.allCases) { option in
+                Text(MicaStrings.localizedKey(option.titleKey, language: language))
+                    .tag(option)
+            }
+        }
+        .labelsHidden()
+        .accessibilityLabel(
+            MicaStrings.localizedKey("traffic.source_kind", language: language)
+        )
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 
     @ViewBuilder
@@ -220,28 +205,26 @@ struct WorkbenchSourcesView: View {
     private var sourceTable: some View {
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
-        let accessibilityWindow = WorkbenchAccessibilityWindow.resolve(
-            totalCount: rows.count,
-            preferredLowerBound: accessibilityCursor.lowerBound
-        )
         let localization = MicaStrings.localizationContext(for: language)
         let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
-            scope: WorkbenchTableAccessibilityScope(
+            scope: WorkbenchSessionIdentity(
                 controllerID: controllerID,
                 generation: generation
             ),
             title: localization.localizedKey("dashboard.tab_providers"),
-            sourceRows: rows,
-            window: accessibilityWindow,
-            selectedRowID: selectedRowID,
+            sourceRows: model.rows,
+            window: model.accessibilityWindow,
+            selectedRowID: model.selectedRowID,
             localization: localization,
-            sortOptions: accessibilitySortOptions,
+            sortOptions: model.accessibilitySortOptions(language: language),
             summary: WorkbenchSourceProjection.accessibilitySummary
         )
         return WorkbenchDataTableViewport(
             generation: generation,
-            restorationID: restoredScrollAnchorID,
-            interaction: tableInteraction,
+            restorationID: model.restoredScrollAnchorID,
+            interaction: model.interaction,
+            rowIndex: { id in model.rows.firstIndex { $0.id == id } },
+            rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -251,7 +234,7 @@ struct WorkbenchSourcesView: View {
             }
         ) {
             WorkbenchDataResponsive(budget: Self.widthBudget) { mode in
-                Table(rows, selection: $selectedRowID, sortOrder: $sortOrder) {
+                Table(model.rows, selection: selectionBinding, sortOrder: sortBinding) {
                     switch mode {
                     case .full:
                         TableColumn(
@@ -294,10 +277,10 @@ struct WorkbenchSourcesView: View {
 
                     case .compact:
                         TableColumn(
-                            MicaStrings.localizedKey("traffic.source_section_configuration", language: language),
+                            MicaStrings.localizedKey("dashboard.col_provider", language: language),
                             value: \.name
                         ) { row in
-                            sourceIdentity(row)
+                            sourceIdentity(row, includesConfiguration: true)
                         }
                         .width(min: 270, ideal: 420)
 
@@ -335,13 +318,18 @@ struct WorkbenchSourcesView: View {
         }
     }
 
-    private func sourceIdentity(_ row: WorkbenchSourceRow) -> some View {
+    private func sourceIdentity(
+        _ row: WorkbenchSourceRow,
+        includesConfiguration: Bool = false
+    ) -> some View {
         WorkbenchDataPrimaryCell(
             title: row.source.name,
-            detail: row.kindText,
+            detail: includesConfiguration
+                ? WorkbenchDataFormat.joined([row.kindText, row.compactConfigurationText])
+                : row.kindText,
             systemImage: row.source.kind == .proxy ? "network" : "doc.text",
             tint: MicaTheme.textSecondary,
-            detailIsMonospaced: false
+            detailIsMonospaced: includesConfiguration
         )
     }
 
@@ -370,9 +358,9 @@ struct WorkbenchSourcesView: View {
     }
 
     private func sourceStatus(_ row: WorkbenchSourceRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
+        VStack(alignment: .leading, spacing: 1) {
             sourceUpdateState(row)
-            sourceHealthState(row)
+            sourceHealthState(row, showsTitle: true)
         }
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
@@ -386,13 +374,8 @@ struct WorkbenchSourcesView: View {
     private func sourceCompactSummary(_ row: WorkbenchSourceRow) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: MicaTheme.Spacing.space2) {
-                WorkbenchDataText(
-                    value: row.compactConfigurationText,
-                    role: .dataCaption
-                )
-                Spacer(minLength: MicaTheme.Spacing.space1)
                 sourceUpdateState(row)
-                sourceHealthState(row)
+                sourceHealthState(row, showsTitle: true)
             }
 
             WorkbenchDataText(
@@ -414,13 +397,13 @@ struct WorkbenchSourcesView: View {
 
     private func sourceStackedRow(_ row: WorkbenchSourceRow) -> some View {
         HStack(spacing: MicaTheme.Spacing.space3) {
-            sourceIdentity(row)
+            sourceIdentity(row, includesConfiguration: true)
             Spacer(minLength: MicaTheme.Spacing.space2)
 
             VStack(alignment: .trailing, spacing: 1) {
                 HStack(spacing: MicaTheme.Spacing.space1) {
                     sourceUpdateState(row)
-                    sourceHealthState(row)
+                    sourceHealthState(row, showsTitle: true)
                 }
 
                 WorkbenchDataText(
@@ -443,9 +426,10 @@ struct WorkbenchSourcesView: View {
 
     private func sourceUpdateState(_ row: WorkbenchSourceRow) -> some View {
         HStack(spacing: MicaTheme.Spacing.space1) {
-            Circle()
-                .fill(row.source.updatable ? MicaTheme.statusOK : MicaTheme.textSecondary)
-                .frame(width: 6, height: 6)
+            Image(systemName: row.source.updatable ? "arrow.clockwise" : "lock")
+                .micaThemeFont(.caption)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .frame(width: 12)
                 .accessibilityHidden(true)
 
             Text(verbatim: row.updatableText)
@@ -457,53 +441,63 @@ struct WorkbenchSourcesView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func sourceHealthState(_ row: WorkbenchSourceRow) -> some View {
-        WorkbenchSymbol(
-            systemName: "waveform.path.ecg",
-            tint: row.source.supportsHealthCheck
-                ? MicaTheme.textSecondary
-                : MicaTheme.textTertiary,
-            size: .inline
-        )
+    private func sourceHealthState(
+        _ row: WorkbenchSourceRow,
+        showsTitle: Bool = false
+    ) -> some View {
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            Image(systemName: "waveform.path.ecg")
+                .micaThemeFont(.caption)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .frame(width: 12)
+                .accessibilityHidden(true)
+
+            if showsTitle {
+                Text(
+                    verbatim: row.source.supportsHealthCheck
+                        ? row.healthCheckAvailabilityText
+                        : MicaStrings.localizedKey(
+                            "overview.config_not_reported",
+                            language: language
+                        )
+                )
+                .micaThemeFont(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
         .help(row.healthCheckAvailabilityText)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.healthCheckAvailabilityText)
     }
 
-    private func rebuildRows(
-        reconcileSelection: Bool,
-        update: WorkbenchSourceProjectionUpdate
-    ) {
-        guard isProjectionActive else { return }
-        let previousRows = allRows
-        let previousSelection = selectedRowID
-        projectionCache.project(
-            update: update,
+    private var presentationInput: WorkbenchSourcesPresentationInput {
+        WorkbenchSourcesPresentationInput(
+            scope: WorkbenchSessionIdentity(
+                controllerID: appModel.selectedRouterID,
+                generation: appModel.controllerSessionPresentation.generation
+            ),
             sources: appModel.providersCatalog.providers,
-            kind: kind,
             query: searchText,
-            sortOrder: sortOrder,
-            language: language,
-            isActive: isProjectionActive
+            language: language
         )
+    }
 
-        if reconcileSelection {
-            selectedRowID = WorkbenchDataSelection.reconciled(
-                previousSelection,
-                previousRows: previousRows,
-                nextVisibleRows: rows,
-                identityFamily: \.identityFamily
-            )
-        }
-        reconcileAccessibilityWindow(revealing: selectedRowID)
+    private var selectionBinding: Binding<String?> {
+        Binding(get: { model.selectedRowID }, set: { model.select($0) })
+    }
+
+    private var sortBinding: Binding<[KeyPathComparator<WorkbenchSourceRow>]> {
+        Binding(get: { model.sortOrder }, set: { model.setSortOrder($0) })
     }
 
     private var state: WorkbenchDataState {
         WorkbenchDataStateResolver.endpoint(
             hasController: appModel.selectedRouter != nil,
             isSupported: appModel.selectedUnifiedCapabilities.providers,
-            sourceCount: allRows.count,
-            visibleCount: rows.count,
-            isFiltering: kind != .all || searchText.dataNonEmpty != nil,
+            sourceCount: model.sourceCount,
+            visibleCount: model.rows.count,
+            isFiltering: model.kind != .all || searchText.dataNonEmpty != nil,
             endpointStatus: appModel.controllerHealth.status(for: .providers),
             snapshotState: appModel.providersSnapshotState,
             sessionState: appModel.controllerSessionPresentation.state,
@@ -516,7 +510,7 @@ struct WorkbenchSourcesView: View {
     }
 
     private var canUpdateAll: Bool {
-        projectionCache.updatableSourceCount > 0
+        model.updatableSourceCount > 0
             && appModel.canRefreshSelectedRouter
             && appModel.supportsUnifiedAction(.updateProvider)
     }
@@ -531,10 +525,6 @@ struct WorkbenchSourcesView: View {
         row.source.supportsHealthCheck
             && appModel.canRefreshSelectedRouter
             && appModel.supportsUnifiedAction(.healthCheckProvider)
-    }
-
-    private var selectedRow: WorkbenchSourceRow? {
-        projectionCache.row(id: selectedRowID)
     }
 
     private var localizedStaleMessage: String? {
@@ -556,16 +546,18 @@ struct WorkbenchSourcesView: View {
             controllerID: controllerID,
             destination: .sources
         )
-        kind = workspace.activeTab.flatMap(ProviderSessionKind.init(rawValue:)) ?? .all
-        sortOrder = Self.sourceSortOrder(from: workspace.sort)
-        selectedRowID = workspace.selectedItemID
-        restoredScrollAnchorID = controllerID.flatMap {
+        let scrollAnchorID = controllerID.flatMap {
             workspaceStore.scrollAnchorID(
                 controllerID: $0,
                 generation: generation,
                 destination: .sources
             )
         }
+        model.activate(
+            scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation),
+            workspace: workspace,
+            scrollAnchorID: scrollAnchorID
+        )
     }
 
     private func persistKind() {
@@ -573,7 +565,7 @@ struct WorkbenchSourcesView: View {
             controllerID: appModel.selectedRouterID,
             destination: .sources
         ) { workspace in
-            workspace.activeTab = kind.rawValue
+            workspace.activeTab = model.kind.rawValue
         }
     }
 
@@ -609,113 +601,17 @@ struct WorkbenchSourcesView: View {
             controllerID: appModel.selectedRouterID,
             destination: .sources
         ) { workspace in
-            workspace.sort = sortOrder.compactMap(Self.sourceWorkspaceSort)
+            workspace.sort = model.workspaceSort
         }
-    }
-
-    private static func sourceSortOrder(
-        from workspaceSort: [WorkbenchWorkspaceSort]
-    ) -> [KeyPathComparator<WorkbenchSourceRow>] {
-        workspaceSort.compactMap { item -> KeyPathComparator<WorkbenchSourceRow>? in
-            let order: SortOrder = item.ascending ? .forward : .reverse
-            switch item.field {
-            case "name": return KeyPathComparator(\WorkbenchSourceRow.name, order: order)
-            case "type": return KeyPathComparator(\WorkbenchSourceRow.type, order: order)
-            case "itemCount": return KeyPathComparator(\WorkbenchSourceRow.itemCount, order: order)
-            default: return nil
-            }
-        }
-    }
-
-    private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
-        [
-            accessibilitySortOption("name", titleKey: "dashboard.col_provider"),
-            accessibilitySortOption("type", titleKey: "dashboard.col_provider_type"),
-            accessibilitySortOption("itemCount", titleKey: "traffic.provider_items"),
-        ]
-    }
-
-    private func accessibilitySortOption(
-        _ field: String,
-        titleKey: String
-    ) -> WorkbenchAccessibilitySortOption {
-        let stored = sortOrder
-            .compactMap(Self.sourceWorkspaceSort)
-            .first { $0.field == field }
-        return WorkbenchAccessibilitySortOption(
-            id: field,
-            title: MicaStrings.localizedKey(titleKey, language: language),
-            direction: stored.map { $0.ascending ? .ascending : .descending }
-        )
-    }
-
-    private func activateAccessibilitySort(_ field: String, ascending: Bool) {
-        sortOrder = Self.sourceSortOrder(from: [
-            WorkbenchWorkspaceSort(
-                field: field,
-                ascending: ascending
-            ),
-        ])
     }
 
     private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
-        let currentScope = WorkbenchTableAccessibilityScope(
+        let currentScope = WorkbenchSessionIdentity(
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         )
         guard intent.scope == currentScope else { return }
 
-        switch intent {
-        case .selectRow(let id, _):
-            guard projectionCache.visibleRows.contains(where: { $0.id == id }) else { return }
-            selectedRowID = id
-        case .movePage(let lowerBound, _):
-            moveAccessibilityWindow(to: lowerBound)
-        case .setSort(let id, let ascending, _):
-            activateAccessibilitySort(id, ascending: ascending)
-        case .performNamedAction:
-            break
-        }
-    }
-
-    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
-        accessibilityCursor.reconcile(
-            orderedIDs: rows.map(\.id),
-            revealing: selectionID
-        )
-    }
-
-    private func moveAccessibilityWindow(to lowerBound: Int) {
-        accessibilityCursor.move(
-            to: lowerBound,
-            orderedIDs: rows.map(\.id)
-        )
-    }
-
-    private static func sourceWorkspaceSort(
-        _ comparator: KeyPathComparator<WorkbenchSourceRow>
-    ) -> WorkbenchWorkspaceSort? {
-        let field: String
-        if comparator.keyPath == \WorkbenchSourceRow.name {
-            field = "name"
-        } else if comparator.keyPath == \WorkbenchSourceRow.type {
-            field = "type"
-        } else if comparator.keyPath == \WorkbenchSourceRow.itemCount {
-            field = "itemCount"
-        } else {
-            return nil
-        }
-        return WorkbenchWorkspaceSort(
-            field: field,
-            ascending: comparator.order == .forward
-        )
-    }
-
-    private var allRows: [WorkbenchSourceRow] {
-        projectionCache.allRows
-    }
-
-    private var rows: [WorkbenchSourceRow] {
-        projectionCache.visibleRows
+        model.handleAccessibility(intent)
     }
 }

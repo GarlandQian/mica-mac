@@ -262,7 +262,7 @@ struct WorkbenchDataProjectionTests {
                 nonsemanticRevision: 0
             )
         }
-        let scope = WorkbenchTableAccessibilityScope(
+        let scope = WorkbenchSessionIdentity(
             controllerID: UUID(uuidString: "00000000-0000-0000-0000-000000000001"),
             generation: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
         )
@@ -306,7 +306,7 @@ struct WorkbenchDataProjectionTests {
                 nonsemanticRevision: 0
             )
         }
-        let scope = WorkbenchTableAccessibilityScope(
+        let scope = WorkbenchSessionIdentity(
             controllerID: UUID(uuidString: "00000000-0000-0000-0000-000000000011"),
             generation: UUID(uuidString: "00000000-0000-0000-0000-000000000012")!
         )
@@ -318,7 +318,7 @@ struct WorkbenchDataProjectionTests {
             language: AppLanguage = .english,
             direction: WorkbenchAccessibilitySortDirection? = nil,
             actionTitle: String? = nil,
-            scope: WorkbenchTableAccessibilityScope
+            scope: WorkbenchSessionIdentity
         ) -> WorkbenchTableAccessibilityPayload {
             let localization = MicaStrings.localizationContext(for: language)
             return WorkbenchTableAccessibilityPayload.materialize(
@@ -368,7 +368,7 @@ struct WorkbenchDataProjectionTests {
         #expect(
             payload(
                 rows: rows,
-                scope: WorkbenchTableAccessibilityScope(
+                scope: WorkbenchSessionIdentity(
                     controllerID: scope.controllerID,
                     generation: UUID(uuidString: "00000000-0000-0000-0000-000000000013")!
                 )
@@ -379,7 +379,7 @@ struct WorkbenchDataProjectionTests {
     @MainActor
     @Test func tableAccessibilityHostEqualityIgnoresDispatcherIdentity() {
         let localization = MicaStrings.localizationContext(for: .english)
-        let scope = WorkbenchTableAccessibilityScope(
+        let scope = WorkbenchSessionIdentity(
             controllerID: nil,
             generation: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!
         )
@@ -408,7 +408,7 @@ struct WorkbenchDataProjectionTests {
     }
 
     @Test func ruleAccessibilityMutationResolverRejectsStaleOrUnavailableIntents() throws {
-        let scope = WorkbenchTableAccessibilityScope(
+        let scope = WorkbenchSessionIdentity(
             controllerID: UUID(uuidString: "00000000-0000-0000-0000-000000000031"),
             generation: UUID(uuidString: "00000000-0000-0000-0000-000000000032")!
         )
@@ -465,7 +465,7 @@ struct WorkbenchDataProjectionTests {
             )?.id == WorkbenchRuleAccessibilityMutationResolver.actionID
         )
 
-        let staleScope = WorkbenchTableAccessibilityScope(
+        let staleScope = WorkbenchSessionIdentity(
             controllerID: scope.controllerID,
             generation: UUID(uuidString: "00000000-0000-0000-0000-000000000033")!
         )
@@ -1985,7 +1985,7 @@ struct WorkbenchDataProjectionTests {
         #expect(rows[0].updatedText == MicaStrings.localizedKey("overview.config_not_reported", language: .english))
         #expect(rows[1].typeText == "File")
         #expect(rows[1].configurationDetailText == "yaml · domain")
-        #expect(rows[1].compactConfigurationText == "File · Not reported · yaml")
+        #expect(rows[1].compactConfigurationText == "File · yaml · domain")
         #expect(rows[1].itemCountText == "4")
         #expect(rows[1].compactStatusText == "4 · Not reported")
         #expect(

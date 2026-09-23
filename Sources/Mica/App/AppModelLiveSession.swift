@@ -14,7 +14,7 @@ extension AppModel {
     var canRefreshSelectedRouter: Bool {
         hasSelectedLiveSession
             && !isBusy
-            && manualSessionRefreshTask == nil
+            && !liveSessionTasks.contains(.manualRefresh)
             && !controllerSessionPresentation.controls.dashboardUpdatesPaused
             && controllerSessionPresentation.state.allowsLiveCommands
     }
@@ -364,7 +364,11 @@ extension AppModel {
             )
         }
 
-        let refreshOperation = Task {
+        let identity = LiveSessionRuntimeIdentity(controllerID: router.id, generation: generation)
+        liveSessionTasks.start(
+            isUserInitiated ? .manualRefresh : .immediateRefresh,
+            for: identity
+        ) { @MainActor [self] _ in
             async let fast: Void = runImmediateSessionRefreshLane(
                 .fast,
                 router: router,
@@ -400,9 +404,6 @@ extension AppModel {
                 )
             }
         }
-        if isUserInitiated {
-            manualSessionRefreshTask = refreshOperation
-        }
     }
 
     @discardableResult
@@ -417,7 +418,6 @@ extension AppModel {
         }
         selectedRouterRefreshOperationID = nil
         isRefreshingDashboard = false
-        manualSessionRefreshTask = nil
         return true
     }
 
@@ -459,42 +459,44 @@ extension AppModel {
         for router: RouterProfile,
         generation: UUID
     ) {
+        guard isCurrentSession(routerID: router.id, generation: generation) else { return }
+        let identity = LiveSessionRuntimeIdentity(controllerID: router.id, generation: generation)
         if sessionRefreshCoordinator == nil {
             installSessionRefreshCoordinator(generation: generation)
         }
         let resolvedKind = runtimeControllerKind(for: router)
         if resolvedKind == .singBoxCompatible {
-            initialSessionRefreshTask = nil
-            fastSessionRefreshTask = nil
-            mediumSessionRefreshTask = nil
-            slowSessionRefreshTask = nil
+            liveSessionTasks.cancel(group: .refresh)
             return
         }
 
-        let baselineTask = Task {
-            await loadAndCommitSessionBaseline(
-                for: router,
-                generation: generation,
-                resolvedKind: resolvedKind
-            )
-        }
-        initialSessionRefreshTask = baselineTask
+        guard let baselineTask = liveSessionTasks.start(
+            .baseline,
+            for: identity,
+            operation: { @MainActor [self] _ in
+                await loadAndCommitSessionBaseline(
+                    for: router,
+                    generation: generation,
+                    resolvedKind: resolvedKind
+                )
+            }
+        ) else { return }
 
         if resolvedKind == .surgeCompatible {
-            fastSessionRefreshTask = Task {
+            liveSessionTasks.start(.fastRefresh, for: identity) { @MainActor [self] _ in
                 await baselineTask.value
                 guard !Task.isCancelled else { return }
                 await runSessionRefreshLoop(.fast, router: router, generation: generation)
             }
         } else {
-            fastSessionRefreshTask = nil
+            liveSessionTasks.cancel(.fastRefresh)
         }
-        mediumSessionRefreshTask = Task {
+        liveSessionTasks.start(.mediumRefresh, for: identity) { @MainActor [self] _ in
             await baselineTask.value
             guard !Task.isCancelled else { return }
             await runSessionRefreshLoop(.medium, router: router, generation: generation)
         }
-        slowSessionRefreshTask = Task {
+        liveSessionTasks.start(.slowRefresh, for: identity) { @MainActor [self] _ in
             await baselineTask.value
             guard !Task.isCancelled else { return }
             await runSessionRefreshLoop(.slow, router: router, generation: generation)
@@ -541,7 +543,6 @@ extension AppModel {
                 }
 
                 _ = attemptSessionBaselineCommit(for: router, generation: generation)
-                initialSessionRefreshTask = nil
                 return
             } catch is CancellationError {
                 return
@@ -561,7 +562,6 @@ extension AppModel {
                 let shouldRetry = category.retryDisposition == .transient
                     || (category.retryDisposition == .retryOnce && retryAttempt == 0)
                 guard shouldRetry else {
-                    initialSessionRefreshTask = nil
                     return
                 }
 
@@ -657,10 +657,11 @@ extension AppModel {
         generation: UUID,
         includeSurge: Bool = true
     ) {
-        backendProbeTask?.cancel()
+        guard isCurrentSession(routerID: router.id, generation: generation) else { return }
+        let identity = LiveSessionRuntimeIdentity(controllerID: router.id, generation: generation)
         let credential = controllerSecrets[router.id]
 
-        backendProbeTask = Task {
+        liveSessionTasks.start(.probe, for: identity) { @MainActor [self] _ in
             var retryAttempt = 0
 
             while !Task.isCancelled {
@@ -674,7 +675,6 @@ extension AppModel {
                     guard isCurrentSession(routerID: router.id, generation: generation),
                           !Task.isCancelled else { return }
                     activeSessionControllerKind = detectedKind
-                    backendProbeTask = nil
                     startResolvedSession(for: router, generation: generation)
                     return
                 } catch is CancellationError {
@@ -696,7 +696,6 @@ extension AppModel {
                     let shouldRetry = category.retryDisposition == .transient
                         || (category.retryDisposition == .retryOnce && retryAttempt == 0)
                     guard shouldRetry else {
-                        backendProbeTask = nil
                         return
                     }
                 }
@@ -2079,7 +2078,6 @@ extension AppModel {
         routerID: RouterProfile.ID,
         generation: UUID
     ) {
-        liveLogsTask?.cancel()
         guard let runtime = liveSessionRuntime,
               let identity = liveSessionRuntimeIdentity,
               identity.controllerID == routerID,
@@ -2087,7 +2085,7 @@ extension AppModel {
             return
         }
         let upstreamLevel = controllerLogLevel.upstreamValue
-        liveLogsTask = Task { @concurrent [weak self] in
+        liveSessionTasks.start(.logs, for: identity) { @concurrent [weak self] _ in
             do {
                 let stream = try await client.logsStream(level: upstreamLevel)
                 for try await log in stream {
@@ -2139,35 +2137,12 @@ extension AppModel {
     }
 
     private func cancelLiveSessionTasks() {
-        initialSessionRefreshTask?.cancel()
-        fastSessionRefreshTask?.cancel()
-        mediumSessionRefreshTask?.cancel()
-        slowSessionRefreshTask?.cancel()
-        manualSessionRefreshTask?.cancel()
-        liveTrafficTask?.cancel()
-        liveLogsTask?.cancel()
-        liveMemoryTask?.cancel()
-        liveConnectionsTask?.cancel()
-        singBoxSessionTask?.cancel()
-        liveRetryTask?.cancel()
-        backendProbeTask?.cancel()
+        liveSessionTasks.cancel(group: .all)
         cancelLiveSessionRuntime()
         cancelSessionRefreshCoordinator()
 
-        initialSessionRefreshTask = nil
-        fastSessionRefreshTask = nil
-        mediumSessionRefreshTask = nil
-        slowSessionRefreshTask = nil
-        manualSessionRefreshTask = nil
         selectedRouterRefreshOperationID = nil
         isRefreshingDashboard = false
-        liveTrafficTask = nil
-        liveLogsTask = nil
-        liveMemoryTask = nil
-        liveConnectionsTask = nil
-        singBoxSessionTask = nil
-        liveRetryTask = nil
-        backendProbeTask = nil
         liveRetryState.reset()
     }
 
@@ -2176,25 +2151,10 @@ extension AppModel {
         isRetry: Bool = false,
         generation explicitGeneration: UUID? = nil
     ) {
-        liveRetryTask?.cancel()
-        liveTrafficTask?.cancel()
-        liveLogsTask?.cancel()
-        liveMemoryTask?.cancel()
-        liveConnectionsTask?.cancel()
-        singBoxSessionTask?.cancel()
-        liveTrafficTask = nil
-        liveLogsTask = nil
-        liveMemoryTask = nil
-        liveConnectionsTask = nil
-        singBoxSessionTask = nil
-        liveRetryTask = nil
-
         let generation = explicitGeneration ?? controllerSession.generation
-        guard isCurrentSession(routerID: router.id, generation: generation) else {
-            liveStreamRequested = false
-            setLiveStreamState(.idle)
-            return
-        }
+        guard isCurrentSession(routerID: router.id, generation: generation) else { return }
+        liveSessionTasks.cancel(group: .streaming)
+        liveRetryState.consumeScheduledRetry()
 
         if isRetry || liveSessionRuntimeIdentity != LiveSessionRuntimeIdentity(
             controllerID: router.id,
@@ -2251,7 +2211,7 @@ extension AppModel {
             return
         }
 
-        liveTrafficTask = Task { @concurrent [weak self] in
+        liveSessionTasks.start(.traffic, for: identity) { @concurrent [weak self] _ in
             do {
                 let stream = try await client.trafficStream()
                 for try await event in stream {
@@ -2286,7 +2246,7 @@ extension AppModel {
         startMihomoLogStream(client: client, routerID: routerID, generation: generation)
 
         if capabilities.memory {
-            liveMemoryTask = Task { @concurrent [weak self] in
+            liveSessionTasks.start(.memory, for: identity) { @concurrent [weak self] _ in
                 do {
                     let stream = try await client.memoryStream()
                     for try await memory in stream {
@@ -2320,7 +2280,7 @@ extension AppModel {
         }
 
         if capabilities.connections {
-            liveConnectionsTask = Task { @concurrent [weak self] in
+            liveSessionTasks.start(.connections, for: identity) { @concurrent [weak self] _ in
                 do {
                     let stream = try await client.connectionsStream()
                     for try await connections in stream {
@@ -2359,7 +2319,6 @@ extension AppModel {
         isRetry: Bool,
         generation: UUID
     ) {
-        singBoxSessionTask?.cancel()
         liveStreamRequested = true
         if !controllerSession.baselineTransaction.isReconnect {
             setLiveStreamState(.connecting)
@@ -2374,7 +2333,7 @@ extension AppModel {
               identity.generation == generation else {
             return
         }
-        singBoxSessionTask = Task { [weak self] in
+        liveSessionTasks.start(.singBox, for: identity) { @MainActor [weak self] _ in
             guard let self else { return }
 
             do {
@@ -2716,10 +2675,11 @@ extension AppModel {
         controllerSession.liveObservation.start(source: .surgeNearLive)
 
         let routerID = router.id
+        let identity = LiveSessionRuntimeIdentity(controllerID: routerID, generation: generation)
         let client = sessionSurgeClient
             ?? SurgeHttpAPIClient(profile: router, apiKey: controllerSecrets[router.id])
 
-        liveTrafficTask = Task { @concurrent [weak self] in
+        liveSessionTasks.start(.traffic, for: identity) { @concurrent [weak self] _ in
             guard let self else { return }
             do {
                 while !Task.isCancelled {
@@ -2759,18 +2719,7 @@ extension AppModel {
     }
 
     func stopLiveStreams(resetRequest: Bool) {
-        liveTrafficTask?.cancel()
-        liveLogsTask?.cancel()
-        liveMemoryTask?.cancel()
-        liveConnectionsTask?.cancel()
-        singBoxSessionTask?.cancel()
-        liveRetryTask?.cancel()
-        liveTrafficTask = nil
-        liveLogsTask = nil
-        liveMemoryTask = nil
-        liveConnectionsTask = nil
-        singBoxSessionTask = nil
-        liveRetryTask = nil
+        liveSessionTasks.cancel(group: .streaming)
         liveRetryState.reset()
         cancelLiveSessionRuntime()
 
@@ -2908,31 +2857,12 @@ extension AppModel {
     }
 
     private func cancelSessionRefreshAndStreamProducers() {
-        initialSessionRefreshTask?.cancel()
-        fastSessionRefreshTask?.cancel()
-        mediumSessionRefreshTask?.cancel()
-        slowSessionRefreshTask?.cancel()
-        manualSessionRefreshTask?.cancel()
-        liveTrafficTask?.cancel()
-        liveLogsTask?.cancel()
-        liveMemoryTask?.cancel()
-        liveConnectionsTask?.cancel()
-        singBoxSessionTask?.cancel()
+        liveSessionTasks.cancel(group: .producers)
         cancelSessionRefreshCoordinator()
         installSessionRefreshCoordinator(generation: controllerSession.generation)
 
-        initialSessionRefreshTask = nil
-        fastSessionRefreshTask = nil
-        mediumSessionRefreshTask = nil
-        slowSessionRefreshTask = nil
-        manualSessionRefreshTask = nil
         selectedRouterRefreshOperationID = nil
         isRefreshingDashboard = false
-        liveTrafficTask = nil
-        liveLogsTask = nil
-        liveMemoryTask = nil
-        liveConnectionsTask = nil
-        singBoxSessionTask = nil
     }
 
     private func scheduleLiveStreamRetry(
@@ -2942,23 +2872,25 @@ extension AppModel {
         guard isCurrentSession(routerID: routerID, generation: generation),
               liveStreamRequested,
               let router = selectedRouter,
-              liveRetryTask == nil else { return }
+              !liveSessionTasks.contains(.retry) else { return }
 
         guard let delay = liveRetryState.reserveDelay() else { return }
 
-        liveRetryTask = Task {
+        let identity = LiveSessionRuntimeIdentity(controllerID: routerID, generation: generation)
+        liveSessionTasks.start(.retry, for: identity) { @MainActor [self] token in
             do {
                 try await Task.sleep(for: delay)
             } catch {
-                if isCurrentSession(routerID: routerID, generation: generation) {
-                    liveRetryTask = nil
+                if liveSessionTasks.owns(token),
+                   isCurrentSession(routerID: routerID, generation: generation) {
                     liveRetryState.consumeScheduledRetry()
                 }
                 return
             }
 
-            guard isCurrentSession(routerID: routerID, generation: generation), liveStreamRequested else { return }
-            liveRetryTask = nil
+            guard isCurrentSession(routerID: routerID, generation: generation),
+                  liveStreamRequested,
+                  liveSessionTasks.complete(token) else { return }
             liveRetryState.consumeScheduledRetry()
             startSessionRefreshCoordinator(for: router, generation: generation)
             startLiveStreams(for: router, isRetry: true, generation: generation)

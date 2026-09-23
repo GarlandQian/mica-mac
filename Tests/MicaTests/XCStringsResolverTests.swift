@@ -2,6 +2,16 @@ import Testing
 @testable import Mica
 
 struct XCStringsResolverTests {
+    @MainActor
+    @Test func controllerCountsUseCorrectSingularAndPluralLabels() {
+        #expect(WorkbenchControllersView.countLabel(0, language: .english) == "0 controllers")
+        #expect(WorkbenchControllersView.countLabel(1, language: .english) == "1 controller")
+        #expect(WorkbenchControllersView.countLabel(2, language: .english) == "2 controllers")
+        #expect(WorkbenchControllersView.countLabel(0, language: .simplifiedChinese) == "0 个控制器")
+        #expect(WorkbenchControllersView.countLabel(1, language: .simplifiedChinese) == "1 个控制器")
+        #expect(WorkbenchControllersView.countLabel(2, language: .simplifiedChinese) == "2 个控制器")
+    }
+
     @Test func localizationContextMatchesDirectLookupAndKeepsItsResolvedLanguage() {
         let english = MicaStrings.localizationContext(for: .english)
         let simplifiedChinese = MicaStrings.localizationContext(for: .simplifiedChinese)

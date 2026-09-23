@@ -11,22 +11,11 @@ struct WorkbenchConnectionsView: View {
     @Binding var destination: WorkbenchDestination
     @Binding var searchText: String
 
-    @State private var scope: ConnectionSessionTab = .active
-    @State private var projectionCache = WorkbenchConnectionProjectionCache()
-    @State private var selectedRowID: String?
-    @State private var sortOrder: [KeyPathComparator<WorkbenchConnectionRow>] = []
-    @State private var closeIntent: WorkbenchConnectionCloseIntent?
-    @State private var restoredScrollAnchorID: String?
-    @State private var scrollRequest: WorkbenchDataScrollRequest?
-    @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
-    @State private var metricSortCadence = WorkbenchConnectionMetricSortCadence()
-    @State private var navigationDirectory = WorkbenchConnectionNavigationDirectory()
-    @State private var isProjectionActive = false
-    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
+    @State private var model = ConnectionsWorkspaceModel()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 1_080,
-        compactMinimum: 580
+        compactMinimum: 720
     )
 
     var body: some View {
@@ -36,21 +25,21 @@ struct WorkbenchConnectionsView: View {
             supplementary: {
                 if showsPulse {
                     WorkbenchConnectionPulseStrip(
-                        projection: projectionCache.pulseProjection
+                        projection: model.pulse
                     )
                 }
 
-                if let selectedRow {
+                if let selectedRow = model.selectedRow {
                     WorkbenchConnectionDecisionPathRail(
                         projection: WorkbenchConnectionDecisionPathProjection(
                             row: selectedRow
                         ),
-                        ruleIsNavigable: navigationDirectory.ruleTarget(
+                        ruleIsNavigable: model.navigationDirectory.ruleTarget(
                             type: selectedRow.connection.rule ?? "",
                             payload: selectedRow.connection.rulePayload ?? ""
                         ) != nil,
-                        policyTarget: navigationDirectory.policyTarget(named:),
-                        isActive: scope == .active,
+                        policyTarget: model.navigationDirectory.policyTarget(named:),
+                        isActive: model.scope == .active,
                         showsClose: selectedRow.connection.id.dataNonEmpty != nil,
                         canClose: canCloseOne && selectedRow.connection.id.dataNonEmpty != nil,
                         closeGroup: selectedCloseGroup,
@@ -62,11 +51,11 @@ struct WorkbenchConnectionsView: View {
                         },
                         openPolicyGroup: openPolicyGroup,
                         requestClose: {
-                            requestClose(.connection(selectedRow.id))
+                            model.requestClose(.connection(selectedRow.id), identity: sessionIdentity)
                         },
                         requestCloseGroup: {
                             guard let selectedCloseGroup else { return }
-                            requestClose(.group(selectedCloseGroup.id))
+                            model.requestClose(.group(selectedCloseGroup.id), identity: sessionIdentity)
                         }
                     )
                 }
@@ -77,7 +66,7 @@ struct WorkbenchConnectionsView: View {
                         confirmTitleKey: closeConfirmTitleKey,
                         isConfirmEnabled: canConfirmClose,
                         confirm: performClose,
-                        cancel: { closeIntent = nil }
+                        cancel: { model.closeIntent = nil }
                     )
                 }
             }
@@ -85,92 +74,57 @@ struct WorkbenchConnectionsView: View {
             pageContent
         }
         .onAppear {
-            let projectionCacheBinding = $projectionCache
-            workspaceStore.connectionRowResolver = { id in
-                projectionCacheBinding.wrappedValue.row(id: id)
-            }
-            if let selectedRowID {
-                workspaceStore.selectInspector(.connection(id: selectedRowID))
-            }
-            isProjectionActive = true
+            let pageModel = model
+            workspaceStore.connectionRowResolver = { pageModel.row(id: $0) }
             restoreWorkspace()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-            rebuildNavigationDirectory()
+            model.update(presentationInput)
+            updateNavigationDirectory()
             consumeConnectionNavigation()
         }
         .onDisappear {
             workspaceStore.connectionRowResolver = nil
-            isProjectionActive = false
-            metricSortCadence.cancel()
+            model.deactivate()
         }
-        .onChange(of: appModel.selectedRouterID) {
-            closeIntent = nil
-            projectionCache.reset()
-            metricSortCadence.cancel()
-            scrollRequest = nil
-            accessibilityCursor.reset()
+        .onChange(of: sessionIdentity) {
             restoreWorkspace()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-            rebuildNavigationDirectory()
+            model.update(presentationInput)
+            updateNavigationDirectory()
             consumeConnectionNavigation()
         }
-        .onChange(of: appModel.controllerSessionPresentation.generation) {
-            closeIntent = nil
-            projectionCache.reset()
-            metricSortCadence.cancel()
-            scrollRequest = nil
-            accessibilityCursor.reset()
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-            rebuildNavigationDirectory()
-            consumeConnectionNavigation()
-        }
-        .onChange(of: appModel.connectionsCatalog.metricsRevision) {
-            guard scope == .active else { return }
-            rebuildRows(reconcileSelection: true)
-            if usesMetricAccessibilitySort {
-                reconcileAccessibilityWindow()
-            }
+        .onChange(of: appModel.connectionsMetricsRevision) {
+            guard model.scope == .active else { return }
+            model.update(presentationInput)
             consumeConnectionNavigation()
         }
         .onChange(of: appModel.rulesCatalog.rules) {
-            rebuildNavigationDirectory()
+            updateNavigationDirectory()
         }
-        .onChange(of: appModel.policyGroupCatalog) {
-            rebuildNavigationDirectory()
+        .onChange(of: appModel.policyGroupCatalogRevision) {
+            updateNavigationDirectory()
         }
         .onChange(of: preferences.globalGroupVisibility) {
-            rebuildNavigationDirectory()
+            updateNavigationDirectory()
         }
         .onChange(of: appModel.dashboardSessionControls.closedConnectionsRevision) {
-            guard scope == .closed else { return }
-            rebuildRows(reconcileSelection: true)
+            guard model.scope == .closed else { return }
+            model.update(presentationInput)
         }
-        .onChange(of: scope) {
-            closeIntent = nil
+        .onChange(of: model.scope) {
             persistScope()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
+            model.update(presentationInput)
             consumeConnectionNavigation()
         }
         .onChange(of: searchText) {
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
+            model.update(presentationInput)
         }
-        .onChange(of: sortOrder) {
+        .onChange(of: model.sortOrder) {
             persistSortOrder()
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
+            model.update(presentationInput)
         }
         .onChange(of: language) {
-            rebuildRows(reconcileSelection: true)
-            reconcileAccessibilityWindow(revealing: selectedRowID)
+            model.update(presentationInput)
         }
-        .onChange(of: selectedRowID) { _, selection in
-            reconcileAccessibilityWindow(revealing: selection)
+        .onChange(of: model.selectedRowID) { _, selection in
             persistSelection(selection)
             if let selection {
                 workspaceStore.selectInspector(.connection(id: selection))
@@ -179,8 +133,8 @@ struct WorkbenchConnectionsView: View {
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in
-            if case .none = selection, selectedRowID != nil {
-                selectedRowID = nil
+            if case .none = selection, model.selectedRowID != nil {
+                model.selectedRowID = nil
             }
         }
     }
@@ -197,11 +151,11 @@ struct WorkbenchConnectionsView: View {
             Picker(
                 MicaStrings.localizedKey("traffic.connection_tab", language: language),
                 selection: Binding(
-                    get: { scope },
+                    get: { model.scope },
                     set: { next in
-                        guard next != scope else { return }
-                        selectedRowID = nil
-                        scope = next
+                        guard next != model.scope else { return }
+                        model.selectedRowID = nil
+                        model.scope = next
                     }
                 )
             ) {
@@ -217,25 +171,25 @@ struct WorkbenchConnectionsView: View {
             )
             .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         } commands: {
-            if scope == .active {
+            if model.scope == .active {
                 WorkbenchIconCommand(
                     titleKey: "action.close_all",
                     systemImage: "xmark.circle",
-                    isEnabled: !allRows.isEmpty && canCloseAll,
+                    isEnabled: !model.allRows.isEmpty && canCloseAll,
                     role: .destructive
                 ) {
-                    requestClose(.all)
+                    model.requestClose(.all, identity: sessionIdentity)
                 }
                 .foregroundStyle(MicaTheme.statusError)
             } else {
                 WorkbenchIconCommand(
                     titleKey: "traffic.clear_closed",
                     systemImage: "trash",
-                    isEnabled: !allRows.isEmpty,
+                    isEnabled: !model.allRows.isEmpty,
                     role: .destructive
                 ) {
                     appModel.clearClosedConnections()
-                    selectedRowID = nil
+                    model.selectedRowID = nil
                 }
             }
         }
@@ -265,10 +219,10 @@ struct WorkbenchConnectionsView: View {
         case .empty:
             WorkbenchStateView(
                 kind: .empty,
-                titleKey: scope == .active
+                titleKey: model.scope == .active
                     ? "dashboard.no_active_connections"
                     : "traffic.no_closed_connections_title",
-                detailKey: scope == .active
+                detailKey: model.scope == .active
                     ? "traffic.no_active_connections_message"
                     : "traffic.no_closed_connections"
             )
@@ -293,32 +247,36 @@ struct WorkbenchConnectionsView: View {
     }
 
     private var connectionTable: some View {
+        @Bindable var model = model
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
-        let accessibilityWindow = WorkbenchAccessibilityWindow.resolve(
-            totalCount: rows.count,
-            preferredLowerBound: accessibilityCursor.lowerBound
-        )
+        let accessibilityWindow = model.accessibilityWindow
         let localization = MicaStrings.localizationContext(for: language)
         let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
-            scope: WorkbenchTableAccessibilityScope(
+            scope: WorkbenchSessionIdentity(
                 controllerID: controllerID,
                 generation: generation
             ),
             title: localization.localizedKey("dashboard.tab_connections"),
-            sourceRows: rows,
+            sourceRows: model.rows,
             window: accessibilityWindow,
-            selectedRowID: selectedRowID,
+            selectedRowID: model.selectedRowID,
             localization: localization,
             sortOptions: accessibilitySortOptions,
             summary: WorkbenchConnectionProjection.accessibilitySummary
         )
         return WorkbenchDataTableViewport(
             generation: generation,
-            restorationID: restoredScrollAnchorID,
-            request: scrollRequest,
-            interaction: tableInteraction,
-            onInteractionEnded: finishDeferredMetricSort,
+            restorationID: model.restoredScrollAnchorID,
+            request: model.scrollRequest,
+            interaction: model.tableInteraction,
+            rowIndex: model.visibleIndex(id:),
+            rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
+            onInteractionEnded: {
+                model.finishDeferredMetricSort(
+                    identity: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation)
+                )
+            },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -328,7 +286,7 @@ struct WorkbenchConnectionsView: View {
             }
         ) {
             WorkbenchDataResponsive(budget: Self.widthBudget) { mode in
-                Table(rows, selection: $selectedRowID, sortOrder: $sortOrder) {
+                Table(model.rows, selection: $model.selectedRowID, sortOrder: $model.sortOrder) {
                     switch mode {
                     case .full:
                         TableColumn(
@@ -344,7 +302,7 @@ struct WorkbenchConnectionsView: View {
                             value: \.process
                         ) { row in
                             VStack(alignment: .leading, spacing: 1) {
-                                WorkbenchDataText(value: row.process)
+                                processCell(row)
                                 WorkbenchDataText(
                                     value: row.network,
                                     role: .dataCaption,
@@ -400,7 +358,7 @@ struct WorkbenchConnectionsView: View {
 
                         TableColumn(
                             MicaStrings.localizedKey(
-                                scope == .active ? "traffic.start_time" : "traffic.log_received_time",
+                                model.scope == .active ? "traffic.start_time" : "traffic.log_received_time",
                                 language: language
                             )
                         ) { row in
@@ -465,10 +423,10 @@ struct WorkbenchConnectionsView: View {
                                 WorkbenchDataPrimaryCell(
                                     title: row.host,
                                     detail: row.stackedDetailText,
-                                    systemImage: scope == .active
+                                    systemImage: model.scope == .active
                                         ? "point.3.connected.trianglepath.dotted"
                                         : "clock",
-                                    tint: scope == .active
+                                    tint: model.scope == .active
                                         ? MicaTheme.accent
                                         : .secondary
                                 )
@@ -508,26 +466,32 @@ struct WorkbenchConnectionsView: View {
                 }
             }
         }
-        .task(id: metricSortCadence.pendingDeadline) {
-            guard let pendingDeadline = metricSortCadence.pendingDeadline else { return }
+        .task(id: model.metricSortDeadline) {
+            let identity = sessionIdentity
+            guard let deadline = model.metricSortDeadline else { return }
             let remainingMilliseconds = Int64(
-                ceil(max(0, pendingDeadline.timeIntervalSinceNow * 1_000))
+                ceil(max(0, deadline.timeIntervalSinceNow * 1_000))
             )
             if remainingMilliseconds > 0 {
                 try? await Task.sleep(for: .milliseconds(remainingMilliseconds))
             }
-            guard !Task.isCancelled, metricSortCadence.consume() else { return }
-            finishDeferredMetricSort()
+            guard !Task.isCancelled else { return }
+            model.commitScheduledMetricSort(identity: identity, deadline: deadline)
         }
     }
 
     private func transferCell(total: String, speed: String) -> some View {
         VStack(alignment: .trailing, spacing: 1) {
-            WorkbenchDataMetric(value: total)
-            WorkbenchDataMetric(
-                value: speed,
-                tone: .secondary
-            )
+            if model.scope == .active {
+                WorkbenchDataMetric(value: speed)
+                WorkbenchDataMetric(value: total, tone: .secondary)
+                    .help(MicaStrings.localized(
+                        "traffic.connection_accumulated \(total)",
+                        language: language
+                    ))
+            } else {
+                WorkbenchDataMetric(value: total)
+            }
         }
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
@@ -536,26 +500,54 @@ struct WorkbenchConnectionsView: View {
         )
     }
 
+    private func processCell(_ row: WorkbenchConnectionRow) -> some View {
+        let process = row.connection.metadata?.process?.dataNonEmpty
+            ?? row.connection.metadata?.processPath?.dataNonEmpty
+        return WorkbenchDataText(
+            value: process ?? MicaStrings.localizedKey(
+                "overview.config_not_reported",
+                language: language
+            ),
+            role: process == nil ? .caption : .label,
+            tone: process == nil ? .secondary : .primary
+        )
+    }
+
     private func connectionIdentity(_ row: WorkbenchConnectionRow) -> some View {
         WorkbenchDataPrimaryCell(
             title: row.host,
             detail: row.identityDetailText,
-            systemImage: scope == .active
+            systemImage: model.scope == .active
                 ? "point.3.connected.trianglepath.dotted"
                 : "clock",
-            tint: scope == .active ? MicaTheme.accent : .secondary
+            tint: model.scope == .active ? MicaTheme.accent : .secondary
         )
     }
 
-    private func rebuildNavigationDirectory() {
-        let visibleGroups = ProxyProjection.arrangedGroups(
-            appModel.policyGroupCatalog.groups,
-            mode: appModel.policyGroupCatalog.mode,
-            visibility: preferences.globalGroupVisibility
+    private var sessionIdentity: WorkbenchSessionIdentity {
+        WorkbenchSessionIdentity(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
         )
-        navigationDirectory = WorkbenchConnectionNavigationDirectory(
+    }
+
+    private var presentationInput: ConnectionsWorkspaceInput {
+        ConnectionsWorkspaceInput(
+            identity: sessionIdentity,
+            catalog: appModel.connectionsCatalog,
+            closedConnections: appModel.dashboardSessionControls.closedConnectionRecords,
+            closedRevision: appModel.dashboardSessionControls.closedConnectionsRevision,
+            query: searchText,
+            language: language
+        )
+    }
+
+    private func updateNavigationDirectory() {
+        model.updateNavigation(
             rules: appModel.rulesCatalog.rules,
-            groups: visibleGroups
+            catalog: appModel.policyGroupCatalog,
+            visibility: preferences.globalGroupVisibility,
+            identity: sessionIdentity
         )
     }
 
@@ -563,7 +555,7 @@ struct WorkbenchConnectionsView: View {
         guard let controllerID = appModel.selectedRouterID,
               let type = row.connection.rule?.dataNonEmpty,
               let payload = row.connection.rulePayload?.dataNonEmpty,
-              let target = navigationDirectory.ruleTarget(
+              let target = model.navigationDirectory.ruleTarget(
                   type: type,
                   payload: payload
               ) else {
@@ -588,69 +580,24 @@ struct WorkbenchConnectionsView: View {
             controllerID: appModel.selectedRouterID,
             destination: .proxies
         ) { workspace in
-            workspace = ProxyWorkspaceProjection.opening(
+            workspace = ProxyWorkspaceProjection.activating(
                 target.id,
                 in: workspace,
-                groups: navigationDirectory.visiblePolicyGroups,
+                groups: model.navigationDirectory.visiblePolicyGroups,
                 preferredMemberID: nil
             )
         }
         destination = .proxies
     }
 
-    private func rebuildRows(reconcileSelection: Bool) {
-        guard isProjectionActive else { return }
-        let previousRows = allRows
-        let previousSelection = selectedRowID
-        let previousStaticProjectionCount = projectionCache.staticProjectionCount
-        projectionCache.project(
-            activeConnections: appModel.connectionsCatalog.connections,
-            closedConnections: appModel.dashboardSessionControls.closedConnectionRecords,
-            scope: scope,
-            structureRevision: appModel.connectionsCatalog.structureRevision,
-            metricsRevision: appModel.connectionsCatalog.metricsRevision,
-            closedRevision: appModel.dashboardSessionControls.closedConnectionsRevision,
-            query: searchText,
-            sortOrder: sortOrder,
-            language: language,
-            change: appModel.connectionsCatalog.lastChange,
-            deferMetricSorting: tableInteraction.isUserScrolling,
-            isActive: isProjectionActive
-        )
-        if projectionCache.hasDeferredMetricSort {
-            metricSortCadence.schedule()
-        } else {
-            metricSortCadence.cancel()
-        }
-
-        if reconcileSelection {
-            selectedRowID = WorkbenchDataSelection.reconciled(
-                previousSelection,
-                previousRows: previousRows,
-                nextVisibleRows: rows,
-                identityFamily: \.identityFamily
-            )
-        }
-        if projectionCache.staticProjectionCount != previousStaticProjectionCount {
-            reconcileAccessibilityWindow(revealing: selectedRowID)
-        }
-
-        closeIntent = closeIntent?.reconciled(
-            routerID: appModel.selectedRouterID,
-            generation: appModel.controllerSessionPresentation.generation,
-            connectionIDs: projectionCache.connectionIDs,
-            groupIDs: projectionCache.groupIDs
-        )
-    }
-
     private var state: WorkbenchDataState {
         WorkbenchDataStateResolver.endpoint(
             hasController: appModel.selectedRouter != nil,
-            isSupported: scope == .closed || supportsConnectionFeed,
-            sourceCount: allRows.count,
-            visibleCount: rows.count,
+            isSupported: model.scope == .closed || supportsConnectionFeed,
+            sourceCount: model.allRows.count,
+            visibleCount: model.rows.count,
             isFiltering: searchText.dataNonEmpty != nil,
-            endpointStatus: scope == .active
+            endpointStatus: model.scope == .active
                 ? appModel.controllerHealth.status(for: .connections)
                 : nil,
             sessionState: appModel.controllerSessionPresentation.state,
@@ -666,10 +613,10 @@ struct WorkbenchConnectionsView: View {
     }
 
     private var resultCountText: String {
-        guard projectionCache.pulseProjection.isFiltered else {
-            return rows.count.formatted()
+        guard model.pulse.isFiltered else {
+            return model.rows.count.formatted()
         }
-        return "\(rows.count.formatted()) / \(allRows.count.formatted())"
+        return "\(model.rows.count.formatted()) / \(model.allRows.count.formatted())"
     }
 
     private var supportsConnectionFeed: Bool {
@@ -678,7 +625,7 @@ struct WorkbenchConnectionsView: View {
     }
 
     private var canCloseOne: Bool {
-        guard scope == .active, let router = appModel.selectedRouter else { return false }
+        guard model.scope == .active, let router = appModel.selectedRouter else { return false }
         let action: UnifiedControllerAction = appModel.runtimeControllerKind(for: router) == .surgeCompatible
             ? .killActiveRequest
             : .closeConnection
@@ -686,7 +633,7 @@ struct WorkbenchConnectionsView: View {
     }
 
     private var canCloseAll: Bool {
-        guard scope == .active, let router = appModel.selectedRouter else { return false }
+        guard model.scope == .active, let router = appModel.selectedRouter else { return false }
         let action: UnifiedControllerAction = appModel.runtimeControllerKind(for: router) == .surgeCompatible
             ? .killActiveRequest
             : .closeAllConnections
@@ -697,19 +644,15 @@ struct WorkbenchConnectionsView: View {
         canCloseOne && (selectedCloseGroup?.connections.count ?? 0) > 1
     }
 
-    private var selectedRow: WorkbenchConnectionRow? {
-        projectionCache.row(id: selectedRowID)
-    }
-
     private var currentCloseIntent: WorkbenchConnectionCloseIntent? {
-        guard let closeIntent,
-              closeIntent.isCurrent(
+        guard let intent = model.closeIntent,
+              intent.isCurrent(
                 routerID: appModel.selectedRouterID,
                 generation: appModel.controllerSessionPresentation.generation
               ) else {
             return nil
         }
-        return closeIntent
+        return intent
     }
 
     private var closeMessage: String {
@@ -729,7 +672,7 @@ struct WorkbenchConnectionsView: View {
             )
         case .all:
             return MicaStrings.localized(
-                "dashboard.confirm_close_all_message \(allRows.count) \(controller)",
+                "dashboard.confirm_close_all_message \(model.allRows.count) \(controller)",
                 language: language
             )
         case nil:
@@ -751,35 +694,35 @@ struct WorkbenchConnectionsView: View {
     }
 
     private var canConfirmClose: Bool {
-        guard let closeIntent = currentCloseIntent else { return false }
-        switch closeIntent.target {
+        guard let intent = currentCloseIntent else { return false }
+        switch intent.target {
         case .connection(let id):
-            return canCloseOne && allRows.contains {
+            return canCloseOne && model.allRows.contains {
                 $0.id == id && $0.connection.id.dataNonEmpty != nil
             }
         case .group:
             return canCloseGroup && pendingCloseGroup != nil
         case .all:
-            return canCloseAll && !allRows.isEmpty
+            return canCloseAll && !model.allRows.isEmpty
         }
     }
 
     private func performClose() {
-        guard let closeIntent else { return }
-        defer { self.closeIntent = nil }
-        guard closeIntent.isCurrent(
+        guard let intent = model.closeIntent else { return }
+        defer { model.closeIntent = nil }
+        guard intent.isCurrent(
             routerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         ) else {
             return
         }
 
-        switch closeIntent.target {
+        switch intent.target {
         case .connection(let id):
-            guard let row = projectionCache.row(id: id) else { return }
+            guard let row = model.row(id: id) else { return }
             appModel.closeConnection(row.connection)
         case .group(let id):
-            guard let pendingCloseGroup = closeGroups.first(where: { $0.id == id }) else {
+            guard let pendingCloseGroup = model.closeGroups.first(where: { $0.id == id }) else {
                 return
             }
             appModel.closeConnectionGroup(
@@ -792,31 +735,15 @@ struct WorkbenchConnectionsView: View {
         }
     }
 
-    private func requestClose(_ target: WorkbenchConnectionCloseIntent.Target) {
-        guard let routerID = appModel.selectedRouterID else {
-            closeIntent = nil
-            return
-        }
-        closeIntent = WorkbenchConnectionCloseIntent(
-            routerID: routerID,
-            generation: appModel.controllerSessionPresentation.generation,
-            target: target
-        )
-    }
-
-    private var closeGroups: [WorkbenchConnectionCloseGroup] {
-        projectionCache.closeGroups
-    }
-
     private var selectedCloseGroup: WorkbenchConnectionCloseGroup? {
-        guard let selectedRow else { return nil }
+        guard let selectedRow = model.selectedRow else { return nil }
         let identity = WorkbenchConnectionOwnerIdentity(connection: selectedRow.connection)
-        return closeGroups.first { $0.identity == identity }
+        return model.closeGroups.first { $0.identity == identity }
     }
 
     private var pendingCloseGroup: WorkbenchConnectionCloseGroup? {
         guard case .group(let id) = currentCloseIntent?.target else { return nil }
-        return closeGroups.first { $0.id == id }
+        return model.closeGroups.first { $0.id == id }
     }
 
     private func closeGroupLabel(_ group: WorkbenchConnectionCloseGroup) -> String {
@@ -837,28 +764,27 @@ struct WorkbenchConnectionsView: View {
     }
 
     private func restoreWorkspace() {
-        let controllerID = appModel.selectedRouterID
-        let generation = appModel.controllerSessionPresentation.generation
-        if let controllerID {
+        let identity = sessionIdentity
+        if let controllerID = identity.controllerID {
             workspaceStore.activateSession(
                 controllerID: controllerID,
-                generation: generation
+                generation: identity.generation
             )
         }
-        let workspace = workspaceStore.workspace(
-            controllerID: controllerID,
-            destination: .connections
-        )
-        scope = workspace.activeTab.flatMap(ConnectionSessionTab.init(rawValue:)) ?? .active
-        sortOrder = Self.connectionSortOrder(from: workspace.sort)
-        selectedRowID = workspace.selectedItemID
-        restoredScrollAnchorID = controllerID.flatMap {
-            workspaceStore.scrollAnchorID(
-                controllerID: $0,
-                generation: generation,
+        model.activate(
+            identity: identity,
+            workspace: workspaceStore.workspace(
+                controllerID: identity.controllerID,
                 destination: .connections
-            )
-        }
+            ),
+            restoredScrollAnchorID: identity.controllerID.flatMap {
+                workspaceStore.scrollAnchorID(
+                    controllerID: $0,
+                    generation: identity.generation,
+                    destination: .connections
+                )
+            }
+        )
     }
 
     private func persistScope() {
@@ -866,7 +792,7 @@ struct WorkbenchConnectionsView: View {
             controllerID: appModel.selectedRouterID,
             destination: .connections
         ) { workspace in
-            workspace.activeTab = scope.rawValue
+            workspace.activeTab = model.scope.rawValue
         }
     }
 
@@ -902,70 +828,24 @@ struct WorkbenchConnectionsView: View {
             controllerID: appModel.selectedRouterID,
             destination: .connections
         ) { workspace in
-            workspace.sort = sortOrder.compactMap(Self.connectionWorkspaceSort)
+            workspace.sort = model.sortOrder.compactMap(ConnectionsWorkspaceModel.workspaceSort)
         }
     }
 
     private func consumeConnectionNavigation() {
-        guard scope == .active,
-              let controllerID = appModel.selectedRouterID else { return }
+        guard let controllerID = appModel.selectedRouterID else { return }
         let generation = appModel.controllerSessionPresentation.generation
         let workspace = workspaceStore.workspace(
             controllerID: controllerID,
             destination: .connections
         )
         guard let pending = workspace.pendingConnectionSelection,
-              pending.generation == generation,
-              allRows.contains(where: {
-                  pending.matches(
-                      sourceIndex: $0.sourceIndex,
-                      reportedConnectionID: $0.connection.id
-                  )
-              }),
-              let navigation = workspaceStore.consumeConnectionNavigation(
-                controllerID: controllerID,
-                generation: generation
-              ),
-              let row = allRows.first(where: {
-                  navigation.matches(
-                      sourceIndex: $0.sourceIndex,
-                      reportedConnectionID: $0.connection.id
-                  )
-              }) else {
-            return
-        }
-
-        selectedRowID = row.id
-        scrollRequest = WorkbenchDataScrollRequest(id: row.id)
-    }
-
-    private func finishDeferredMetricSort() {
-        metricSortCadence.cancel()
-        if projectionCache.commitDeferredMetricSort() {
-            reconcileAccessibilityWindow()
-        }
-    }
-
-    private var usesMetricAccessibilitySort: Bool {
-        sortOrder.contains {
-            $0.keyPath == \WorkbenchConnectionRow.upload
-                || $0.keyPath == \WorkbenchConnectionRow.download
-        }
-    }
-
-    private static func connectionSortOrder(
-        from workspaceSort: [WorkbenchWorkspaceSort]
-    ) -> [KeyPathComparator<WorkbenchConnectionRow>] {
-        workspaceSort.compactMap { item -> KeyPathComparator<WorkbenchConnectionRow>? in
-            let order: SortOrder = item.ascending ? .forward : .reverse
-            switch item.field {
-            case "host": return KeyPathComparator(\WorkbenchConnectionRow.host, order: order)
-            case "process": return KeyPathComparator(\WorkbenchConnectionRow.process, order: order)
-            case "upload": return KeyPathComparator(\WorkbenchConnectionRow.upload, order: order)
-            case "download": return KeyPathComparator(\WorkbenchConnectionRow.download, order: order)
-            default: return nil
-            }
-        }
+              let revealedQuery = model.reveal(pending, input: presentationInput),
+              workspaceStore.consumeConnectionNavigation(
+                  controllerID: controllerID,
+                  generation: generation
+              ) != nil else { return }
+        searchText = revealedQuery
     }
 
     private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
@@ -981,8 +861,8 @@ struct WorkbenchConnectionsView: View {
         _ field: String,
         titleKey: String
     ) -> WorkbenchAccessibilitySortOption {
-        let stored = sortOrder
-            .compactMap(Self.connectionWorkspaceSort)
+        let stored = model.sortOrder
+            .compactMap(ConnectionsWorkspaceModel.workspaceSort)
             .first { $0.field == field }
         return WorkbenchAccessibilitySortOption(
             id: field,
@@ -992,7 +872,7 @@ struct WorkbenchConnectionsView: View {
     }
 
     private func activateAccessibilitySort(_ field: String, ascending: Bool) {
-        sortOrder = Self.connectionSortOrder(from: [
+        model.sortOrder = ConnectionsWorkspaceModel.sortOrder(from: [
             WorkbenchWorkspaceSort(
                 field: field,
                 ascending: ascending
@@ -1001,7 +881,7 @@ struct WorkbenchConnectionsView: View {
     }
 
     private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
-        let currentScope = WorkbenchTableAccessibilityScope(
+        let currentScope = WorkbenchSessionIdentity(
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         )
@@ -1009,10 +889,9 @@ struct WorkbenchConnectionsView: View {
 
         switch intent {
         case .selectRow(let id, _):
-            guard projectionCache.visibleIndex(id: id) != nil else { return }
-            selectedRowID = id
+            model.select(id, identity: currentScope)
         case .movePage(let lowerBound, _):
-            moveAccessibilityWindow(to: lowerBound)
+            model.moveAccessibilityWindow(to: lowerBound)
         case .setSort(let id, let ascending, _):
             activateAccessibilitySort(id, ascending: ascending)
         case .performNamedAction:
@@ -1020,49 +899,5 @@ struct WorkbenchConnectionsView: View {
         }
     }
 
-    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
-        accessibilityCursor.reconcile(
-            totalCount: rows.count,
-            revealing: selectionID,
-            indexOf: projectionCache.visibleIndex(id:),
-            idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
-        )
-    }
 
-    private func moveAccessibilityWindow(to lowerBound: Int) {
-        accessibilityCursor.move(
-            to: lowerBound,
-            totalCount: rows.count,
-            idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
-        )
-    }
-
-    private static func connectionWorkspaceSort(
-        _ comparator: KeyPathComparator<WorkbenchConnectionRow>
-    ) -> WorkbenchWorkspaceSort? {
-        let field: String
-        if comparator.keyPath == \WorkbenchConnectionRow.host {
-            field = "host"
-        } else if comparator.keyPath == \WorkbenchConnectionRow.process {
-            field = "process"
-        } else if comparator.keyPath == \WorkbenchConnectionRow.upload {
-            field = "upload"
-        } else if comparator.keyPath == \WorkbenchConnectionRow.download {
-            field = "download"
-        } else {
-            return nil
-        }
-        return WorkbenchWorkspaceSort(
-            field: field,
-            ascending: comparator.order == .forward
-        )
-    }
-
-    private var allRows: [WorkbenchConnectionRow] {
-        projectionCache.allRows
-    }
-
-    private var rows: [WorkbenchConnectionRow] {
-        projectionCache.visibleRows
-    }
 }

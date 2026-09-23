@@ -480,7 +480,7 @@ final class MihomoModelsTests: XCTestCase {
             ProxiesResponse.decodePreservingProxyOrder(from: data).proxies["Mixed"]
         )
 
-        XCTAssertEqual(proxy.type, "Proxy")
+        XCTAssertEqual(proxy.type, "")
         XCTAssertNil(proxy.now)
         XCTAssertEqual(proxy.all, ["Node"])
         XCTAssertNil(proxy.alive)

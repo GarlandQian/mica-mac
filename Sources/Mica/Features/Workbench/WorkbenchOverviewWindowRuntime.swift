@@ -41,7 +41,8 @@ final class OverviewTopologyRuntime {
     var presentation: OverviewTopologyPresentation?
     var availableWidth = 520
     var isPaused = false
-    var isExpanded = false
+    var displayMode = OverviewTopologyDisplayMode.overview
+    private(set) var focusedPaths: OverviewTopologyPathFocus?
     let interaction = OverviewTopologyInteractionState()
 
     @ObservationIgnored let presentationCache = OverviewTopologyPresentationCache()
@@ -51,6 +52,34 @@ final class OverviewTopologyRuntime {
 
     func togglePause() {
         isPaused.toggle()
+    }
+
+    func showCompleteGraph() {
+        focusedPaths = nil
+        displayMode = .complete
+        interaction.clearSelection()
+    }
+
+    func returnToOverview() {
+        focusedPaths = nil
+        displayMode = .overview
+        interaction.clearSelection()
+    }
+
+    func focusPaths(
+        for selection: OverviewTopologySelection,
+        presentation: OverviewTopologyPresentation,
+        language: AppLanguage
+    ) {
+        guard presentation.request.displayMode == .overview else { return }
+        let members = presentation.diagramIndex.highlight(for: selection).paths
+        let paths = members.compactMap { presentation.index.path(id: $0.id) }
+        guard !paths.isEmpty else { return }
+        focusedPaths = OverviewTopologyPathFocus(
+            structure: presentation.request.structure,
+            title: OverviewTopologyProjection.selectionLabel(selection, in: presentation.diagramIndex, language: language),
+            paths: paths
+        )
     }
 
     /// Controller-reported status per policy-hop node, memoized on the policy
@@ -83,6 +112,16 @@ final class OverviewTopologyRuntime {
         }
         nodeStatusCache = (policyRevision, topologyRevision, statuses)
         return statuses
+    }
+}
+
+struct OverviewTopologyPathFocus {
+    let structure: OverviewTopologyStructureRequest
+    let title: String
+    let paths: [ConnectionTopology.PathRecord]
+
+    func canNavigate(generation: UUID, revision: UInt64) -> Bool {
+        structure.generation == generation && structure.revision == revision
     }
 }
 

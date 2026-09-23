@@ -19,16 +19,33 @@ struct WorkbenchSourceFocusRail: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: MicaTheme.Spacing.space3) {
                 focusIdentity
+                    .frame(minWidth: 180)
                 lifecycleReadouts
+                    .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: MicaTheme.Spacing.space3)
                 actions
             }
 
             VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                focusIdentity
-                lifecycleReadouts
-                actions
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    focusIdentity
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: MicaTheme.Spacing.space2)
+                    actions
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                }
+
+                ScrollView(.horizontal) {
+                    lifecycleReadouts
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.bottom, MicaTheme.Spacing.space1)
+                }
+                .scrollIndicators(.automatic)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
         .padding(.vertical, MicaTheme.Spacing.space2)
@@ -51,42 +68,28 @@ struct WorkbenchSourceFocusRail: View {
                     .micaThemeFont(.label, weight: .semibold)
                     .lineLimit(1)
                     .textSelection(.enabled)
+                    .help(projection.name)
                 Text(verbatim: projection.configuration)
                     .micaThemeFont(.dataCaption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
+                    .help(projection.configuration)
             }
         }
-        .frame(minWidth: 180, maxWidth: 300, alignment: .leading)
+        .frame(minWidth: 0, maxWidth: 300, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
     private var lifecycleReadouts: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaTheme.Spacing.space4) {
-                updateReadout
-                itemReadout
-                updatedReadout
-                if supportsHealthCheck {
-                    healthReadout
-                }
-            }
-
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
-                HStack(spacing: MicaTheme.Spacing.space4) {
-                    updateReadout
-                    itemReadout
-                }
-                HStack(spacing: MicaTheme.Spacing.space4) {
-                    updatedReadout
-                    if supportsHealthCheck {
-                        healthReadout
-                    }
-                }
+        HStack(spacing: MicaTheme.Spacing.space4) {
+            updateReadout
+            itemReadout
+            updatedReadout
+            if supportsHealthCheck {
+                healthReadout
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var updateReadout: some View {
@@ -94,7 +97,7 @@ struct WorkbenchSourceFocusRail: View {
             titleKey: "traffic.provider_updatable",
             value: projection.updatableStatus,
             systemImage: "arrow.triangle.2.circlepath",
-            tint: supportsUpdate ? MicaTheme.statusOK : .secondary,
+            tint: MicaTheme.textSecondary,
             monospaced: false
         )
     }
@@ -124,9 +127,7 @@ struct WorkbenchSourceFocusRail: View {
             titleKey: "traffic.provider_health_check",
             value: projection.health ?? projection.healthAvailability,
             systemImage: "waveform.path.ecg",
-            tint: projection.health == nil
-                ? MicaTheme.textSecondary
-                : MicaTheme.statusOK,
+            tint: MicaTheme.textSecondary,
             monospaced: projection.health != nil
         )
     }
@@ -378,7 +379,7 @@ struct WorkbenchSourceInspector: View {
                         : "traffic.provider_updatable_no",
                     language: language
                 ),
-                statusTint: source.updatable ? MicaTheme.statusOK : .secondary,
+                statusTint: MicaTheme.textSecondary,
                 close: close
             ) {
                 WorkbenchDataInspectorSection("traffic.source_section_configuration") {

@@ -6,18 +6,28 @@ import SwiftUI
 struct OverviewTopologyStructureRequest: Hashable, Sendable {
     let generation: UUID
     let revision: UInt64
+    var projection: String = ""
+}
+
+enum OverviewTopologyDisplayMode: String, Hashable, Sendable {
+    case overview
+    case complete
 }
 
 struct OverviewTopologyRequest: Hashable, Sendable {
     let structure: OverviewTopologyStructureRequest
     let availableWidth: Int
     let minimumFlowHeight: Int
+    let displayMode: OverviewTopologyDisplayMode
+    let languageID: String
 
     init(
         generation: UUID,
         revision: UInt64,
         availableWidth: Int,
-        minimumFlowHeight: Int = 352
+        minimumFlowHeight: Int = 352,
+        displayMode: OverviewTopologyDisplayMode = .complete,
+        languageID: String = "en"
     ) {
         structure = OverviewTopologyStructureRequest(
             generation: generation,
@@ -25,10 +35,19 @@ struct OverviewTopologyRequest: Hashable, Sendable {
         )
         self.availableWidth = availableWidth
         self.minimumFlowHeight = minimumFlowHeight
+        self.displayMode = displayMode
+        self.languageID = languageID
     }
 
     var generation: UUID { structure.generation }
     var revision: UInt64 { structure.revision }
+    var diagramStructure: OverviewTopologyStructureRequest {
+        OverviewTopologyStructureRequest(
+            generation: generation,
+            revision: revision,
+            projection: "\(displayMode.rawValue):\(languageID)"
+        )
+    }
 }
 
 enum OverviewTopologyHeightReservation {
@@ -40,9 +59,19 @@ enum OverviewTopologyHeightReservation {
     }
 }
 
-enum OverviewTopologyResponsiveHeight {
-    static func minimumFlowHeight(forAvailableWidth availableWidth: CGFloat) -> CGFloat {
-        min(max(max(availableWidth, 1) * 0.36, 480), 680)
+enum OverviewTopologyViewportSizing {
+    static func height(
+        displayMode: OverviewTopologyDisplayMode,
+        requestedHeight: CGFloat,
+        contentHeight: CGFloat
+    ) -> CGFloat {
+        let requested = requestedHeight.isFinite ? max(requestedHeight, 0) : 0
+        guard displayMode == .overview else {
+            return min(max(requested, 280), 500)
+        }
+        let budget = min(max(requested, 180), 440)
+        let content = contentHeight.isFinite ? max(contentHeight, 0) : 0
+        return min(max(content, 180), budget)
     }
 }
 
@@ -50,12 +79,18 @@ struct OverviewTopologyPresentation {
     let request: OverviewTopologyRequest
     let topology: ConnectionTopology
     let index: OverviewTopologyIndex
+    let summary: OverviewTopologySummary
+    let diagram: ConnectionTopology
+    let diagramIndex: OverviewTopologyIndex
     let layout: OverviewTopologyLayout
 
     func canRemainVisible(whileResolving request: OverviewTopologyRequest) -> Bool {
+        // The viewport clips and scrolls the previous geometry safely. Hiding
+        // a tall graph on width shrink removes its vertical scrollbar, grows
+        // the viewport again, and can cycle forever between loading and graph.
         self.request.generation == request.generation
-            && self.request.availableWidth <= request.availableWidth
-            && self.request.minimumFlowHeight <= request.minimumFlowHeight
+            && self.request.displayMode == request.displayMode
+            && self.request.languageID == request.languageID
     }
 }
 
@@ -73,11 +108,16 @@ final class OverviewTopologyPresentationCache {
         let request: OverviewTopologyStructureRequest
         let topology: ConnectionTopology
         let index: OverviewTopologyIndex
+        let summary: OverviewTopologySummary
+        let summaryIndex: OverviewTopologyIndex
+        let languageID: String
+        var ordering: [OverviewTopologyDisplayMode: [[ConnectionTopology.Node]]]
     }
 
     private var graph: GraphPresentation?
     private var cachedPresentation: OverviewTopologyPresentation?
     private(set) var statistics = Statistics()
+    private(set) var orderingPreparationCount = 0
 
     func resolve(
         request: OverviewTopologyRequest,
@@ -88,9 +128,27 @@ final class OverviewTopologyPresentationCache {
             return cachedPresentation
         }
 
-        let graphPresentation: GraphPresentation
+        var graphPresentation: GraphPresentation
         if let graph, graph.request == request.structure {
-            graphPresentation = graph
+            if graph.languageID == request.languageID {
+                graphPresentation = graph
+            } else {
+                // A paused/focused diagram owns an older structural snapshot.
+                // Relabel that snapshot; never rebuild it from a newer input
+                // array while keeping the captured revision on the request.
+                let summary = try await buildSummary(topology: graph.topology, languageID: request.languageID)
+                try Task.checkCancellation()
+                graphPresentation = GraphPresentation(
+                    request: graph.request,
+                    topology: graph.topology,
+                    index: graph.index,
+                    summary: summary,
+                    summaryIndex: OverviewTopologyIndex(topology: summary.diagram),
+                    languageID: request.languageID,
+                    ordering: graph.ordering.filter { $0.key == .complete }
+                )
+                self.graph = graphPresentation
+            }
             statistics.structureReuseCount += 1
         } else {
             statistics.topologyBuildCount += 1
@@ -109,6 +167,7 @@ final class OverviewTopologyPresentationCache {
                 )
                 try Task.checkCancellation()
                 let index = OverviewTopologyIndex(topology: topology)
+                let summary = try await buildSummary(topology: topology, languageID: request.languageID)
                 try Task.checkCancellation()
                 MicaPerformanceObservation.endInterval(
                     interval,
@@ -122,7 +181,11 @@ final class OverviewTopologyPresentationCache {
                 let nextGraph = GraphPresentation(
                     request: request.structure,
                     topology: topology,
-                    index: index
+                    index: index,
+                    summary: summary,
+                    summaryIndex: OverviewTopologyIndex(topology: summary.diagram),
+                    languageID: request.languageID,
+                    ordering: [:]
                 )
                 graph = nextGraph
                 cachedPresentation = nil
@@ -140,22 +203,53 @@ final class OverviewTopologyPresentationCache {
             }
         }
 
+        let diagram = request.displayMode == .overview
+            ? graphPresentation.summary.diagram : graphPresentation.topology
+        let diagramIndex = request.displayMode == .overview
+            ? graphPresentation.summaryIndex : graphPresentation.index
+        let orderedColumns: [[ConnectionTopology.Node]]
+        if let cached = graphPresentation.ordering[request.displayMode] {
+            orderedColumns = cached
+        } else {
+            orderedColumns = try await OverviewTopologyOrdering.prepare(in: diagram)
+            orderingPreparationCount += 1
+            graphPresentation.ordering[request.displayMode] = orderedColumns
+            graph = graphPresentation
+        }
         statistics.layoutBuildCount += 1
         let layout = try await OverviewTopologyLayoutBuilder.buildCancellable(
-            topology: graphPresentation.topology,
+            topology: diagram,
             availableWidth: CGFloat(request.availableWidth),
             minimumFlowHeight: CGFloat(request.minimumFlowHeight),
-            revision: request.revision
+            orderedColumns: orderedColumns,
+            revision: request.revision,
+            fitsOverviewWidth: request.displayMode == .overview
         )
         try Task.checkCancellation()
         let presentation = OverviewTopologyPresentation(
             request: request,
             topology: graphPresentation.topology,
             index: graphPresentation.index,
+            summary: graphPresentation.summary,
+            diagram: diagram,
+            diagramIndex: diagramIndex,
             layout: layout
         )
         cachedPresentation = presentation
         return presentation
+    }
+
+    private func buildSummary(topology: ConnectionTopology, languageID: String) async throws -> OverviewTopologySummary {
+        let language = AppLanguage.stored(languageID)
+        return try await OverviewTopologySummary.build(
+            topology: topology,
+            labels: .init(
+                unknownSource: MicaStrings.localizedKey("overview.topology_unknown_source", language: language),
+                unknownEntry: MicaStrings.localizedKey("overview.topology_unknown_entry", language: language),
+                unknownOutbound: MicaStrings.localizedKey("overview.topology_unknown_outbound", language: language),
+                other: MicaStrings.localizedKey("overview.topology_other", language: language)
+            )
+        )
     }
 }
 
@@ -554,6 +648,7 @@ struct OverviewTopologyLayout: Sendable {
     struct ColumnGeometry: Sendable {
         let id: ConnectionTopology.Column.ID
         let centerX: CGFloat
+        var nodeCount: Int = 0
     }
 
     struct NodeGeometry: Sendable {
@@ -568,6 +663,8 @@ struct OverviewTopologyLayout: Sendable {
         let labelSide: LabelSide
         let hitRect: CGRect
         let drawingPath: Path
+
+        var attachmentRect: CGRect { rect.insetBy(dx: 0, dy: 8) }
     }
 
     struct EdgeHitSegment: Sendable {
@@ -674,7 +771,7 @@ struct OverviewTopologyLayout: Sendable {
     }
 
     static let renderBandHeight: CGFloat = 352
-    static let columnHeaderHeight: CGFloat = 40
+    static let columnHeaderHeight: CGFloat = 44
     fileprivate static let hitCellSize: CGFloat = 96
 
     let size: CGSize
@@ -765,6 +862,7 @@ struct OverviewTopologyViewportTarget: Equatable, Sendable {
 
     let id: ID
     let centerX: CGFloat
+    var centerY: CGFloat? = nil
 }
 
 enum OverviewTopologyViewportTargetResolver {
@@ -782,20 +880,29 @@ enum OverviewTopologyViewportTargetResolver {
             guard let geometry = layout.nodeGeometry(id: nodeID) else { return nil }
             return OverviewTopologyViewportTarget(
                 id: .node(nodeID),
-                centerX: geometry.rect.midX
+                centerX: geometry.rect.midX,
+                centerY: geometry.rect.midY
             )
         case .edge(let edgeID):
             guard let edge = index.edge(id: edgeID),
                   let centerX = edgeCenterX(edge, layout: layout) else {
                 return nil
             }
-            return OverviewTopologyViewportTarget(id: .edge(edgeID), centerX: centerX)
+            let sourceY = layout.nodeGeometry(id: edge.sourceID)?.rect.midY
+            let targetY = layout.nodeGeometry(id: edge.targetID)?.rect.midY
+            let centerY = sourceY.flatMap { sourceY in targetY.map { (sourceY + $0) / 2 } }
+            return OverviewTopologyViewportTarget(id: .edge(edgeID), centerX: centerX, centerY: centerY)
         case .path(let pathID):
             guard let path = index.path(id: pathID),
                   let centerX = pathCenterX(path, index: index, layout: layout) else {
                 return nil
             }
-            return OverviewTopologyViewportTarget(id: .path(pathID), centerX: centerX)
+            let anchorStage = path.stages.first { stage in
+                if case .policyHop = stage.columnID { return true }
+                return false
+            } ?? path.stages.first
+            let centerY = anchorStage.flatMap { layout.nodeGeometry(id: $0.nodeID)?.rect.midY }
+            return OverviewTopologyViewportTarget(id: .path(pathID), centerX: centerX, centerY: centerY)
         }
     }
 
@@ -829,6 +936,21 @@ enum OverviewTopologyViewportTargetResolver {
         )
         guard abs(nextOffset - visibleRect.minX) > 0.5 else { return nil }
         return nextOffset
+    }
+
+    static func contentOffsetY(
+        for target: OverviewTopologyViewportTarget,
+        visibleRect: CGRect,
+        contentHeight: CGFloat,
+        margin: CGFloat = acquisitionMargin
+    ) -> CGFloat? {
+        guard let centerY = target.centerY,
+              visibleRect.height > 0,
+              contentHeight > visibleRect.height + 1 else { return nil }
+        let boundedMargin = min(max(margin, 0), max(visibleRect.height / 2 - 1, 0))
+        guard !(visibleRect.minY + boundedMargin...visibleRect.maxY - boundedMargin).contains(centerY) else { return nil }
+        let offset = min(max(centerY - visibleRect.height / 2, 0), max(contentHeight - visibleRect.height, 0))
+        return abs(offset - visibleRect.minY) > 0.5 ? offset : nil
     }
 
     private static func pathCenterX(
@@ -877,8 +999,8 @@ enum OverviewTopologyFlowScale {
     }
 
     static func nodeHeight(forConnectionCount connectionCount: Int) -> CGFloat {
-        let projected = 18 + CGFloat(log10(Double(max(connectionCount, 0)) + 1) * 4)
-        return min(max(projected, 20), 30)
+        let projected = 32 + CGFloat(log10(Double(max(connectionCount, 0)) + 1) * 3)
+        return min(max(projected, 36), 44)
     }
 
     static func edgeWidth(forConnectionCount connectionCount: Int) -> CGFloat {
@@ -887,18 +1009,26 @@ enum OverviewTopologyFlowScale {
     }
 }
 
+/// Branching density controls ink, without removing edges or changing counts.
+struct OverviewTopologyDensityStyle: Equatable {
+    let edgeOpacity: Double
+    let maximumLineWidth: CGFloat
+
+    init(edgeCount: Int, nodeCount: Int) {
+        let branching = max(Double(edgeCount) / Double(max(nodeCount, 1)), 1)
+        edgeOpacity = max(0.14, 0.48 / pow(branching, 0.65))
+        maximumLineWidth = max(1.25, 4 / sqrt(branching))
+    }
+}
+
 enum OverviewTopologyLayoutBuilder {
     private static let edgeHitTolerance: CGFloat = 10
     private static let minimumNodeAcquisitionSize: CGFloat = 28
-    private static let routeNodeWidth: CGFloat = 12
-    /// Task 08-23 R10: long chains widen the graph past the panel instead of
-    /// crushing labels into truncation; the viewport scrolls horizontally.
-    /// A preferred ceiling prevents ordinary graphs from stretching across an
-    /// ultrawide window while the 168pt floor still protects long chains.
-    private static let minimumColumnStep: CGFloat = 168
-    private static let preferredMaximumColumnStep: CGFloat = 320
-    private static let routeNodeGap: CGFloat = 8
-    private static let nodeLabelGap: CGFloat = 8
+    private static let minimumNodeWidth: CGFloat = 144
+    private static let maximumNodeWidth: CGFloat = 184
+    private static let minimumRouteGap: CGFloat = 48
+    private static let preferredMaximumColumnStep: CGFloat = 288
+    private static let routeNodeGap: CGFloat = 12
     private static let routeCurveness: CGFloat = 0.5
     /// The graph always connects adjacent columns. Eight subdivisions keep the
     /// polyline approximation comfortably inside the pointer hit corridor and
@@ -910,7 +1040,9 @@ enum OverviewTopologyLayoutBuilder {
         topology: ConnectionTopology,
         availableWidth: CGFloat,
         minimumFlowHeight: CGFloat = 352,
-        revision: UInt64 = 0
+        orderedColumns: [[ConnectionTopology.Node]]? = nil,
+        revision: UInt64 = 0,
+        fitsOverviewWidth: Bool = false
     ) async throws -> OverviewTopologyLayout {
         let interval = MicaPerformanceObservation.beginInterval(
             .topologyLayout,
@@ -925,7 +1057,9 @@ enum OverviewTopologyLayoutBuilder {
             let layout = try await build(
                 topology: topology,
                 availableWidth: availableWidth,
-                minimumFlowHeight: minimumFlowHeight
+                minimumFlowHeight: minimumFlowHeight,
+                preparedColumns: orderedColumns,
+                fitsOverviewWidth: fitsOverviewWidth
             )
             MicaPerformanceObservation.endInterval(
                 interval,
@@ -959,74 +1093,32 @@ enum OverviewTopologyLayoutBuilder {
     private static func build(
         topology: ConnectionTopology,
         availableWidth: CGFloat,
-        minimumFlowHeight: CGFloat
+        minimumFlowHeight: CGFloat,
+        preparedColumns: [[ConnectionTopology.Node]]?,
+        fitsOverviewWidth: Bool
     ) async throws -> OverviewTopologyLayout {
         let topInset = OverviewTopologyLayout.columnHeaderHeight + 12
-        let sideInset: CGFloat = 20
-        let bottomInset: CGFloat = 32
+        let sideInset: CGFloat = fitsOverviewWidth ? 12 : 24
+        let bottomInset: CGFloat = 20
         let fittedWidth = max(availableWidth.rounded(.down), 1)
 
         var workCount = 0
-        var edgeFlowByID: [String: CGFloat] = [:]
         var edgeAttachmentWeightByID: [String: CGFloat] = [:]
         var incomingEdgesByNodeID: [String: [ConnectionTopology.Edge]] = [:]
         var outgoingEdgesByNodeID: [String: [ConnectionTopology.Edge]] = [:]
-        edgeFlowByID.reserveCapacity(topology.edges.count)
         edgeAttachmentWeightByID.reserveCapacity(topology.edges.count)
         incomingEdgesByNodeID.reserveCapacity(topology.nodes.count)
         outgoingEdgesByNodeID.reserveCapacity(topology.nodes.count)
 
         for edge in topology.edges {
             try await checkpoint(&workCount)
-            let flow = OverviewTopologyFlowScale.value(
-                forConnectionCount: edge.connectionCount
-            )
-            edgeFlowByID[edge.id] = flow
             edgeAttachmentWeightByID[edge.id] = CGFloat(max(edge.connectionCount, 1))
             incomingEdgesByNodeID[edge.targetID, default: []].append(edge)
             outgoingEdgesByNodeID[edge.sourceID, default: []].append(edge)
         }
 
-        // Flow-following node order (task 08-23 R8): the first column keeps
-        // name order; every later column sorts by the flow-weighted mean slot
-        // of its upstream neighbors (barycenter), so parallel flows become
-        // near-parallel edges instead of maximal crossings. Name order breaks
-        // ties, keeping the layout fully deterministic.
-        var orderedColumns: [[ConnectionTopology.Node]] = []
-        orderedColumns.reserveCapacity(topology.columns.count)
-        var slotByNodeID: [String: Int] = [:]
-        for (columnIndex, column) in topology.columns.enumerated() {
-            let ordered: [ConnectionTopology.Node]
-            if columnIndex == 0 {
-                ordered = column.nodes.sorted(by: routeNodeOrder)
-            } else {
-                let barycenterKeys = Dictionary(
-                    uniqueKeysWithValues: column.nodes.map { node in
-                        (
-                            node.id,
-                            barycenterKey(
-                                for: node,
-                                incomingEdgesByNodeID: incomingEdgesByNodeID,
-                                edgeFlowByID: edgeFlowByID,
-                                slotByNodeID: slotByNodeID
-                            )
-                        )
-                    }
-                )
-                ordered = column.nodes.sorted { left, right in
-                    let leftKey = barycenterKeys[left.id] ?? .greatestFiniteMagnitude
-                    let rightKey = barycenterKeys[right.id] ?? .greatestFiniteMagnitude
-                    if leftKey != rightKey {
-                        return leftKey < rightKey
-                    }
-                    return routeNodeOrder(left, right)
-                }
-            }
-            for (slot, node) in ordered.enumerated() {
-                slotByNodeID[node.id] = slot
-            }
-            orderedColumns.append(ordered)
-        }
+        let orderedColumns = try preparedColumns ?? OverviewTopologyOrdering.orderedColumns(in: topology)
+        try Task.checkCancellation()
 
         let columnPlans = topology.columns.enumerated().map { columnIndex, column in
             let orderedNodes = orderedColumns[columnIndex]
@@ -1042,18 +1134,26 @@ enum OverviewTopologyLayoutBuilder {
                 requiredHeight: nodeHeight + gaps
             )
         }
-        let flowAreaHeight = max(
-            max(minimumFlowHeight, 0),
-            columnPlans.map(\.requiredHeight).max() ?? 0
-        )
+        let requiredHeight = columnPlans.map(\.requiredHeight).max() ?? 0
+        // An overview's height follows its bounded rows, not the window. The
+        // viewport clips dense maps; full path exploration keeps its existing
+        // density and height rules.
+        let flowAreaHeight = fitsOverviewWidth
+            ? max(requiredHeight, 104)
+            : max(requiredHeight, min(max(minimumFlowHeight, 0), max(requiredHeight * 1.25, 160)))
         let graphHeight = topInset + flowAreaHeight + bottomInset
         let columnCount = max(columnPlans.count, 1)
         let columnIntervalCount = CGFloat(max(columnCount - 1, 0))
+        let routeGap: CGFloat = fitsOverviewWidth ? min(32, fittedWidth * 0.06) : minimumRouteGap
+        let minimumWidth: CGFloat = fitsOverviewWidth ? 1 : minimumNodeWidth
+        let routeNodeWidth = min(maximumNodeWidth, max(minimumWidth,
+            (fittedWidth - sideInset * 2 - routeGap * columnIntervalCount) / CGFloat(columnCount)))
+        let minimumColumnStep = routeNodeWidth + routeGap
         let minimumGraphWidth = sideInset * 2 + routeNodeWidth
             + minimumColumnStep * columnIntervalCount
         let preferredGraphWidth = sideInset * 2 + routeNodeWidth
             + preferredMaximumColumnStep * columnIntervalCount
-        let graphWidth = columnCount > 1
+        let graphWidth = fitsOverviewWidth ? fittedWidth : columnCount > 1
             ? min(max(fittedWidth, minimumGraphWidth), preferredGraphWidth)
             : fittedWidth
         let usableColumnSpan = max(
@@ -1078,7 +1178,8 @@ enum OverviewTopologyLayoutBuilder {
             columns.append(
                 OverviewTopologyLayout.ColumnGeometry(
                     id: plan.column.id,
-                    centerX: centerX
+                    centerX: centerX,
+                    nodeCount: plan.nodes.count
                 )
             )
             for node in plan.nodes {
@@ -1092,38 +1193,13 @@ enum OverviewTopologyLayoutBuilder {
                     width: routeNodeWidth,
                     height: nodeHeight
                 )
-                let isTerminalColumn = columnIndex == columnPlans.count - 1
-                let labelWidth = columnPlans.count > 1
-                    ? max(columnStep - routeNodeWidth - nodeLabelGap * 2, 12)
-                    : max(
-                        graphWidth - sideInset * 2 - routeNodeWidth - nodeLabelGap,
-                        12
-                    )
-                let labelHeight = max(min(nodeHeight, 28), 18)
                 let labelRect = CGRect(
-                    x: isTerminalColumn
-                        ? max(rect.minX - labelWidth - nodeLabelGap, 0)
-                        : rect.maxX + nodeLabelGap,
-                    y: rect.midY - labelHeight / 2,
-                    width: labelWidth,
-                    height: labelHeight
+                    x: rect.minX + 34,
+                    y: rect.midY - 14,
+                    width: routeNodeWidth - 48,
+                    height: 28
                 )
-                let labelHitWidth = min(
-                    labelWidth,
-                    max(
-                        minimumNodeAcquisitionSize - routeNodeWidth,
-                        min(CGFloat(node.name.count) * 7 + 10, 160)
-                    )
-                )
-                let labelHitRect = CGRect(
-                    x: isTerminalColumn
-                        ? labelRect.maxX - labelHitWidth
-                        : labelRect.minX,
-                    y: labelRect.minY,
-                    width: labelHitWidth,
-                    height: labelRect.height
-                )
-                let interactiveContentRect = rect.union(labelHitRect)
+                let interactiveContentRect = rect
                 let hitRect = interactiveContentRect.insetBy(
                     dx: -max(
                         (minimumNodeAcquisitionSize - interactiveContentRect.width) / 2,
@@ -1140,11 +1216,11 @@ enum OverviewTopologyLayoutBuilder {
                         node: node,
                         rect: rect,
                         labelRect: labelRect,
-                        labelSide: isTerminalColumn ? .trailing : .leading,
+                        labelSide: .leading,
                         hitRect: hitRect,
                         drawingPath: Path(
                             roundedRect: rect,
-                            cornerRadius: min(4, nodeHeight / 2)
+                            cornerRadius: 8
                         )
                     )
                 )
@@ -1176,13 +1252,13 @@ enum OverviewTopologyLayoutBuilder {
             }
             assignEdgeCenters(
                 outgoing,
-                in: node.rect,
+                in: node.attachmentRect,
                 edgeAttachmentWeightByID: edgeAttachmentWeightByID,
                 result: &sourceYByEdgeID
             )
             assignEdgeCenters(
                 incoming,
-                in: node.rect,
+                in: node.attachmentRect,
                 edgeAttachmentWeightByID: edgeAttachmentWeightByID,
                 result: &targetYByEdgeID
             )
@@ -1767,12 +1843,9 @@ enum OverviewTopologyHeaderGeometry {
     /// keep a visible gap even when both fill their slices.
     private static let titleGutter: CGFloat = 8
 
-    /// Horizontal slice a column title may occupy. Closed form (task 08-23):
-    /// capped by the band width, by twice the distance to each band edge (so
-    /// `clampedCenter` never has to push the center inward - the push used to
-    /// be what collided with neighbors), and by the distance to each adjacent
-    /// column center (so neighboring half-slices never overlap), minus a
-    /// gutter.
+    /// Interior titles stay centered between their neighbors. Edge titles can
+    /// move inward, using the space up to the neighboring column's midpoint
+    /// instead of being squeezed into the narrow node-to-panel margin.
     static func sliceWidth(
         for column: OverviewTopologyLayout.ColumnGeometry,
         in band: OverviewTopologyLayout.RenderBand
@@ -1784,13 +1857,17 @@ enum OverviewTopologyHeaderGeometry {
         let bandWidth = max(band.bounds.width, 1)
         let centerX = column.centerX - band.bounds.minX
         var slice = bandWidth
-        slice = min(slice, 2 * max(centerX, 0))
-        slice = min(slice, 2 * max(bandWidth - centerX, 0))
         if index > 0 {
             slice = min(slice, abs(centers[index] - centers[index - 1]))
+        } else if centers.count > 1 {
+            let nextGap = abs(centers[1] - centers[0])
+            slice = min(slice, max(centerX, 0) + nextGap / 2)
         }
         if index < centers.count - 1 {
             slice = min(slice, abs(centers[index + 1] - centers[index]))
+        } else if index > 0 {
+            let previousGap = abs(centers[index] - centers[index - 1])
+            slice = min(slice, max(bandWidth - centerX, 0) + previousGap / 2)
         }
         return max(slice - titleGutter, 1)
     }

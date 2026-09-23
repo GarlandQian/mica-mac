@@ -6,7 +6,8 @@ import SwiftUI
 
 extension View {
     func micaWorkbenchTable(accessibilityLabel: String) -> some View {
-        tableStyle(.bordered(alternatesRowBackgrounds: true))
+        tableStyle(.bordered)
+            .alternatingRowBackgrounds(.disabled)
             .scrollContentBackground(.hidden)
             .background(MicaTheme.canvas)
             .tint(MicaTheme.accent)

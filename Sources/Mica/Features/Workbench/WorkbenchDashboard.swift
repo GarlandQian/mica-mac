@@ -109,6 +109,11 @@ private struct OverviewFixedCanvas: View {
         GeometryReader { geometry in
             let pagePadding = MicaTheme.Metrics.pagePadding(for: geometry.size.width)
             let availableWidth = max(geometry.size.width - pagePadding * 2, 0)
+            let layout = OverviewViewportLayout(
+                width: availableWidth,
+                height: geometry.size.height,
+                metricCount: preferences.visibleMetrics.count
+            )
             let telemetryRuntime = overviewRuntime.registry.telemetryRuntime(
                 controllerID: controllerID,
                 generation: generation,
@@ -121,16 +126,17 @@ private struct OverviewFixedCanvas: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: MicaTheme.Spacing.space5) {
+                    OverviewTopologySection(
+                        runtime: topologyRuntime,
+                        minimumFlowHeight: layout.topologyMinimumHeight,
+                        destination: $destination
+                    )
+
                     OverviewTelemetrySection(
-                        availableWidth: availableWidth,
+                        layout: layout,
                         visibleMetrics: preferences.visibleMetrics,
                         preferredTimelineWindow: preferences.timelineWindow,
                         runtime: telemetryRuntime
-                    )
-
-                    OverviewTopologySection(
-                        runtime: topologyRuntime,
-                        destination: $destination
                     )
 
                     ForEach(visibleOptionalModules) { module in
@@ -214,8 +220,6 @@ struct OverviewSymbolMark: View {
     let size: Size
 
     var body: some View {
-        // Flat Mica Ops mark: one semantic tint on a surface plate with a
-        // hairline border. No gradients, no glow (design.md §2 anti-goals).
         Image(systemName: systemName)
             .symbolRenderingMode(.hierarchical)
             .font(size.font)

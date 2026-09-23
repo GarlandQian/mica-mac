@@ -2,9 +2,7 @@ import SwiftUI
 
 // MARK: - Panel
 
-/// Flat Mica Ops panel (design.md §2/§3): surface fill, 6pt corner radius, and
-/// a 1px separator-token border. No shadow in either appearance - elevation is
-/// expressed by hairlines only.
+/// A bounded tool surface with a subtle border.
 struct MicaPanel<Content: View>: View {
     var fill: Color = MicaTheme.surface
     var padding: CGFloat = MicaTheme.Spacing.panelPadding
@@ -33,7 +31,7 @@ struct MicaPanel<Content: View>: View {
 }
 
 extension View {
-    /// Wraps the view in a flat Mica Ops panel.
+    /// Wraps the view in a bounded tool surface.
     func micaPanel(
         fill: Color = MicaTheme.surface,
         padding: CGFloat = MicaTheme.Spacing.panelPadding,
@@ -45,7 +43,7 @@ extension View {
 
 // MARK: - Hairline separator
 
-/// 1px separator-token rule. The only divider in the Mica Ops system.
+/// A separator that follows the current appearance.
 struct MicaHairlineSeparator: View {
     var axis: Axis = .horizontal
     var color: Color = MicaTheme.separator
@@ -213,12 +211,7 @@ struct MicaEmptyState: View {
 }
 
 
-// MARK: - Relocated Workbench primitives (Phase 4B)
-
-// The 19 shared Workbench primitives below moved out of the deleted
-// workbench visual-system file with every type name, initializer signature,
-// and member API kept byte-compatible; only the internals were restyled from
-// the previous design system onto MicaTheme tokens.
+// MARK: - Workbench primitives
 
 /// Subtle press feedback for icon commands and tappable rows.
 struct WorkbenchPressableButtonStyle: ButtonStyle {
@@ -436,15 +429,17 @@ struct WorkbenchPageScaffold<Commands: View, Content: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            commands
-                // Command, status, and supplementary chrome must keep its
-                // intrinsic height; only the page content fills the remainder.
-                .fixedSize(horizontal: false, vertical: true)
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(MicaTheme.canvas)
-                .layoutPriority(1)
+        // The split view supplies the viewport. Intrinsic measurements of a
+        // wrapping command bar must not become the window's minimum height.
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                commands
+                    .fixedSize(horizontal: false, vertical: true)
+                content
+                    .frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+                    .background(MicaTheme.canvas)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
         .background(MicaTheme.canvas)
     }
@@ -489,6 +484,7 @@ struct WorkbenchCommandBar<Summary: View, Controls: View, Commands: View>: View 
                 controls
             }
         }
+        .padding(.vertical, MicaTheme.Spacing.space1)
         .frame(
             maxWidth: .infinity,
             minHeight: MicaTheme.Metrics.commandBarHeight,
@@ -559,7 +555,7 @@ struct WorkbenchCommandSummary: View {
     private var summaryTitle: some View {
         HStack(spacing: MicaTheme.Spacing.space1) {
             Text(verbatim: value)
-                .micaThemeFont(.label, weight: .semibold)
+                .micaThemeFont(.dataLabel, weight: .semibold)
             Text(
                 MicaStrings.localizedKey(
                     titleKey,
@@ -578,8 +574,7 @@ struct WorkbenchSection<Content: View>: View {
     let titleKey: String
     var systemImage: String?
     var detailKey: String?
-    /// Grouped sections sit on the canvas fill with no raised surface; raised
-    /// sections keep the flat content band for data-reuse views.
+    /// Grouped sections sit directly on the page background.
     var grouped = false
     private let content: Content
 
@@ -640,9 +635,7 @@ struct WorkbenchSection<Content: View>: View {
 }
 
 struct WorkbenchContentBand<Content: View>: View {
-    /// Grouped surfaces sit on the canvas fill with hairline row separators;
-    /// raised surfaces keep the flat Mica Ops surface fill for data pages and
-    /// summaries that need stronger separation.
+    /// Raised bands distinguish summaries from grouped form rows.
     enum Surface {
         case grouped
         case raised

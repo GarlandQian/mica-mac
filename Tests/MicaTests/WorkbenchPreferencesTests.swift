@@ -138,10 +138,9 @@ struct WorkbenchPreferencesTests {
             $0.filters = ["scope": "active"]
             $0.sort = [WorkbenchWorkspaceSort(field: "upload", ascending: false)]
             $0.activeTab = "closed"
-            $0.groupFilters = ["group-a": "edge"]
-            $0.openGroupIDs = ["session-group"]
             $0.activeGroupID = "session-group"
-            $0.selectedGroupMemberIDs = ["session-group": "node-a"]
+            $0.proxyMemberQuery = "edge"
+            $0.inspectedProxyMemberID = "node-a"
         }
 
         #expect(store.hasPendingPersistence)
@@ -182,12 +181,11 @@ struct WorkbenchPreferencesTests {
                 == [WorkbenchWorkspaceSort(field: "upload", ascending: false)]
         )
         #expect(restored.activeTab == "closed")
-        #expect(restored.groupFilters == ["group-a": "edge"])
         #expect(restored.selectedItemID == nil)
         #expect(restored.scrollAnchorID == nil)
-        #expect(restored.openGroupIDs.isEmpty)
         #expect(restored.activeGroupID == nil)
-        #expect(restored.selectedGroupMemberIDs.isEmpty)
+        #expect(restored.proxyMemberQuery.isEmpty)
+        #expect(restored.inspectedProxyMemberID == nil)
 
         restoredStore.update(controllerID: controllerID, destination: .connections) {
             $0.searchText = "query-99"

@@ -13,14 +13,7 @@ struct WorkbenchRulesView: View {
     @Binding var destination: WorkbenchDestination
     @Binding var searchText: String
 
-    @State private var projectionCache = WorkbenchRuleProjectionCache()
-    @State private var selectedRowID: String?
-    @State private var sortOrder: [KeyPathComparator<WorkbenchRuleRow>] = []
-    @State private var restoredScrollAnchorID: String?
-    @State private var scrollRequest: WorkbenchDataScrollRequest?
-    @State private var tableInteraction = WorkbenchDataInteractionCoordinator()
-    @State private var isProjectionActive = false
-    @State private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
+    @State private var model = RulesWorkspaceModel()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 980,
@@ -32,7 +25,7 @@ struct WorkbenchRulesView: View {
             staleMessage: localizedStaleMessage,
             commands: { commandBar },
             supplementary: {
-                if let selectedRow {
+                if let selectedRow = model.selectedRow {
                     WorkbenchRuleDecisionPathRail(
                         projection: WorkbenchRuleDecisionPathProjection(
                             row: selectedRow
@@ -48,74 +41,45 @@ struct WorkbenchRulesView: View {
             pageContent
         }
         .onAppear {
-            let projectionCacheBinding = $projectionCache
-            let selectedRowIDBinding = $selectedRowID
+            let pageModel = model
             workspaceStore.ruleRowResolver = { type, payload in
-                let cache = projectionCacheBinding.wrappedValue
-                if let selected = cache.row(id: selectedRowIDBinding.wrappedValue),
-                   selected.rule.type == type,
-                   selected.rule.payload == payload {
-                    return selected
-                }
-                return WorkbenchRuleInspectorResolver.resolve(
-                    type: type,
-                    payload: payload,
-                    in: cache.allRows
-                )
+                pageModel.inspectorRow(type: type, payload: payload)
             }
-            if let selectedRowID, let row = projectionCache.row(id: selectedRowID) {
-                workspaceStore.selectInspector(
-                    .rule(type: row.rule.type, payload: row.rule.payload)
-                )
-            }
-            isProjectionActive = true
             restoreWorkspace()
-            rebuildRows(reconcileSelection: true, update: .source)
+            model.update(presentationInput)
             consumeRuleNavigation()
         }
         .onDisappear {
             workspaceStore.ruleRowResolver = nil
-            isProjectionActive = false
+            model.deactivate()
         }
-        .onChange(of: appModel.selectedRouterID) {
-            projectionCache.reset()
-            scrollRequest = nil
-            accessibilityCursor.reset()
+        .onChange(of: sessionIdentity) {
             restoreWorkspace()
-            rebuildRows(reconcileSelection: true, update: .source)
-            consumeRuleNavigation()
-        }
-        .onChange(of: appModel.controllerSessionPresentation.generation) {
-            projectionCache.reset()
-            scrollRequest = nil
-            accessibilityCursor.reset()
-            restoreWorkspace()
-            rebuildRows(reconcileSelection: true, update: .source)
+            model.update(presentationInput)
             consumeRuleNavigation()
         }
         .onChange(of: appModel.rulesCatalog.rules) {
-            rebuildRows(reconcileSelection: true, update: .source)
+            model.update(presentationInput)
             consumeRuleNavigation()
         }
         .onChange(of: appModel.connectionsStructureRevision) {
-            rebuildRows(reconcileSelection: true, update: .connectionStructure)
+            model.update(presentationInput)
         }
         .onChange(of: searchText) {
-            rebuildRows(reconcileSelection: true, update: .visibleOnly)
+            model.update(presentationInput)
             consumeRuleNavigation()
         }
-        .onChange(of: sortOrder) {
+        .onChange(of: model.sortOrder) {
             persistSortOrder()
-            rebuildRows(reconcileSelection: true, update: .visibleOnly)
+            model.update(presentationInput)
         }
         .onChange(of: language) {
-            rebuildRows(reconcileSelection: true, update: .source)
+            model.update(presentationInput)
             consumeRuleNavigation()
         }
-        .onChange(of: selectedRowID) { _, selection in
-            reconcileAccessibilityWindow(revealing: selection)
+        .onChange(of: model.selectedRowID) { _, selection in
             persistSelection(selection)
-            if let selection, let row = projectionCache.row(id: selection) {
+            if let selection, let row = model.row(id: selection) {
                 workspaceStore.selectInspector(
                     .rule(type: row.rule.type, payload: row.rule.payload)
                 )
@@ -124,8 +88,8 @@ struct WorkbenchRulesView: View {
             }
         }
         .onChange(of: workspaceStore.inspectorSelection) { _, selection in
-            if case .none = selection, selectedRowID != nil {
-                selectedRowID = nil
+            if case .none = selection, model.selectedRowID != nil {
+                model.selectedRowID = nil
             }
         }
     }
@@ -135,7 +99,7 @@ struct WorkbenchRulesView: View {
             WorkbenchCommandSummary(
                 symbolName: "list.bullet.rectangle",
                 titleKey: "dashboard.tab_rules",
-                value: String(rows.count),
+                value: String(model.rows.count),
                 detail: nil
             )
         } controls: {
@@ -202,22 +166,20 @@ struct WorkbenchRulesView: View {
     }
 
     private var ruleTable: some View {
+        @Bindable var model = model
         let controllerID = appModel.selectedRouterID
         let generation = appModel.controllerSessionPresentation.generation
-        let accessibilityWindow = WorkbenchAccessibilityWindow.resolve(
-            totalCount: rows.count,
-            preferredLowerBound: accessibilityCursor.lowerBound
-        )
+        let accessibilityWindow = model.accessibilityWindow
         let localization = MicaStrings.localizationContext(for: language)
         let accessibilityPayload = WorkbenchTableAccessibilityPayload.materialize(
-            scope: WorkbenchTableAccessibilityScope(
+            scope: WorkbenchSessionIdentity(
                 controllerID: controllerID,
                 generation: generation
             ),
             title: localization.localizedKey("dashboard.tab_rules"),
-            sourceRows: rows,
+            sourceRows: model.rows,
             window: accessibilityWindow,
-            selectedRowID: selectedRowID,
+            selectedRowID: model.selectedRowID,
             localization: localization,
             sortOptions: accessibilitySortOptions,
             summary: WorkbenchRuleProjection.accessibilitySummary,
@@ -227,9 +189,11 @@ struct WorkbenchRulesView: View {
         )
         return WorkbenchDataTableViewport(
             generation: generation,
-            restorationID: restoredScrollAnchorID,
-            request: scrollRequest,
-            interaction: tableInteraction,
+            restorationID: model.restoredScrollAnchorID,
+            request: model.scrollRequest,
+            interaction: model.tableInteraction,
+            rowIndex: { id in model.rows.firstIndex { $0.id == id } },
+            rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
                     anchorID,
@@ -239,16 +203,20 @@ struct WorkbenchRulesView: View {
             }
         ) {
             WorkbenchDataResponsive(budget: Self.widthBudget) { mode in
-                Table(rows, selection: $selectedRowID, sortOrder: $sortOrder) {
+                Table(model.rows, selection: $model.selectedRowID, sortOrder: $model.sortOrder) {
                     switch mode {
                     case .full:
                         TableColumn(
-                            MicaStrings.localizedKey("dashboard.col_index", language: language),
-                            value: \.indexSortValue
+                            MicaStrings.localizedKey("dashboard.col_payload", language: language),
+                            value: \.payload
                         ) { row in
-                            WorkbenchDataMetric(value: row.indexText, tone: .secondary)
+                            WorkbenchDataText(
+                                value: row.definitionTitleText,
+                                role: .dataLabel,
+                                weight: .medium
+                            )
                         }
-                        .width(min: 48, ideal: 56)
+                        .width(min: 240, ideal: 420)
 
                         TableColumn(
                             MicaStrings.localizedKey("dashboard.col_type", language: language),
@@ -256,18 +224,7 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             ruleTypeCell(row)
                         }
-                        .width(min: 118, ideal: 148)
-
-                        TableColumn(
-                            MicaStrings.localizedKey("dashboard.col_payload", language: language),
-                            value: \.payload
-                        ) { row in
-                            WorkbenchDataText(
-                                value: row.definitionTitleText,
-                                role: .dataLabel
-                            )
-                        }
-                        .width(min: 240, ideal: 420)
+                        .width(min: 118, ideal: 140, max: 168)
 
                         TableColumn(
                             MicaStrings.localizedKey("dashboard.col_proxy", language: language),
@@ -279,7 +236,7 @@ struct WorkbenchRulesView: View {
                                 weight: .medium
                             )
                         }
-                        .width(min: 132, ideal: 196)
+                        .width(min: 132, ideal: 176, max: 224)
 
                         TableColumn(
                             MicaStrings.localizedKey("traffic.rule_section_statistics", language: language),
@@ -287,12 +244,20 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             ruleActivityCell(row)
                         }
-                        .width(min: 128, ideal: 154)
+                        .width(min: 128, ideal: 148, max: 180)
 
                         TableColumn(MicaStrings.localizedKey("dashboard.col_status", language: language)) { row in
                             ruleStateCell(row)
                         }
-                        .width(min: 142, ideal: 176)
+                        .width(min: 142, ideal: 160, max: 184)
+
+                        TableColumn(
+                            MicaStrings.localizedKey("dashboard.col_index", language: language),
+                            value: \.indexSortValue
+                        ) { row in
+                            WorkbenchDataMetric(value: row.indexText, tone: .secondary)
+                        }
+                        .width(min: 48, ideal: 56, max: 64)
 
                     case .compact:
                         TableColumn(
@@ -350,18 +315,11 @@ struct WorkbenchRulesView: View {
     }
 
     private func ruleTypeCell(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(ruleStatusTint(row.rule).opacity(0.72))
-                .frame(width: 3, height: 28)
-                .accessibilityHidden(true)
-
-            WorkbenchDataText(
-                value: row.typeText,
-                role: .dataCaption,
-                weight: .semibold
-            )
-        }
+        WorkbenchDataText(
+            value: row.typeText,
+            role: .dataCaption,
+            tone: .secondary
+        )
         .frame(
             minHeight: WorkbenchDataRowGeometry.height,
             maxHeight: WorkbenchDataRowGeometry.height,
@@ -487,6 +445,7 @@ struct WorkbenchRulesView: View {
         .micaThemeFont(.dataCaption)
         .foregroundStyle(.secondary)
         .labelStyle(.titleAndIcon)
+        .help(accessibilityText)
         .accessibilityLabel(accessibilityText)
     }
 
@@ -527,43 +486,30 @@ struct WorkbenchRulesView: View {
         )
     }
 
-    private func rebuildRows(
-        reconcileSelection: Bool,
-        update: WorkbenchRuleProjectionUpdate
-    ) {
-        guard isProjectionActive else { return }
-        let previousRows = allRows
-        let previousSelection = selectedRowID
-        projectionCache.project(
-            update: update,
+    private var sessionIdentity: WorkbenchSessionIdentity {
+        WorkbenchSessionIdentity(
+            controllerID: appModel.selectedRouterID,
+            generation: appModel.controllerSessionPresentation.generation
+        )
+    }
+
+    private var presentationInput: RulesWorkspaceInput {
+        RulesWorkspaceInput(
+            identity: sessionIdentity,
             rules: appModel.rulesCatalog.rules,
             connections: appModel.connectionsCatalog.connections,
-            controllerID: appModel.selectedRouterID,
-            generation: appModel.controllerSessionPresentation.generation,
             structureRevision: appModel.connectionsStructureRevision,
             query: searchText,
-            sortOrder: sortOrder,
-            language: language,
-            isActive: isProjectionActive
+            language: language
         )
-
-        if reconcileSelection {
-            selectedRowID = WorkbenchDataSelection.reconciled(
-                previousSelection,
-                previousRows: previousRows,
-                nextVisibleRows: rows,
-                identityFamily: \.identityFamily
-            )
-        }
-        reconcileAccessibilityWindow(revealing: selectedRowID)
     }
 
     private var state: WorkbenchDataState {
         WorkbenchDataStateResolver.endpoint(
             hasController: appModel.selectedRouter != nil,
             isSupported: appModel.selectedUnifiedCapabilities.rules,
-            sourceCount: allRows.count,
-            visibleCount: rows.count,
+            sourceCount: model.allRows.count,
+            visibleCount: model.rows.count,
             isFiltering: searchText.dataNonEmpty != nil,
             endpointStatus: appModel.controllerHealth.status(for: .rules),
             snapshotState: appModel.rulesSnapshotState,
@@ -581,10 +527,6 @@ struct WorkbenchRulesView: View {
             && row.rule.index != nil
             && appModel.canRefreshSelectedRouter
             && appModel.supportsUnifiedAction(.setRuleDisabled)
-    }
-
-    private var selectedRow: WorkbenchRuleRow? {
-        projectionCache.row(id: selectedRowID)
     }
 
     private func policyTarget(
@@ -615,7 +557,7 @@ struct WorkbenchRulesView: View {
             controllerID: appModel.selectedRouterID,
             destination: .proxies
         ) { workspace in
-            workspace = ProxyWorkspaceProjection.opening(
+            workspace = ProxyWorkspaceProjection.activating(
                 target.id,
                 in: workspace,
                 groups: groups,
@@ -640,27 +582,27 @@ struct WorkbenchRulesView: View {
     }
 
     private func restoreWorkspace() {
-        let controllerID = appModel.selectedRouterID
-        let generation = appModel.controllerSessionPresentation.generation
-        if let controllerID {
+        let identity = sessionIdentity
+        if let controllerID = identity.controllerID {
             workspaceStore.activateSession(
                 controllerID: controllerID,
-                generation: generation
+                generation: identity.generation
             )
         }
-        let workspace = workspaceStore.workspace(
-            controllerID: controllerID,
-            destination: .rules
-        )
-        sortOrder = Self.ruleSortOrder(from: workspace.sort)
-        selectedRowID = workspace.selectedItemID
-        restoredScrollAnchorID = controllerID.flatMap {
-            workspaceStore.scrollAnchorID(
-                controllerID: $0,
-                generation: generation,
+        model.activate(
+            identity: identity,
+            workspace: workspaceStore.workspace(
+                controllerID: identity.controllerID,
                 destination: .rules
-            )
-        }
+            ),
+            restoredScrollAnchorID: identity.controllerID.flatMap {
+                workspaceStore.scrollAnchorID(
+                    controllerID: $0,
+                    generation: identity.generation,
+                    destination: .rules
+                )
+            }
+        )
     }
 
     private func persistSelection(_ selection: String?) {
@@ -695,7 +637,7 @@ struct WorkbenchRulesView: View {
             controllerID: appModel.selectedRouterID,
             destination: .rules
         ) { workspace in
-            workspace.sort = sortOrder.compactMap(Self.ruleWorkspaceSort)
+            workspace.sort = model.sortOrder.compactMap(RulesWorkspaceModel.workspaceSort)
         }
     }
 
@@ -707,47 +649,12 @@ struct WorkbenchRulesView: View {
             destination: .rules
         )
         guard let pending = workspace.pendingRuleSelection,
-              let row = WorkbenchRuleNavigationResolver.resolve(
-                  pending,
-                  controllerID: controllerID,
-                  generation: generation,
-                  in: allRows
-              ) else {
-            return
-        }
-
-        if !rows.contains(where: { $0.id == row.id }), searchText.dataNonEmpty != nil {
-            searchText = ""
-            rebuildRows(reconcileSelection: false, update: .visibleOnly)
-        }
-
-        guard rows.contains(where: { $0.id == row.id }),
+              let revealedQuery = model.reveal(pending, input: presentationInput),
               workspaceStore.consumeRuleNavigation(
                   controllerID: controllerID,
                   generation: generation
-              ) != nil else {
-            return
-        }
-
-        selectedRowID = row.id
-        scrollRequest = WorkbenchDataScrollRequest(id: row.id)
-    }
-
-    private static func ruleSortOrder(
-        from workspaceSort: [WorkbenchWorkspaceSort]
-    ) -> [KeyPathComparator<WorkbenchRuleRow>] {
-        workspaceSort.compactMap { item -> KeyPathComparator<WorkbenchRuleRow>? in
-            let order: SortOrder = item.ascending ? .forward : .reverse
-            switch item.field {
-            case "index": return KeyPathComparator(\WorkbenchRuleRow.indexSortValue, order: order)
-            case "payload": return KeyPathComparator(\WorkbenchRuleRow.payload, order: order)
-            case "type": return KeyPathComparator(\WorkbenchRuleRow.type, order: order)
-            case "proxy": return KeyPathComparator(\WorkbenchRuleRow.proxy, order: order)
-            case "activeConnections": return KeyPathComparator(\WorkbenchRuleRow.activeConnections, order: order)
-            case "hitCount": return KeyPathComparator(\WorkbenchRuleRow.hitCount, order: order)
-            default: return nil
-            }
-        }
+              ) != nil else { return }
+        searchText = revealedQuery
     }
 
     private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
@@ -765,8 +672,8 @@ struct WorkbenchRulesView: View {
         _ field: String,
         titleKey: String
     ) -> WorkbenchAccessibilitySortOption {
-        let stored = sortOrder
-            .compactMap(Self.ruleWorkspaceSort)
+        let stored = model.sortOrder
+            .compactMap(RulesWorkspaceModel.workspaceSort)
             .first { $0.field == field }
         return WorkbenchAccessibilitySortOption(
             id: field,
@@ -776,7 +683,7 @@ struct WorkbenchRulesView: View {
     }
 
     private func activateAccessibilitySort(_ field: String, ascending: Bool) {
-        sortOrder = Self.ruleSortOrder(from: [
+        model.sortOrder = RulesWorkspaceModel.sortOrder(from: [
             WorkbenchWorkspaceSort(
                 field: field,
                 ascending: ascending
@@ -799,7 +706,7 @@ struct WorkbenchRulesView: View {
     }
 
     private func dispatchAccessibilityIntent(_ intent: WorkbenchTableAccessibilityIntent) {
-        let currentScope = WorkbenchTableAccessibilityScope(
+        let currentScope = WorkbenchSessionIdentity(
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         )
@@ -807,17 +714,16 @@ struct WorkbenchRulesView: View {
 
         switch intent {
         case .selectRow(let id, _):
-            guard projectionCache.visibleRows.contains(where: { $0.id == id }) else { return }
-            selectedRowID = id
+            model.select(id, identity: currentScope)
         case .movePage(let lowerBound, _):
-            moveAccessibilityWindow(to: lowerBound)
+            model.moveAccessibilityWindow(to: lowerBound)
         case .setSort(let id, let ascending, _):
             activateAccessibilitySort(id, ascending: ascending)
         case .performNamedAction:
             guard let rule = WorkbenchRuleAccessibilityMutationResolver.resolve(
                 intent: intent,
                 currentScope: currentScope,
-                rows: projectionCache.visibleRows,
+                rows: model.rows,
                 updatingRuleID: appModel.updatingRuleID,
                 canRefresh: appModel.canRefreshSelectedRouter,
                 isBusy: appModel.isBusy,
@@ -837,52 +743,6 @@ struct WorkbenchRulesView: View {
         }
     }
 
-    private func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
-        accessibilityCursor.reconcile(
-            orderedIDs: rows.map(\.id),
-            revealing: selectionID
-        )
-    }
-
-    private func moveAccessibilityWindow(to lowerBound: Int) {
-        accessibilityCursor.move(
-            to: lowerBound,
-            orderedIDs: rows.map(\.id)
-        )
-    }
-
-    private static func ruleWorkspaceSort(
-        _ comparator: KeyPathComparator<WorkbenchRuleRow>
-    ) -> WorkbenchWorkspaceSort? {
-        let field: String
-        if comparator.keyPath == \WorkbenchRuleRow.indexSortValue {
-            field = "index"
-        } else if comparator.keyPath == \WorkbenchRuleRow.payload {
-            field = "payload"
-        } else if comparator.keyPath == \WorkbenchRuleRow.type {
-            field = "type"
-        } else if comparator.keyPath == \WorkbenchRuleRow.proxy {
-            field = "proxy"
-        } else if comparator.keyPath == \WorkbenchRuleRow.activeConnections {
-            field = "activeConnections"
-        } else if comparator.keyPath == \WorkbenchRuleRow.hitCount {
-            field = "hitCount"
-        } else {
-            return nil
-        }
-        return WorkbenchWorkspaceSort(
-            field: field,
-            ascending: comparator.order == .forward
-        )
-    }
-
-    private var allRows: [WorkbenchRuleRow] {
-        projectionCache.allRows
-    }
-
-    private var rows: [WorkbenchRuleRow] {
-        projectionCache.visibleRows
-    }
 }
 
 enum WorkbenchRuleAccessibilityMutationResolver {
@@ -910,7 +770,7 @@ enum WorkbenchRuleAccessibilityMutationResolver {
 
     static func resolve(
         intent: WorkbenchTableAccessibilityIntent,
-        currentScope: WorkbenchTableAccessibilityScope,
+        currentScope: WorkbenchSessionIdentity,
         rows: [WorkbenchRuleRow],
         updatingRuleID: String?,
         canRefresh: Bool,

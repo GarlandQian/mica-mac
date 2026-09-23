@@ -5,7 +5,7 @@ import Testing
 
 @Suite(.serialized)
 struct MicaPerformanceBenchmarkTests {
-    private struct BenchmarkCase: Codable {
+    private struct BenchmarkCase: Codable, Sendable {
         let name: String
         let fixtureCount: Int
         let samples: Int
@@ -831,10 +831,10 @@ struct MicaPerformanceBenchmarkTests {
         )
         cases.append(
             measurePrepared(
-                name: "proxy-expanded-groups-projection",
-                fixtureCount: 2_000,
+                name: "proxy-active-group-projection",
+                fixtureCount: 1_000,
                 sampleCount: 7,
-                reportedWorkUnits: 2_000,
+                reportedWorkUnits: 1_000,
                 prepare: {
                     var cache = ProxyCatalogProjectionCache()
                     cache.updateCatalog(
@@ -845,8 +845,8 @@ struct MicaPerformanceBenchmarkTests {
                     return cache
                 }
             ) { cache in
-                cache.updateExpandedGroups(
-                    groupIDs: cache.groupIndex.arrangedGroups.prefix(2).map(\.id)
+                cache.updateActiveGroup(
+                    groupID: cache.groupIndex.arrangedGroups.first?.id
                 )
                 return cache.workCounts.memberRowsBuilt
             }
@@ -968,6 +968,59 @@ struct MicaPerformanceBenchmarkTests {
             }
         }
 
+        let denseLayoutConnectionCount = 1_000
+        let denseLayoutConnections = (0..<denseLayoutConnectionCount).map { index in
+            let source = index % 16
+            let rule = (index / 16) % 20
+            let pass = index / 320
+            let entry = (source * 3 + rule + pass) % 8
+            let region = (source + rule * 5 + pass * 2) % 6
+            let selection = (source / 2 + rule + pass) % 4
+            let outbound = (source * 5 + rule * 7 + pass * 3) % 12
+            return ConnectionSnapshot(
+                id: "dense-layout-\(index)",
+                chains: [
+                    "outbound-\(outbound)",
+                    "automatic-\(selection)",
+                    "region-\(region)",
+                    "entry-\(entry)",
+                ],
+                rule: "RuleSet",
+                rulePayload: "rule-\(rule)",
+                metadata: ConnectionMetadataSnapshot(sourceIP: "192.0.2.\(source + 10)")
+            )
+        }
+        // Normalize outside the sample so this measures ordering, card/edge
+        // geometry, render-band admission and hit-index construction together.
+        let denseLayoutTopology = ConnectionTopologyBuilder.build(from: denseLayoutConnections)
+        #expect(denseLayoutTopology.paths.count == denseLayoutConnectionCount)
+        #expect(denseLayoutTopology.nodes.count == 66)
+        #expect(denseLayoutTopology.edges.count >= 400)
+        cases.append(
+            await measureAsync(
+                name: "topology-dense-card-layout",
+                fixtureCount: denseLayoutConnectionCount,
+                sampleCount: 7
+            ) {
+                do {
+                    let layout = try await OverviewTopologyLayoutBuilder.buildCancellable(
+                        topology: denseLayoutTopology,
+                        availableWidth: 1_400,
+                        minimumFlowHeight: 300
+                    )
+                    return layout.nodes.count &+ layout.edges.count
+                        &+ layout.operationCounts.edgeHitSegmentCount
+                } catch {
+                    Issue.record("Dense topology card layout benchmark failed: \(error)")
+                    return 0
+                }
+            }
+        )
+        cases += try await overviewProjectionBenchmarks(
+            connections: denseLayoutConnections,
+            expectedTopology: denseLayoutTopology
+        )
+
         let report = BenchmarkReport(
             schemaVersion: 2,
             label: environment["MICA_PERFORMANCE_LABEL"] ?? "unlabeled",
@@ -992,6 +1045,158 @@ struct MicaPerformanceBenchmarkTests {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(report).write(to: outputURL, options: .atomic)
+    }
+
+    /// Exercises the same presentation cache used by the homepage, including
+    /// normalization, summary membership, ordering, layout and hit targets.
+    /// Preparation and full membership validation stay outside the timed span,
+    /// so a cache-hit result is not dominated by a test-only checksum traversal.
+    @MainActor
+    private func overviewProjectionBenchmarks(
+        connections: [ConnectionSnapshot],
+        expectedTopology: ConnectionTopology
+    ) async throws -> [BenchmarkCase] {
+        let generation = UUID(uuidString: "7A8B0526-4E90-4B68-BE28-7417A6BE0820")!
+        let initialRequest = OverviewTopologyRequest(
+            generation: generation,
+            revision: 1,
+            availableWidth: 600,
+            minimumFlowHeight: 360,
+            displayMode: .overview,
+            languageID: "en"
+        )
+        let resizedRequest = OverviewTopologyRequest(
+            generation: generation,
+            revision: 1,
+            availableWidth: 920,
+            minimumFlowHeight: 420,
+            displayMode: .overview,
+            languageID: "en"
+        )
+        var metricFrame = connections
+        for index in metricFrame.indices {
+            metricFrame[index].upload = (metricFrame[index].upload ?? 0) + index + 101
+            metricFrame[index].download = (metricFrame[index].download ?? 0) + index + 103
+            metricFrame[index].uploadSpeed = 107 + index
+            metricFrame[index].downloadSpeed = 109 + index
+        }
+
+        enum Scenario: String, CaseIterable {
+            case cold = "topology-overview-cold-projection"
+            case metrics = "topology-overview-metrics-cache-hit"
+            case resize = "topology-overview-resize"
+        }
+        let sampleCount = 7
+        var results: [BenchmarkCase] = []
+        for scenario in Scenario.allCases {
+            var milliseconds: [Double] = []
+            var checksum = 0
+            for sample in 0...sampleCount {
+                let cache = OverviewTopologyPresentationCache()
+                if scenario != .cold {
+                    _ = try await cache.resolve(request: initialRequest, connections: connections)
+                }
+                let before = cache.statistics
+                let orderingBefore = cache.orderingPreparationCount
+                let request = scenario == .resize ? resizedRequest : initialRequest
+                let input = scenario == .metrics ? metricFrame : connections
+
+                let start = DispatchTime.now().uptimeNanoseconds
+                let presentation = try await cache.resolve(request: request, connections: input)
+                let elapsed = DispatchTime.now().uptimeNanoseconds - start
+                if sample > 0 {
+                    milliseconds.append(Double(elapsed) / 1_000_000)
+                }
+
+                checksum &+= Self.verifiedOverviewMembershipChecksum(
+                    presentation,
+                    expectedTopology: expectedTopology
+                )
+                #expect(presentation.layout.size.width <= CGFloat(request.availableWidth))
+                #expect(presentation.layout.nodes.count <= 18)
+                #expect(presentation.layout.edges.count <= 72)
+                switch scenario {
+                case .cold:
+                    #expect(cache.statistics.topologyBuildCount - before.topologyBuildCount == 1)
+                    #expect(cache.statistics.layoutBuildCount - before.layoutBuildCount == 1)
+                    #expect(cache.orderingPreparationCount - orderingBefore == 1)
+                case .metrics:
+                    #expect(cache.statistics.topologyBuildCount == before.topologyBuildCount)
+                    #expect(cache.statistics.layoutBuildCount == before.layoutBuildCount)
+                    #expect(cache.orderingPreparationCount == orderingBefore)
+                    #expect(cache.statistics.exactRequestHitCount - before.exactRequestHitCount == 1)
+                case .resize:
+                    #expect(cache.statistics.topologyBuildCount == before.topologyBuildCount)
+                    #expect(cache.orderingPreparationCount == orderingBefore)
+                    #expect(cache.statistics.layoutBuildCount - before.layoutBuildCount == 1)
+                    #expect(cache.statistics.structureReuseCount - before.structureReuseCount == 1)
+                }
+            }
+
+            let sorted = milliseconds.sorted()
+            results.append(BenchmarkCase(
+                name: scenario.rawValue,
+                fixtureCount: connections.count,
+                samples: sorted.count,
+                medianMilliseconds: percentile(0.5, sorted: sorted),
+                p95Milliseconds: percentile(0.95, sorted: sorted),
+                minimumMilliseconds: sorted.first ?? 0,
+                maximumMilliseconds: sorted.last ?? 0,
+                checksum: checksum,
+                reportedWorkUnits: nil
+            ))
+        }
+        return results
+    }
+
+    /// Include full connection identities, rule/hop names and the memberships
+    /// reachable from every diagram node and edge, not merely the card count.
+    /// The rolling checksum is deterministic across processes (unlike Hasher).
+    private static func verifiedOverviewMembershipChecksum(
+        _ presentation: OverviewTopologyPresentation,
+        expectedTopology: ConnectionTopology
+    ) -> Int {
+        #expect(presentation.topology == expectedTopology)
+        let expectedIDs = Set(expectedTopology.paths.map(\.id))
+        #expect(Set(presentation.diagram.paths.map(\.id)) == expectedIDs)
+        #expect(presentation.diagram.paths.count == expectedTopology.paths.count)
+        var checksum = 17
+
+        func consume(_ value: String) {
+            checksum = checksum &* 31 &+ value.utf8.count
+            for byte in value.utf8 { checksum = checksum &* 31 &+ Int(byte) }
+        }
+
+        for path in presentation.topology.paths {
+            #expect(presentation.index.path(id: path.id) == path)
+            checksum = checksum &* 31 &+ path.sourceIndex
+            consume(path.id.stableKey)
+            consume(path.reportedConnectionID)
+            for stage in path.stages {
+                consume(stage.nodeID)
+                consume(stage.name)
+            }
+        }
+        for column in presentation.diagram.columns {
+            #expect(Set(column.nodes.flatMap(\.pathIDs)) == expectedIDs)
+            #expect(column.nodes.reduce(0) { $0 + $1.pathIDs.count } == expectedIDs.count)
+            for node in column.nodes {
+                let related = presentation.diagramIndex.highlight(for: .node(node.id))
+                #expect(related.pathIDs == Set(node.pathIDs))
+                consume(node.id)
+                for path in related.paths {
+                    #expect(presentation.index.path(id: path.id) != nil)
+                    consume(path.id.stableKey)
+                }
+            }
+        }
+        for edge in presentation.diagram.edges {
+            let related = presentation.diagramIndex.highlight(for: .edge(edge.id))
+            #expect(related.pathIDs == Set(edge.pathIDs))
+            consume(edge.id)
+            for path in related.paths { consume(path.id.stableKey) }
+        }
+        return checksum
     }
 
     private func measure(

@@ -39,7 +39,8 @@ struct WorkbenchDiagnosticsCanvas<Content: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let horizontalPadding = MicaTheme.Metrics.pagePadding(for: geometry.size.width)
-            let contentWidth = max(0, geometry.size.width - horizontalPadding * 2)
+            let canvasWidth = min(geometry.size.width, 1_180)
+            let contentWidth = max(0, canvasWidth - horizontalPadding * 2)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
@@ -47,6 +48,7 @@ struct WorkbenchDiagnosticsCanvas<Content: View>: View {
                 }
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, MicaTheme.Spacing.space4)
+                .frame(maxWidth: 1_180, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .micaObserveScrollPerformance()
@@ -58,6 +60,8 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
     @Environment(\.micaAppLanguage) private var language
 
     let snapshot: WorkbenchDiagnosticsSnapshot
+    let canRecheck: Bool
+    let onRecheck: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
@@ -65,11 +69,11 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
                 HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
                     verdictIdentity
                     Spacer(minLength: MicaTheme.Spacing.space3)
-                    controllerIdentity
+                    recheckButton
                 }
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                     verdictIdentity
-                    controllerIdentity
+                    recheckButton
                 }
             }
 
@@ -86,8 +90,6 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
                 }
             }
         }
-        .padding(.bottom, MicaTheme.Spacing.space3)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var verdictIdentity: some View {
@@ -131,23 +133,17 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var controllerIdentity: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Label {
-                Text(verbatim: snapshot.controllerName)
-            } icon: {
-                Image(systemName: "server.rack")
-                    .foregroundStyle(snapshot.overallState.tint)
-            }
-            .micaThemeFont(.label, weight: .semibold)
-
-            Text(verbatim: snapshot.visibleTarget)
-                .micaThemeFont(.dataCaption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
+    private var recheckButton: some View {
+        Button(action: onRecheck) {
+            Label(
+                MicaStrings.localizedKey("diagnostics.recheck_now", language: language),
+                systemImage: MicaSymbols.Operation.refreshData
+            )
+            .micaThemeFont(.label)
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.bordered)
+        .disabled(!canRecheck)
     }
 
     private var freshnessFact: some View {
@@ -389,6 +385,20 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let action = issue.primaryAction {
+                Button {
+                    onAction(action)
+                } label: {
+                    Label(
+                        MicaStrings.localizedKey(action.titleKey, language: language),
+                        systemImage: action.systemImage
+                    )
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isActionEnabled(action))
+            }
+
             if !issue.affectedDestinations.isEmpty {
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                     Text(MicaStrings.localizedKey("diagnostics.affected_areas", language: language))
@@ -411,20 +421,6 @@ private struct WorkbenchDiagnosticsIssueDetail: View {
                         evidenceRow(evidence)
                     }
                 }
-            }
-
-            if let action = issue.primaryAction {
-                Button {
-                    onAction(action)
-                } label: {
-                    Label(
-                        MicaStrings.localizedKey(action.titleKey, language: language),
-                        systemImage: action.systemImage
-                    )
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!isActionEnabled(action))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -526,7 +522,12 @@ struct WorkbenchDiagnosticsAvailableAreas: View {
                         }
                         .padding(.vertical, MicaTheme.Spacing.space2)
                         .contentShape(.rect)
-                        .overlay(alignment: .bottom) { Divider() }
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(MicaTheme.separator)
+                                .frame(height: 0.5)
+                                .accessibilityHidden(true)
+                        }
                     }
                     .buttonStyle(.plain)
                 }

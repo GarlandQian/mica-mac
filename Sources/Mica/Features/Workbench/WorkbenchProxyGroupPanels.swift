@@ -2,14 +2,12 @@ import Foundation
 import MicaCore
 import SwiftUI
 
-struct ProxyExpandedGroupPresentation: Identifiable, Equatable {
+struct ProxyActiveGroupPresentation: Identifiable, Equatable {
     let occurrence: ProxyGroupOccurrence
     let item: ProxyGroupDirectoryItem
-    let isExpanded: Bool
     let members: [ProxyNodeRowProjection]
     let filter: String
     let inspectedMemberID: String?
-    let inspectedMember: ProxyNodeRowProjection?
     let healthSummary: ProxyGroupHealthSummary
     let healthFilter: ProxyHealthFilter
     let isSwitching: Bool
@@ -28,18 +26,19 @@ struct ProxyBoundedAccessibilityCatalog: View {
     let generation: UUID
     let selectedElementID: String?
     let activeGroupID: String?
-    let inspectedMemberIDs: [String: String]
+    let inspectedMemberID: String?
     let commandsEnabled: Bool
     let canSelectMember: Bool
     let canTestGroup: Bool
     let canTestNode: Bool
     let canClearFixedSelection: Bool
     let activity: ProxyOperationActivity
-    let onToggleGroup: (String, LiveCommandScope) -> Void
+    let onActivateGroup: (String, LiveCommandScope) -> Void
     let onLocateCurrent: (String, LiveCommandScope) -> Void
     let onTestGroup: (String, LiveCommandScope) -> Void
     let onClearFixed: (String, LiveCommandScope) -> Void
     let onSelectMember: (String, String, LiveCommandScope) -> Void
+    let onInspectMember: (String, String, LiveCommandScope) -> Void
     let onTestMember: (String, String, LiveCommandScope) -> Void
 
     @State private var cursor = WorkbenchAccessibilityWindowCursor()
@@ -124,14 +123,14 @@ struct ProxyBoundedAccessibilityCatalog: View {
 
         return Button {
             guard let commandScope else { return }
-            onToggleGroup(groupID, commandScope)
+            onActivateGroup(groupID, commandScope)
         } label: {
             Text(verbatim: groupSummary(group, localization: localization))
         }
         .accessibilityAddTraits(activeGroupID == groupID ? .isSelected : [])
         .accessibilityHint(
             localization.localizedKey(
-                group.isExpanded ? "routing.close_group" : "routing.open_group"
+                "routing.open_group"
             )
         )
         .accessibilityActions {
@@ -173,10 +172,12 @@ struct ProxyBoundedAccessibilityCatalog: View {
         let canSwitch = canSelectMember
             && element.groupSelectable
             && commandsEnabled
+            && !isSwitching
+            && !member.isControllerSelected
 
         return Button {
             guard let commandScope else { return }
-            onSelectMember(
+            onInspectMember(
                 element.groupOccurrenceID,
                 member.id,
                 commandScope
@@ -185,16 +186,22 @@ struct ProxyBoundedAccessibilityCatalog: View {
             Text(verbatim: memberSummary(element, localization: localization))
         }
         .accessibilityAddTraits(
-            inspectedMemberIDs[element.groupOccurrenceID] == member.id
+            inspectedMemberID == member.id
                 ? .isSelected
                 : []
         )
         .accessibilityHint(
-            canSwitch
-                ? localization.localizedKey("dashboard.switch_node")
-                : ""
+            localization.localized("routing.inspect_node %@", arguments: [member.name])
         )
         .accessibilityActions {
+            if canSwitch {
+                Button(
+                    localization.localized("routing.use_node %@", arguments: [member.name])
+                ) {
+                    guard let commandScope else { return }
+                    onSelectMember(element.groupOccurrenceID, member.id, commandScope)
+                }
+            }
             if canRunTest {
                 Button(
                     localization.localized(
@@ -294,350 +301,127 @@ struct ProxyBoundedAccessibilityCatalog: View {
     }
 }
 
-struct ProxyPolicyGroupSectionHeader: View {
+struct ProxyPolicyGroupDirectoryRow: View {
     @Environment(\.micaAppLanguage) private var language
+    let item: ProxyGroupDirectoryItem
+    let isActive: Bool
+    let onActivate: () -> Void
 
-    let presentation: ProxyExpandedGroupPresentation
+    var body: some View {
+        Button(action: onActivate) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    Circle()
+                        .fill(item.health.status.tint)
+                        .frame(width: 6, height: 6)
+                    Text(verbatim: item.groupID)
+                        .micaThemeFont(.label, weight: isActive ? .semibold : .regular)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(verbatim: item.memberCount.formatted())
+                        .micaThemeFont(.dataCaption)
+                        .foregroundStyle(MicaTheme.textTertiary)
+                }
+                Text(verbatim: item.selected)
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                    .lineLimit(1)
+                    .padding(.leading, 14)
+            }
+            .padding(.horizontal, MicaTheme.Spacing.space3)
+            .padding(.vertical, MicaTheme.Spacing.space2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isActive ? MicaTheme.accent.opacity(0.1) : .clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("proxy-directory:\(item.id)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .help("\(item.groupID) · \(item.type) · \(item.selected)")
+    }
+}
+
+struct ProxyPolicyActiveGroupHeader: View {
+    @Environment(\.micaAppLanguage) private var language
+    let presentation: ProxyActiveGroupPresentation
     let commandsEnabled: Bool
     let canTestGroup: Bool
-    let onToggle: () -> Void
-    let onFilterChange: (String) -> Void
     let onTestGroup: () -> Void
     let onClearFixed: () -> Void
     let onLocateCurrent: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            groupHeader
-
-            if presentation.isExpanded {
-                groupFilter
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
+                identity
+                Spacer(minLength: 4)
+                actions
+            }
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                identity
+                actions
             }
         }
-        .padding(.top, MicaTheme.Spacing.space2)
-    }
-
-    private var groupHeader: some View {
-        VStack(spacing: MicaTheme.Spacing.space2) {
-            HStack(spacing: MicaTheme.Spacing.space2) {
-                Button(action: onToggle) {
-                    HStack(spacing: MicaTheme.Spacing.space3) {
-                        Image(
-                            systemName: presentation.isExpanded
-                                ? "chevron.down"
-                                : "chevron.right"
-                        )
-                        .micaThemeFont(.caption, weight: .semibold)
-                        .foregroundStyle(MicaTheme.textSecondary)
-                        .frame(width: 12)
-                        .accessibilityHidden(true)
-
-                        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
-                            Text(verbatim: presentation.item.groupID)
-                                .micaThemeFont(.body, weight: .semibold)
-                                .foregroundStyle(MicaTheme.textPrimary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-
-                            Text(verbatim: groupSubtitle)
-                                .micaThemeFont(.caption)
-                                .foregroundStyle(MicaTheme.textSecondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: MicaTheme.Spacing.space4)
-
-                        VStack(alignment: .trailing, spacing: MicaTheme.Spacing.space1) {
-                            Text(
-                                MicaStrings.localizedKey(
-                                    "dashboard.current_node",
-                                    language: language
-                                )
-                            )
-                            .micaThemeFont(.caption)
-                            .foregroundStyle(MicaTheme.textSecondary)
-
-                            HStack(spacing: MicaTheme.Spacing.space2) {
-                                Text(verbatim: presentation.item.selected)
-                                    .micaThemeFont(.label, weight: .semibold)
-                                    .foregroundStyle(MicaTheme.textPrimary)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.trailing)
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                if let delay = presentation.item.selectedDelay,
-                                   delay > 0 {
-                                    Text(verbatim: OverviewFormat.latency(delay))
-                                        .micaThemeFont(.dataCaption, weight: .semibold)
-                                        .foregroundStyle(
-                                            OverviewFormat.latencyTint(delay)
-                                        )
-                                }
-                            }
-                        }
-                        .frame(maxWidth: 360, alignment: .trailing)
-                    }
-                    .padding(.leading, MicaTheme.Spacing.space3)
-                    .padding(.vertical, MicaTheme.Spacing.space2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    "\(presentation.item.groupID), \(presentation.item.selected)"
-                )
-
-                groupActions
-                    .padding(.trailing, MicaTheme.Spacing.space2)
-            }
-
-            ProxyLatencyDistributionView(
-                distribution: presentation.item.latencyDistribution
-            )
-            .padding(.horizontal, MicaTheme.Spacing.space3)
-            .padding(.bottom, MicaTheme.Spacing.space2)
-
-            healthSummary
-                .padding(.horizontal, MicaTheme.Spacing.space3)
-                .padding(.bottom, MicaTheme.Spacing.space2)
-        }
+        .padding(MicaTheme.Spacing.space3)
         .background(MicaTheme.surface)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: MicaTheme.Metrics.moduleRadius,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: MicaTheme.Metrics.moduleRadius,
-                style: .continuous
-            )
-            .strokeBorder(
-                MicaTheme.separator,
-                lineWidth: MicaTheme.Shape.hairline
-            )
+    }
+
+    private var identity: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                Text(verbatim: presentation.item.groupID)
+                    .micaThemeFont(.body, weight: .semibold)
+                    .lineLimit(1)
+                Text(verbatim: presentation.item.type)
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                Text(verbatim: presentation.item.memberCount.formatted())
+                    .micaThemeFont(.dataCaption)
+                    .foregroundStyle(MicaTheme.textTertiary)
+            }
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(MicaTheme.accent)
+                Text(verbatim: presentation.item.selected)
+                    .lineLimit(1)
+                if let delay = presentation.item.selectedDelay, delay > 0 {
+                    Text(verbatim: OverviewFormat.latency(delay))
+                        .foregroundStyle(OverviewFormat.latencyTint(delay))
+                }
+            }
+            .micaThemeFont(.caption)
+            .foregroundStyle(MicaTheme.textSecondary)
         }
     }
 
-    @ViewBuilder
-    private var groupActions: some View {
-        HStack(spacing: MicaTheme.Spacing.space1) {
+    private var actions: some View {
+        HStack(spacing: MicaTheme.Spacing.space2) {
             Button(action: onLocateCurrent) {
                 Image(systemName: "scope")
             }
-            .buttonStyle(.borderless)
+            .help(MicaStrings.localizedKey("routing.locate_current_node", language: language))
+            .accessibilityLabel(MicaStrings.localizedKey("routing.locate_current_node", language: language))
             .disabled(presentation.item.selected.proxyNonBlank == nil)
-            .frame(
-                minWidth: MicaTheme.Metrics.iconControlSize,
-                minHeight: MicaTheme.Metrics.iconControlSize
-            )
-            .help(
-                MicaStrings.localizedKey(
-                    "routing.locate_current_node",
-                    language: language
-                )
-            )
-            .accessibilityLabel(
-                MicaStrings.localizedKey(
-                    "routing.locate_current_node",
-                    language: language
-                )
-            )
-
             if canTestGroup || presentation.isTesting {
                 Button(action: onTestGroup) {
-                    if presentation.isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "bolt")
-                    }
+                    Label(MicaStrings.localizedKey("routing.test_group", language: language),
+                          systemImage: presentation.isTesting ? "hourglass" : "bolt")
                 }
-                .buttonStyle(.borderless)
-                .disabled(
-                    !canTestGroup
-                        || !commandsEnabled
-                        || presentation.isTesting
-                        || presentation.isSwitching
-                        || presentation.isClearingFixed
-                )
-                .frame(
-                    minWidth: MicaTheme.Metrics.iconControlSize,
-                    minHeight: MicaTheme.Metrics.iconControlSize
-                )
-                .help(
-                    MicaStrings.localizedKey(
-                        "routing.test_group",
-                        language: language
-                    )
-                )
-                .accessibilityLabel(
-                    MicaStrings.localizedKey(
-                        "routing.test_group",
-                        language: language
-                    )
-                )
+                .disabled(!commandsEnabled || !canTestGroup || presentation.isTesting
+                    || presentation.isSwitching || presentation.isClearingFixed)
             }
-
             if presentation.canClearFixed || presentation.isClearingFixed {
                 Button(action: onClearFixed) {
-                    if presentation.isClearingFixed {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "pin.slash")
-                    }
+                    Image(systemName: "pin.slash")
                 }
-                .buttonStyle(.borderless)
-                .disabled(
-                    !presentation.canClearFixed
-                        || !commandsEnabled
-                        || presentation.isClearingFixed
-                        || presentation.isSwitching
-                        || presentation.isTesting
-                )
-                .frame(
-                    minWidth: MicaTheme.Metrics.iconControlSize,
-                    minHeight: MicaTheme.Metrics.iconControlSize
-                )
-                .help(
-                    MicaStrings.localizedKey(
-                        "routing.clear_fixed_selection",
-                        language: language
-                    )
-                )
-                .accessibilityLabel(
-                    MicaStrings.localizedKey(
-                        "routing.clear_fixed_selection",
-                        language: language
-                    )
-                )
+                .help(MicaStrings.localizedKey("routing.clear_fixed_selection", language: language))
+                .accessibilityLabel(MicaStrings.localizedKey("routing.clear_fixed_selection", language: language))
+                .disabled(!commandsEnabled || !presentation.canClearFixed
+                    || presentation.isClearingFixed || presentation.isSwitching || presentation.isTesting)
             }
         }
-    }
-
-    private var groupFilter: some View {
-        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            HStack(spacing: MicaTheme.Spacing.space3) {
-                TextField(
-                    MicaStrings.localizedKey(
-                        "routing.filter_nodes_placeholder",
-                        language: language
-                    ),
-                    text: Binding(
-                        get: { presentation.filter },
-                        set: { value in onFilterChange(value) }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 200, maxWidth: 420)
-                .accessibilityLabel(
-                    MicaStrings.localizedKey(
-                        "routing.filter_nodes",
-                        language: language
-                    )
-                )
-
-                Spacer(minLength: MicaTheme.Spacing.space2)
-
-                Text(
-                    MicaStrings.localized(
-                        "routing.member_window \(presentation.members.count) \(presentation.item.memberCount)",
-                        language: language
-                    )
-                )
-                .micaThemeFont(.dataCaption)
-                .foregroundStyle(MicaTheme.textSecondary)
-            }
-            .padding(.horizontal, MicaTheme.Spacing.space1)
-
-            if presentation.members.isEmpty {
-                MicaEmptyState(
-                    systemImage: "tray",
-                    titleKey: presentation.filter.proxyNilIfBlank == nil
-                        && presentation.healthFilter == .all
-                        ? "routing.members_empty"
-                        : presentation.healthFilter == .all
-                            ? "routing.members_filtered_empty"
-                            : "routing.health_filter_empty"
-                )
-            }
-        }
-    }
-
-    private var groupSubtitle: String {
-        let availability = MicaStrings.localized(
-            "routing.available_nodes_count \(presentation.item.availableMemberCount) \(presentation.item.memberCount)",
-            language: language
-        )
-        let health = MicaStrings.localizedKey(
-            presentation.healthSummary.status.titleKey,
-            language: language
-        )
-        return "\(presentation.item.type)  ·  \(health)  ·  \(availability)"
-    }
-
-    private var healthSummary: some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
-            Circle()
-                .fill(presentation.healthSummary.status.tint)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-
-            Text(
-                MicaStrings.localized(
-                    "routing.health_counts \(presentation.healthSummary.availableCount) \(presentation.healthSummary.unavailableCount) \(presentation.healthSummary.unknownCount) \(presentation.healthSummary.slowCount)",
-                    language: language
-                )
-            )
-            .micaThemeFont(.dataCaption)
-            .foregroundStyle(MicaTheme.textSecondary)
-
-            Spacer(minLength: MicaTheme.Spacing.space2)
-
-            Text(
-                MicaStrings.localizedKey(
-                    presentation.healthSummary.status.titleKey,
-                    language: language
-                )
-            )
-            .micaThemeFont(.caption, weight: .semibold)
-            .foregroundStyle(presentation.healthSummary.status.tint)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            MicaStrings.localized(
-                "routing.health_accessibility \(presentation.item.groupID) \(presentation.healthSummary.availableCount) \(presentation.healthSummary.unavailableCount) \(presentation.healthSummary.unknownCount) \(presentation.healthSummary.slowCount)",
-                language: language
-            )
-        )
-    }
-}
-
-private struct ProxyLatencyDistributionView: View {
-    let distribution: ProxyLatencyDistribution
-
-    var body: some View {
-        GeometryReader { geometry in
-            let totalSpacing = CGFloat(max(0, distribution.buckets.count - 1)) * 2
-            let drawableWidth = max(0, geometry.size.width - totalSpacing)
-
-            HStack(spacing: 2) {
-                ForEach(distribution.buckets) { bucket in
-                    Capsule(style: .continuous)
-                        .fill(bucket.tint)
-                        .frame(
-                            width: max(
-                                bucket.count > 0 ? 3 : 0,
-                                drawableWidth * bucket.fraction
-                            )
-                        )
-                }
-            }
-        }
-        .frame(height: 4)
-        .accessibilityHidden(true)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
     }
 }
 
@@ -657,7 +441,9 @@ struct ProxyPolicyNodeTile: View {
     let isSwitching: Bool
     let isMeasuring: Bool
     let onSelect: () -> Void
+    let onInspect: () -> Void
     let onTest: () -> Void
+    var onHoverChanged: ((Bool) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -667,9 +453,13 @@ struct ProxyPolicyNodeTile: View {
                 .padding(.vertical, MicaTheme.Spacing.space2)
                 .accessibilityHidden(true)
 
-            Button(action: onSelect) {
+            Button(action: onInspect) {
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                     HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
+                        Image(systemName: isInspected ? "chevron.down" : "chevron.right")
+                            .micaThemeFont(.caption)
+                            .foregroundStyle(MicaTheme.textTertiary)
+                            .accessibilityHidden(true)
                         Text(verbatim: member.name)
                             .micaThemeFont(
                                 .label,
@@ -678,7 +468,7 @@ struct ProxyPolicyNodeTile: View {
                                     : .regular
                             )
                             .foregroundStyle(MicaTheme.textPrimary)
-                            .lineLimit(2)
+                            .lineLimit(1)
                             .fixedSize(horizontal: false, vertical: true)
 
                         Spacer(minLength: MicaTheme.Spacing.space2)
@@ -690,18 +480,27 @@ struct ProxyPolicyNodeTile: View {
                             Text(verbatim: OverviewFormat.latency(delay))
                                 .micaThemeFont(.dataCaption, weight: .semibold)
                                 .foregroundStyle(OverviewFormat.latencyTint(delay))
+                        } else if member.health == .unavailable {
+                            Text(
+                                MicaStrings.localizedKey(
+                                    "routing.health_unavailable",
+                                    language: language
+                                )
+                            )
+                            .micaThemeFont(.caption)
+                            .foregroundStyle(MicaTheme.statusError)
+                            .fixedSize(horizontal: true, vertical: false)
                         }
                     }
 
-                    if let descriptor = member.descriptor {
-                        Text(verbatim: descriptor)
-                            .micaThemeFont(.caption)
-                            .foregroundStyle(MicaTheme.textSecondary)
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                    }
-
-                    HStack(spacing: MicaTheme.Spacing.space3) {
+                    HStack(spacing: MicaTheme.Spacing.space2) {
+                        if let descriptor = member.descriptor {
+                            Text(verbatim: descriptor)
+                                .micaThemeFont(.caption)
+                                .foregroundStyle(MicaTheme.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                         if let rank = member.usageRank {
                             Text(verbatim: rank.label(language: language))
                                 .micaThemeFont(.caption, weight: .semibold)
@@ -710,12 +509,11 @@ struct ProxyPolicyNodeTile: View {
                         }
 
                         if member.isControllerSelected {
-                            Label(
+                            Text(
                                 MicaStrings.localizedKey(
                                     "dashboard.inspector_current",
                                     language: language
-                                ),
-                                systemImage: "checkmark.circle.fill"
+                                )
                             )
                             .micaThemeFont(.caption, weight: .semibold)
                             .foregroundStyle(MicaTheme.accent)
@@ -724,22 +522,43 @@ struct ProxyPolicyNodeTile: View {
                     }
                 }
                 .padding(.horizontal, MicaTheme.Spacing.space3)
-                .padding(.vertical, MicaTheme.Spacing.space3)
+                .padding(.vertical, MicaTheme.Spacing.space2)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(member.tooltip(language: language))
             .accessibilityAddTraits(isInspected ? .isSelected : [])
+            .accessibilityIdentifier("proxy-node-inspect:\(member.id)")
+            .accessibilityLabel(
+                MicaStrings.localized(
+                    "routing.inspect_node \(member.name)",
+                    language: language
+                )
+            )
+
+            if canSelect {
+                Button(action: onSelect) {
+                    Image(systemName: member.isControllerSelected
+                        ? "checkmark.circle.fill" : "arrow.right.circle")
+                        .foregroundStyle(member.isControllerSelected
+                            ? MicaTheme.accent : MicaTheme.textSecondary)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!commandsEnabled || isSwitching || member.isControllerSelected)
+                .frame(
+                    minWidth: MicaTheme.Metrics.iconControlSize,
+                    minHeight: MicaTheme.Metrics.iconControlSize
+                )
+                .help(MicaStrings.localized("routing.use_node \(member.name)", language: language))
+                .accessibilityLabel(
+                    MicaStrings.localized("routing.use_node \(member.name)", language: language)
+                )
+                .accessibilityIdentifier("proxy-node-select:\(member.id)")
+            }
 
             if canTest || isMeasuring {
                 Button(action: onTest) {
-                    if isMeasuring {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "bolt")
-                    }
+                    Image(systemName: "bolt")
                 }
                 .buttonStyle(.borderless)
                 .disabled(
@@ -754,7 +573,7 @@ struct ProxyPolicyNodeTile: View {
                 )
                 .padding(.trailing, MicaTheme.Spacing.space1)
                 .opacity(
-                    isHovered || isInspected || isMeasuring
+                    (isHovered && !scrollInteractionTracker.isScrolling) || isInspected || isMeasuring
                         ? 1
                         : 0.42
                 )
@@ -770,6 +589,7 @@ struct ProxyPolicyNodeTile: View {
                         language: language
                     )
                 )
+                .accessibilityIdentifier("proxy-node-test:\(member.id)")
                 .accessibilityHint(
                     MicaStrings.localized(
                         "routing.help_test_node \(member.name)",
@@ -778,7 +598,7 @@ struct ProxyPolicyNodeTile: View {
                 )
             }
         }
-        .frame(minHeight: 70, alignment: .leading)
+        .frame(minHeight: 48, alignment: .leading)
         .background(tileFill)
         .clipShape(
             RoundedRectangle(
@@ -793,13 +613,19 @@ struct ProxyPolicyNodeTile: View {
             )
             .stroke(
                 tileStroke,
-                lineWidth: member.isControllerSelected ? 1.5 : 1
+                lineWidth: 1
             )
         }
         .onHover { hovering in
-            guard !hovering || !scrollInteractionTracker.isScrolling,
-                  isHovered != hovering else { return }
+            guard isHovered != hovering else { return }
             isHovered = hovering
+            onHoverChanged?(hovering)
+        }
+        .onDisappear {
+            if isHovered {
+                isHovered = false
+                onHoverChanged?(false)
+            }
         }
         .animation(
             reduceMotion || scrollInteractionTracker.isScrolling
@@ -814,12 +640,12 @@ struct ProxyPolicyNodeTile: View {
             return MicaTheme.accent.opacity(0.2)
         }
         if member.isControllerSelected {
-            return MicaTheme.accent.opacity(0.14)
+            return MicaTheme.accent.opacity(0.09)
         }
         if isInspected {
             return MicaTheme.accent.opacity(0.14)
         }
-        if isHovered {
+        if isHovered && !scrollInteractionTracker.isScrolling {
             return MicaTheme.surfaceRaised
         }
         return MicaTheme.surface
@@ -829,13 +655,10 @@ struct ProxyPolicyNodeTile: View {
         if isHighlighted {
             return MicaTheme.accent
         }
-        if member.isControllerSelected {
-            return MicaTheme.accent
-        }
         if isInspected {
             return MicaTheme.accent.opacity(0.5)
         }
-        if isHovered {
+        if isHovered && !scrollInteractionTracker.isScrolling {
             return MicaTheme.separator
         }
         return .clear
@@ -855,19 +678,6 @@ struct ProxyPolicyNodeTile: View {
         case .mostUsed: MicaTheme.accent
         case .occasionallyUsed: MicaTheme.textSecondary
         case .rarelyUsed, .reported: MicaTheme.textTertiary
-        }
-    }
-}
-
-private extension ProxyLatencyDistributionBucket {
-    /// Latency health semantics match `OverviewFormat.latencyTint`: fast/normal
-    /// are healthy, slow warns, timeout errors, unmeasured stays neutral.
-    var tint: Color {
-        switch kind {
-        case .fast, .normal: MicaTheme.statusOK
-        case .slow: MicaTheme.statusWarning
-        case .timeout: MicaTheme.statusError
-        case .unavailable: MicaTheme.textTertiary
         }
     }
 }
@@ -903,7 +713,7 @@ private extension ProxyNodeHealthState {
     }
 }
 
-private extension ProxyNodeRowProjection {
+extension ProxyNodeRowProjection {
     var descriptor: String? {
         let values = [
             type?.proxyNilIfBlank,
@@ -913,22 +723,7 @@ private extension ProxyNodeRowProjection {
         return values.isEmpty ? nil : values.joined(separator: "  ·  ")
     }
 
-    func tooltip(language: AppLanguage) -> String {
-        let status = MicaStrings.localizedKey(
-            health.titleKey,
-            language: language
-        )
-        let latency = delay.flatMap { delay in
-            delay > 0 ? OverviewFormat.latency(delay) : nil
-        }
-            ?? MicaStrings.localizedKey(
-                "overview.config_not_reported",
-                language: language
-            )
-        let values = [name, status, latency]
-            + [descriptor].compactMap { $0 }
-        return values.joined(separator: "  ·  ")
-    }
+
 }
 
 private extension String {

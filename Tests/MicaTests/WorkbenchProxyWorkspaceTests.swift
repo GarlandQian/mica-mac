@@ -245,7 +245,6 @@ struct WorkbenchProxyWorkspaceTests {
 
     @Test func revealObstructionRepresentsEveryBlockingFilterAndDedicatedGlobalAction() {
         let blockers: WorkbenchProxyFilterObstructions = [
-            .globalSearch,
             .groupFilter,
             .healthFilter,
         ]
@@ -346,6 +345,171 @@ struct WorkbenchProxyWorkspaceTests {
         ])
     }
 
+    @MainActor
+    @Test func hoverPreviewRestartsForSameCandidateAfterScrollingStops() {
+        let tracker = ProxyScrollInteractionTracker()
+        let coordinator = ProxyCatalogPresentationCoordinator()
+        let memberID = "hovered-node"
+        let idle = ProxyNodeHoverRequest(memberID: memberID, isScrolling: tracker.isScrolling)
+        tracker.update(.interacting, in: .nodes, coordinator: coordinator)
+        let scrolling = ProxyNodeHoverRequest(memberID: memberID, isScrolling: tracker.isScrolling)
+        #expect(scrolling != idle)
+        #expect(scrolling.previewCandidateID == nil)
+        tracker.update(.idle, in: .nodes, coordinator: coordinator)
+        let stopped = ProxyNodeHoverRequest(memberID: memberID, isScrolling: tracker.isScrolling)
+        #expect(stopped != scrolling)
+        #expect(stopped.previewCandidateID == memberID)
+        #expect(stopped == idle)
+        let expanded = ProxyNodeHoverRequest(
+            memberID: memberID, isScrolling: false, inspectedMemberID: memberID
+        )
+        #expect(expanded.previewCandidateID == nil)
+        #expect(expanded != stopped)
+    }
+
+    @Test func hoverPreviewRemainsInsideViewportOrDeclinesToPresent() throws {
+        for viewport in [
+            CGSize(width: 900, height: 600),
+            CGSize(width: 340, height: 220),
+            CGSize(width: 236, height: 160),
+        ] {
+            for y in [CGFloat(0), viewport.height / 2, viewport.height - 40] {
+                let layout = try #require(ProxyNodePreviewLayout.resolve(
+                    viewport: viewport,
+                    anchor: CGRect(x: 0, y: y, width: viewport.width, height: 40),
+                    fieldCount: 10_000
+                ))
+                #expect(CGRect(origin: .zero, size: viewport).contains(layout.frame))
+                #expect(layout.frame.maxY <= viewport.height - 8)
+                #expect(layout.frame.minY >= 8)
+                #expect(layout.frame.width <= 340)
+                #expect(layout.frame.height <= 248)
+            }
+        }
+        #expect(ProxyNodePreviewLayout.resolve(
+            viewport: CGSize(width: 600, height: 150),
+            anchor: CGRect(x: 0, y: 0, width: 500, height: 48),
+            fieldCount: 6
+        ) == nil)
+        #expect(ProxyNodePreviewLayout.resolve(
+            viewport: CGSize(width: 200, height: 500),
+            anchor: CGRect(x: 0, y: 0, width: 200, height: 48),
+            fieldCount: 6
+        ) == nil)
+        #expect(ProxyNodePreviewLayout.resolve(
+            viewport: CGSize(width: 600, height: 500),
+            anchor: CGRect(x: 0, y: 520, width: 600, height: 48),
+            fieldCount: 6
+        ) == nil)
+    }
+
+    @MainActor
+    @Test func directorySearchSurvivesCrossGroupNavigationWithoutBlockingVisibleNodes() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        let catalog = PolicyGroupCatalogSnapshot(mode: "Rule", groups: [
+            Self.group(id: "Alpha", selected: "Node A", options: ["Node A"]),
+            Self.group(id: "Beta", selected: "Node B", options: ["Node B", "Other"]),
+        ])
+        let occurrences = ProxyProjection.arrangedGroups(
+            catalog.groups, mode: catalog.mode, visibility: .alwaysShow
+        )
+        var input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        input.query = "Alpha"
+        input.workspace.searchText = "Alpha"
+        let model = ProxyWorkspaceModel()
+        input.workspace = try #require(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(
+                    controllerID: controllerID, generation: generation, value: 1
+                ),
+                catalog: catalog
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ))
+        let target = try #require(occurrences.last)
+        input.workspace = ProxyWorkspaceProjection.activating(
+            target.id, in: input.workspace, groups: occurrences
+        )
+        model.updatePresentation(input)
+        let index = model.activeGroupIndex(for: target.id)
+        let member = try #require(index.rows.first)
+        #expect(model.groupProjection.visibleGroups.map(\.group.id) == ["Alpha"])
+        #expect(model.activeGroup?.occurrence.group.id == "Beta")
+        #expect(model.activeGroup?.members.contains(where: { $0.id == member.id }) == true)
+        #expect(input.workspace.searchText == "Alpha")
+        #expect(WorkbenchProxyFilterObstructions.resolve(
+            member: member, index: index, query: input.workspace.proxyMemberQuery,
+            healthFilter: .all
+        ).isEmpty)
+        #expect(WorkbenchProxyFilterObstructions.resolve(
+            member: member, index: index, query: "Other", healthFilter: .all
+        ) == .groupFilter)
+    }
+
+    @Test func inlineNodeDetailIdentityChangesAcrossEverySelectionBoundary() {
+        let controllerID = UUID()
+        let generation = UUID()
+        let base = ProxyNodeDetailIdentity(
+            controllerID: controllerID, generation: generation,
+            groupID: "group:0", memberID: "node:0"
+        )
+        let identities = [
+            base,
+            ProxyNodeDetailIdentity(controllerID: UUID(), generation: generation,
+                                    groupID: "group:0", memberID: "node:0"),
+            ProxyNodeDetailIdentity(controllerID: controllerID, generation: UUID(),
+                                    groupID: "group:0", memberID: "node:0"),
+            ProxyNodeDetailIdentity(controllerID: controllerID, generation: generation,
+                                    groupID: "group:1", memberID: "node:0"),
+            ProxyNodeDetailIdentity(controllerID: controllerID, generation: generation,
+                                    groupID: "group:0", memberID: "node:1"),
+        ]
+
+        #expect(Set(identities).count == identities.count)
+        #expect(base == ProxyNodeDetailIdentity(
+            controllerID: controllerID, generation: generation,
+            groupID: "group:0", memberID: "node:0"
+        ))
+    }
+
+    @Test func inlineNodeSnapshotKeepsExactReportedRuntimeFieldsWithoutInventingConfiguration() throws {
+        let response = try ProxiesResponse.decodePreservingProxyOrder(from: Data("""
+        {"proxies":{"Node A":{"type":"Shadowsocks","name":"Node A","alive":true,
+          "udp":false,"id":"reported-runtime-id","routing-mark":0,
+          "history":[{"time":"2026-09-23T01:00:00Z","delay":42}]}}}
+        """.utf8))
+        let detail = ProxyNodeViewState(snapshot: try #require(response.proxies["Node A"]))
+        var group = Self.group(id: "Proxy", selected: "Node A", options: ["Node A", "Node B"])
+        group.optionDetails = ["Node A": detail]
+        let occurrence = try #require(ProxyProjection.arrangedGroups(
+            [group], mode: "Rule", visibility: .alwaysShow
+        ).first)
+        let index = ProxyProjection.activeGroupIndex(in: [occurrence], groupID: occurrence.id)
+        let member = try #require(index.rows.first)
+        let snapshot = ProxyNodeInspectionProjection.snapshot(
+            member: member, in: occurrence, language: .english
+        )
+
+        #expect(snapshot.title == "Node A")
+        #expect(snapshot.subtitle == "Shadowsocks")
+        #expect(snapshot.fields.first { $0.id == "metadata.id" }?.value == "reported-runtime-id")
+        #expect(snapshot.fields.first { $0.id == "metadata.routing-mark" }?.value == "0")
+        #expect(snapshot.fields.first { $0.id == "transport.udp" }?.value == "Disabled")
+        #expect(snapshot.fields.first { $0.id == "test-delay" }?.value == OverviewFormat.latency(42))
+        #expect(!snapshot.sections.contains { $0.id == "protocol" })
+
+        let missing = ProxyNodeInspectionProjection.snapshot(
+            member: try #require(index.rows.last), in: occurrence, language: .english
+        )
+        #expect(missing.title == "Node B")
+        #expect(missing.subtitle == nil)
+        #expect(!missing.fields.contains { $0.id == "metadata.id" || $0.id == "node-type" })
+    }
+
     @Test func latencyScaleUsesOnlyPositiveReportedValuesWithoutReordering() throws {
         var group = Self.group(
             id: "Latency",
@@ -413,7 +577,7 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(latency.tone == .neutral)
     }
 
-    @Test func proxyRevealSourceKeepsOneScrollOwnerAndStagesExactTargets() throws {
+    @Test func proxyRevealSourceKeepsExactActiveGroupTargetsAndExplicitFilterRecovery() throws {
         let root = try Self.source(named: "WorkbenchProxies.swift")
         let panels = try Self.source(named: "WorkbenchProxyGroupPanels.swift")
         let topology = try Self.source(named: "WorkbenchOverviewTopologyView.swift")
@@ -426,12 +590,12 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(root.contains("ScrollViewReader"))
         #expect(
             root.contains(
-                "WorkbenchProxyScrollTarget.group(reveal.groupID)"
+                "reveal.groupID == presentation.id"
             )
         )
         #expect(root.contains("proxy.scrollTo(reveal.targetID, anchor: .center)"))
         #expect(root.contains("lastScrolledRevealToken"))
-        #expect(root.contains("groupProjection.visibleGroups.isEmpty"))
+        #expect(root.contains("groupProjection.visibleDirectoryItems.isEmpty"))
         #expect(!root.contains(".scrollPosition(id: $scrollAnchorID"))
         #expect(!panels.contains(".scrollTargetLayout()"))
         #expect(root.contains("ProxyProjection.revealTargetID("))
@@ -442,10 +606,10 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(panels.contains("\"routing.test_node \\(member.name)\""))
         #expect(panels.contains(".accessibilityLabel("))
         #expect(panels.contains(".accessibilityHint("))
-        #expect(root.contains("stored.groupFilters[groupOccurrenceID] = \"\""))
+        #expect(root.contains("stored.proxyMemberQuery = \"\""))
         #expect(root.contains("healthFilter = .all"))
-        #expect(root.contains("searchText = \"\""))
-        #expect(root.contains("!groupProjection.arrangedGroups.isEmpty"))
+        #expect(!root.contains("searchText = \"\""))
+        #expect(root.contains("case .emptyCatalog:"))
         #expect(root.contains("workspace.pendingProxySelection"))
         #expect(interaction.contains("routing.show_global_and_locate"))
 
@@ -453,7 +617,7 @@ struct WorkbenchProxyWorkspaceTests {
             Self.sourceSection(
                 in: root,
                 startingAt: "private func applyCatalogUpdate",
-                endingAt: "private func rebuildCatalogIndex"
+                endingAt: "private func activateGroup"
             )
         )
         #expect(catalogApply.contains("consumePendingProxyNavigation()"))
@@ -494,7 +658,7 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(currentSelection.contains("visibility: .alwaysShow"))
     }
 
-    @Test func proxyExpandedWorkspaceUsesOneRootLazyGridAndNarrowCatalogObserver() throws {
+    @Test func proxyWorkspaceSeparatesGroupDirectoryAndSingleNodeListWithNarrowObserver() throws {
         let root = try Self.source(named: "WorkbenchProxies.swift")
         let panels = try Self.source(named: "WorkbenchProxyGroupPanels.swift")
         let content = try #require(
@@ -518,11 +682,11 @@ struct WorkbenchProxyWorkspaceTests {
                 endingAt: "private struct WorkbenchProxyRevealObstructionNotice"
             )
         )
-        let sectionHeader = try #require(
+        let activeHeader = try #require(
             Self.sourceSection(
                 in: panels,
-                startingAt: "struct ProxyPolicyGroupSectionHeader",
-                endingAt: "private struct ProxyLatencyDistributionView"
+                startingAt: "struct ProxyPolicyActiveGroupHeader",
+                endingAt: "struct ProxyPolicyNodeTile"
             )
         )
         let sessionReset = try #require(
@@ -536,18 +700,27 @@ struct WorkbenchProxyWorkspaceTests {
             Self.sourceSection(
                 in: root,
                 startingAt: "private func selectMember",
+                endingAt: "private func inspectMember"
+            )
+        )
+        let memberInspection = try #require(
+            Self.sourceSection(
+                in: root,
+                startingAt: "private func inspectMember",
                 endingAt: "private func testMember"
             )
         )
 
-        #expect(String(content).components(separatedBy: "LazyVGrid(").count == 2)
-        #expect(content.contains("Section {"))
-        #expect(content.contains("ProxyPolicyGroupSectionHeader("))
+        #expect(String(content).components(separatedBy: "LazyVStack(").count == 3)
+        #expect(content.contains("ProxyPolicyGroupDirectoryRow("))
+        #expect(content.contains("ProxyPolicyActiveGroupHeader("))
         #expect(content.contains("ProxyPolicyNodeTile("))
-        #expect(!content.contains("LazyVStack"))
-        #expect(!sectionHeader.contains("LazyVGrid"))
-        #expect(!sectionHeader.contains("ProxyPolicyNodeTile("))
-        #expect(sectionHeader.contains("private var groupFilter"))
+        #expect(!content.contains("LazyVGrid"))
+        #expect(content.contains("accessibilityCatalog(index: model.directoryAccessibilityIndex)"))
+        #expect(content.contains("accessibilityCatalog(index: model.accessibilityIndex)"))
+        #expect(content.contains("if presentation.inspectedMemberID == member.id"))
+        #expect(!activeHeader.contains("LazyVGrid"))
+        #expect(!activeHeader.contains("ProxyPolicyNodeTile("))
         #expect(!visualRoot.contains("appModel.policyGroupCatalog"))
         #expect(observer.contains("appModel.policyGroupCatalogRevision"))
         #expect(observer.contains("let current = currentObservation"))
@@ -558,23 +731,28 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(observer.contains(".accessibilityHidden(true)"))
         #expect(sessionReset.contains("retainedPendingNavigation"))
         #expect(sessionReset.contains("retainedReveal"))
-        #expect(memberSelection.contains("index.recordsByID[memberID]?.row"))
+        #expect(memberInspection.contains("index.recordsByID[memberID]?.row"))
+        #expect(!memberInspection.contains("currentMemberMutationTarget"))
+        #expect(!memberInspection.contains("select(target.memberName"))
 
         let scopeAdmission = try #require(
-            memberSelection.range(of: "appModel.matchesCurrentCommandScope(scope)")
+            memberInspection.range(of: "appModel.matchesCurrentCommandScope(scope)")
         )
         let workspaceSelection = try #require(
-            memberSelection.range(of: "workspaceStore.update(")
+            memberInspection.range(of: "workspaceStore.update(")
         )
-        let inspectorSelection = try #require(
-            memberSelection.range(of: "workspaceStore.selectInspector(")
+        let selectionAdmission = try #require(
+            memberSelection.range(of: "appModel.matchesCurrentCommandScope(scope)")
         )
         let mutationResolution = try #require(
             memberSelection.range(of: "ProxyProjection.currentMemberMutationTarget(")
         )
         #expect(scopeAdmission.lowerBound < workspaceSelection.lowerBound)
-        #expect(workspaceSelection.lowerBound < inspectorSelection.lowerBound)
-        #expect(inspectorSelection.lowerBound < mutationResolution.lowerBound)
+        #expect(memberInspection.contains("stored.inspectedProxyMemberID == memberID ? nil : memberID"))
+        #expect(!memberInspection.contains("workspaceStore.selectInspector("))
+        #expect(selectionAdmission.lowerBound < mutationResolution.lowerBound)
+        #expect(!memberSelection.contains("inspectMember("))
+        #expect(!memberSelection.contains("workspaceStore.selectInspector("))
     }
 
     @Test func catalogObservationClassifiesSessionBoundariesAndOwnsCurrentIntents() {
@@ -622,6 +800,328 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(nextRevision.owns(currentReveal))
         #expect(!nextGeneration.owns(currentSelection))
         #expect(!nextGeneration.owns(currentReveal))
+    }
+
+    @MainActor
+    @Test func workspaceModelRejectsOlderCatalogsAndCrossSessionInputs() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        let input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        let model = ProxyWorkspaceModel()
+        let accepted = ProxyCatalogUpdate(
+            revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 4),
+            catalog: PolicyGroupCatalogSnapshot(
+                mode: "Rule",
+                groups: [Self.group(id: "Current", selected: "Node A")]
+            )
+        )
+        #expect(model.accept(
+            accepted,
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ) != nil)
+        let acceptedCounts = model.cacheWorkCounts
+        let obsolete = ProxyCatalogUpdate(
+            revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 3),
+            catalog: .empty
+        )
+        #expect(model.accept(
+            obsolete,
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ) == nil)
+        #expect(model.accept(
+            accepted,
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ) == nil)
+        #expect(model.accept(
+            accepted,
+            selectedControllerID: UUID(),
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ) == nil)
+        #expect(model.accept(
+            accepted,
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: UUID(),
+            input: input
+        ) == nil)
+
+        var obsoleteInput = input
+        obsoleteInput.generation = UUID()
+        obsoleteInput.query = "Nothing"
+        #expect(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 5),
+                catalog: .empty
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: obsoleteInput
+        ) == nil)
+        model.updatePresentation(obsoleteInput)
+        #expect(model.catalog == accepted.catalog)
+        #expect(model.groupProjection.arrangedGroups.map(\.group.id) == ["Current"])
+        #expect(model.cacheWorkCounts == acceptedCounts)
+    }
+
+    @MainActor
+    @Test func workspaceModelReconcilesActiveGroupAndKeepsControllerMemberOrder() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        let catalog = PolicyGroupCatalogSnapshot(
+            mode: "Rule",
+            groups: [
+                Self.group(id: "Second", selected: "Y", options: ["Z", "Y", "X"]),
+                Self.group(id: "First", selected: "B", options: ["B", "A"]),
+            ]
+        )
+        let occurrences = ProxyProjection.arrangedGroups(
+            catalog.groups,
+            mode: catalog.mode,
+            visibility: .alwaysShow
+        )
+        var input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        input.workspace.activeGroupID = occurrences[0].id
+        input.workspace.inspectedProxyMemberID = "removed-member"
+        let model = ProxyWorkspaceModel()
+        let workspace = try #require(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 1),
+                catalog: catalog
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ))
+
+        #expect(workspace.activeGroupID == occurrences[0].id)
+        #expect(workspace.inspectedProxyMemberID == nil)
+        #expect(model.groupProjection.arrangedGroups.map(\.group.id) == ["Second", "First"])
+        #expect(model.activeGroup?.occurrence.id == occurrences[0].id)
+        #expect(model.activeGroup?.members.map(\.name) == ["Z", "Y", "X"])
+        #expect(model.directoryAccessibilityIndex.totalCount == 2)
+        #expect(model.accessibilityIndex.totalCount == 4)
+        #expect(model.cacheWorkCounts.memberRowsBuilt == 3)
+
+        input.workspace = workspace
+        input.workspace.proxyMemberQuery = "Y"
+        model.updatePresentation(input)
+        #expect(model.activeGroup?.members.map(\.name) == ["Y"])
+        #expect(model.accessibilityIndex.totalCount == 2)
+
+        input.healthFilter = .current
+        model.updatePresentation(input)
+        #expect(model.activeGroup?.members.map(\.name) == ["Y"])
+        #expect(model.accessibilityIndex.totalCount == 2)
+
+        input.workspace = ProxyWorkspaceProjection.activating(
+            occurrences[1].id,
+            in: input.workspace,
+            groups: occurrences,
+            preferredMemberID: nil
+        )
+        model.updatePresentation(input)
+        #expect(model.activeGroup?.members.map(\.name) == ["B"])
+        #expect(model.activeGroup?.filter == "")
+        #expect(model.cacheWorkCounts.memberRowsBuilt == 5)
+        #expect(model.activeGroupIndex(for: occurrences[0].id).occurrence == nil)
+        #expect(model.directoryAccessibilityIndex.elements(in: 0..<2).compactMap { element -> String? in
+            guard case .group(let group) = element, group.isActive else { return nil }
+            return group.occurrence.id
+        } == [occurrences[1].id])
+    }
+
+    @MainActor
+    @Test func workspaceModelReusesMemberIndexesForSelectionActivityAndSearch() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        var input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        let model = ProxyWorkspaceModel()
+        input.workspace = try #require(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 1),
+                catalog: PolicyGroupCatalogSnapshot(
+                    mode: "Rule",
+                    groups: [Self.group(id: "Proxy", selected: "Y", options: ["Z", "Y", "X"])]
+                )
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ))
+        let groupID = try #require(model.activeGroup?.id)
+        input.workspace.activeGroupID = groupID
+        input.workspace = model.updatePresentation(input)
+        let counts = model.cacheWorkCounts
+        let memberBuilds = model.memberProjectionBuildCount
+        let selectedID = try #require(model.activeGroup?.members.last?.id)
+
+        input.workspace.inspectedProxyMemberID = selectedID
+        input.workspace = model.updatePresentation(input)
+        #expect(model.activeGroup?.inspectedMemberID == selectedID)
+        #expect(model.cacheWorkCounts == counts)
+        #expect(model.memberProjectionBuildCount == memberBuilds)
+        let reconciliations = model.workspaceReconciliationCount
+
+        input.activity = ProxyOperationActivity(
+            switchingGroupID: "Proxy",
+            switchingSurgePolicyGroup: nil,
+            measuringDelayGroupID: nil,
+            testingSurgePolicyGroup: nil,
+            clearingFixedGroupID: nil,
+            measuringDelayNode: nil
+        )
+        model.updatePresentation(input)
+        #expect(model.activeGroup?.isSwitching == true)
+        #expect(model.workspaceReconciliationCount == reconciliations)
+        let presentationBuilds = model.groupPresentationBuildCount
+
+        input.workspace.scrollAnchorID = "scroll-only"
+        input.workspace.selectedItemID = "unrelated-selection"
+        model.updatePresentation(input)
+        #expect(model.groupPresentationBuildCount == presentationBuilds)
+        #expect(model.workspaceReconciliationCount == reconciliations)
+
+        input.query = "No match"
+        model.updatePresentation(input)
+        #expect(model.groupProjection.visibleGroups.isEmpty)
+        #expect(model.activeGroup?.id == groupID)
+        #expect(model.activeGroup?.members.map(\.name) == ["Z", "Y", "X"])
+        #expect(model.directoryAccessibilityIndex.totalCount == 0)
+        #expect(model.accessibilityIndex.totalCount == 4)
+        #expect(model.cacheWorkCounts == counts)
+        #expect(model.memberProjectionBuildCount == memberBuilds)
+    }
+
+    @MainActor
+    @Test func workspaceModelPreservesPendingLayoutUntilFirstCatalogAndResetsCompletely() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        var input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        input.workspace.activeGroupID = "not-loaded-yet"
+        let model = ProxyWorkspaceModel()
+        #expect(model.updatePresentation(input) == input.workspace)
+        #expect(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 0),
+                catalog: PolicyGroupCatalogSnapshot(
+                    mode: "Rule",
+                    groups: [Self.group(id: "Proxy", selected: "Node A")]
+                )
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ) != nil)
+        #expect(model.activeGroup != nil)
+
+        model.reset()
+        #expect(model.catalog == .empty)
+        #expect(model.revision == .zero)
+        #expect(model.groupProjection.arrangedGroups.isEmpty)
+        #expect(model.activeGroup == nil)
+        #expect(model.activeProjection == .empty)
+        #expect(model.accessibilityIndex.totalCount == 0)
+        #expect(model.cacheWorkCounts == ProxyCatalogProjectionWorkCounts())
+        #expect(model.updatePresentation(input) == input.workspace)
+    }
+
+    @MainActor
+    @Test func inactiveGroupActionsResolveWithoutBuildingTheirMemberIndex() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        let scope = try #require(LiveCommandScope(controllerID: controllerID, generation: generation))
+        var input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        let model = ProxyWorkspaceModel()
+        input.workspace = try #require(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 1),
+                catalog: PolicyGroupCatalogSnapshot(
+                    mode: "Rule",
+                    groups: [
+                        Self.group(id: "Active", selected: "Node A", options: ["Node A"]),
+                        Self.group(id: "Inactive", selected: "Node B", options: ["Node B", "Node C"]),
+                    ]
+                )
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ))
+        let groupID = try #require(model.groupProjection.arrangedGroups.last?.id)
+        let initialActiveID = try #require(model.activeGroup?.id)
+        let initialWork = model.cacheWorkCounts
+
+        #expect(model.activeGroupIndex(for: groupID).occurrence == nil)
+        #expect(model.groupOccurrence(for: groupID, scope: scope)?.group.id == "Inactive")
+        #expect(model.cacheWorkCounts == initialWork)
+        #expect(model.cacheWorkCounts.activeGroupIndexBuilds == 1)
+        #expect(model.cacheWorkCounts.memberRowsBuilt == 1)
+
+        input.workspace.activeGroupID = groupID
+        input.workspace = model.updatePresentation(input)
+        #expect(model.activeGroupIndex(for: groupID).occurrence != nil)
+        #expect(model.activeGroupIndex(for: initialActiveID).occurrence == nil)
+        input.workspace.activeGroupID = initialActiveID
+        input.workspace = model.updatePresentation(input)
+        let afterReactivation = model.cacheWorkCounts
+
+        #expect(model.activeGroupIndex(for: groupID).occurrence == nil)
+        #expect(model.groupOccurrence(for: groupID, scope: scope)?.group.id == "Inactive")
+        #expect(model.cacheWorkCounts == afterReactivation)
+    }
+
+    @MainActor
+    @Test func groupActionResolutionRejectsStaleScopesAndRemovedGroups() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        let scope = try #require(LiveCommandScope(controllerID: controllerID, generation: generation))
+        let input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        let model = ProxyWorkspaceModel()
+        let initial = ProxyCatalogUpdate(
+            revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 1),
+            catalog: PolicyGroupCatalogSnapshot(
+                mode: "Rule",
+                groups: [Self.group(id: "Current", selected: "Node A")]
+            )
+        )
+        _ = model.accept(initial, selectedControllerID: controllerID, sessionControllerID: controllerID, generation: generation, input: input)
+        let groupID = try #require(model.activeGroup?.id)
+        let staleGeneration = try #require(LiveCommandScope(controllerID: controllerID, generation: UUID()))
+        let staleController = try #require(LiveCommandScope(controllerID: UUID(), generation: generation))
+
+        #expect(model.groupOccurrence(for: groupID, scope: staleGeneration) == nil)
+        #expect(model.groupOccurrence(for: groupID, scope: staleController) == nil)
+        #expect(model.groupOccurrence(for: "missing", scope: scope) == nil)
+
+        _ = model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(controllerID: controllerID, generation: generation, value: 2),
+                catalog: .empty
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        )
+        #expect(model.groupOccurrence(for: groupID, scope: scope) == nil)
+        model.reset()
+        #expect(model.groupOccurrence(for: groupID, scope: scope) == nil)
     }
 
     @Test func revealIdentityRejectsObsoleteControllerAndGeneration() {
@@ -689,7 +1189,7 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(index.records.count == 798)
     }
 
-    @Test func proxyWorkspaceKeepsIndependentFilterAndSelectionPerGroup() throws {
+    @Test func activatingDifferentGroupClearsLocalFilterAndInspectedMember() throws {
         let arranged = ProxyProjection.arrangedGroups(
             [
                 Self.group(
@@ -716,44 +1216,48 @@ struct WorkbenchProxyWorkspaceTests {
         )
 
         var workspace = WorkbenchDestinationWorkspace()
-        workspace = ProxyWorkspaceProjection.opening(
+        workspace = ProxyWorkspaceProjection.activating(
+            alpha.id,
+            in: workspace,
+            groups: arranged,
+            preferredMemberID: nil
+        )
+        workspace.proxyMemberQuery = "Alpha 2"
+        workspace.inspectedProxyMemberID = alphaSecond
+
+        workspace = ProxyWorkspaceProjection.activating(
+            alpha.id,
+            in: workspace,
+            groups: arranged,
+            preferredMemberID: nil
+        )
+        #expect(workspace.proxyMemberQuery == "Alpha 2")
+        #expect(workspace.inspectedProxyMemberID == alphaSecond)
+
+        workspace = ProxyWorkspaceProjection.activating(
             beta.id,
             in: workspace,
             groups: arranged,
             preferredMemberID: nil
         )
-        workspace = ProxyWorkspaceProjection.opening(
+        #expect(workspace.activeGroupID == beta.id)
+        #expect(workspace.proxyMemberQuery.isEmpty)
+        #expect(workspace.inspectedProxyMemberID == nil)
+
+        workspace.proxyMemberQuery = "Beta 2"
+        workspace.inspectedProxyMemberID = betaSecond
+        workspace = ProxyWorkspaceProjection.activating(
             alpha.id,
             in: workspace,
             groups: arranged,
-            preferredMemberID: nil
+            preferredMemberID: alphaSecond
         )
-        workspace.groupFilters[alpha.id] = "Alpha 2"
-        workspace.groupFilters[beta.id] = "Beta 2"
-        workspace.selectedGroupMemberIDs[alpha.id] = alphaSecond
-        workspace.selectedGroupMemberIDs[beta.id] = betaSecond
-
-        workspace = ProxyWorkspaceProjection.closing(
-            alpha.id,
-            in: workspace,
-            groups: arranged
-        )
-        workspace = ProxyWorkspaceProjection.opening(
-            alpha.id,
-            in: workspace,
-            groups: arranged,
-            preferredMemberID: nil
-        )
-
-        #expect(workspace.openGroupIDs == [alpha.id, beta.id])
         #expect(workspace.activeGroupID == alpha.id)
-        #expect(workspace.groupFilters[alpha.id] == "Alpha 2")
-        #expect(workspace.groupFilters[beta.id] == "Beta 2")
-        #expect(workspace.selectedGroupMemberIDs[alpha.id] == alphaSecond)
-        #expect(workspace.selectedGroupMemberIDs[beta.id] == betaSecond)
+        #expect(workspace.proxyMemberQuery.isEmpty)
+        #expect(workspace.inspectedProxyMemberID == alphaSecond)
     }
 
-    @Test func closingInspectorPreservesGroupStateAndDoesNotAutoReopen() throws {
+    @Test func closingInlineDetailsDoesNotReopenWhenActivatingSameGroup() throws {
         let arranged = ProxyProjection.arrangedGroups(
             [
                 Self.group(
@@ -770,17 +1274,15 @@ struct WorkbenchProxyWorkspaceTests {
             ProxyProjection.preferredMemberID(in: group.group)
         )
         var workspace = WorkbenchDestinationWorkspace()
-        workspace = ProxyWorkspaceProjection.opening(
+        workspace = ProxyWorkspaceProjection.activating(
             group.id,
             in: workspace,
             groups: arranged,
             preferredMemberID: selectedMemberID
         )
-        workspace = ProxyWorkspaceProjection.closingInspector(
-            for: group.id,
-            in: workspace
-        )
-        workspace = ProxyWorkspaceProjection.opening(
+        workspace.inspectedProxyMemberID = nil
+        workspace.proxyMemberQuery = "Node"
+        workspace = ProxyWorkspaceProjection.activating(
             group.id,
             in: workspace,
             groups: arranged,
@@ -788,7 +1290,8 @@ struct WorkbenchProxyWorkspaceTests {
         )
 
         #expect(workspace.activeGroupID == group.id)
-        #expect(workspace.selectedGroupMemberIDs[group.id] == nil)
+        #expect(workspace.inspectedProxyMemberID == nil)
+        #expect(workspace.proxyMemberQuery == "Node")
         #expect(group.group.selected == "Node A")
     }
 
@@ -830,7 +1333,7 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(projection.members.last?.name == longMostName)
     }
 
-    @Test func catalogRevisionBuildsRowsOnlyForExpandedGroups() throws {
+    @Test func catalogRevisionBuildsRowsOnlyForActiveGroup() throws {
         let groups = (0..<100).map { groupIndex in
             let groupID = groupIndex == 50 ? "GLOBAL" : "Group \(groupIndex)"
             let members = (0..<1_000).map { "Node \(groupIndex)-\($0)" }
@@ -866,62 +1369,50 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(cache.workCounts.memberRowsBuilt == 0)
 
         let workAfterCatalogBuild = cache.workCounts
-        let matchingGroups = cache.groupProjection(query: "42-999")
-        _ = cache.groupProjection(query: "42-998")
+        let matchingGroups = cache.groupProjection(query: "Group 42")
+        _ = cache.groupProjection(query: "Group 7")
         #expect(matchingGroups.visibleGroups.map { $0.group.id } == ["Group 42"])
         #expect(cache.workCounts == workAfterCatalogBuild)
 
-        let firstExpandedGroup = try #require(
+        let firstGroup = try #require(
             cache.groupIndex.arrangedGroups.first {
                 $0.group.id == "Group 42"
             }
         )
-        let secondExpandedGroup = try #require(
+        let secondGroup = try #require(
             cache.groupIndex.arrangedGroups.first {
                 $0.group.id == "Group 7"
             }
         )
-        let didUpdateExpandedGroups = cache.updateExpandedGroups(
-            groupIDs: [firstExpandedGroup.id, secondExpandedGroup.id]
-        )
-        #expect(didUpdateExpandedGroups)
-        #expect(
-            cache.expandedGroupIndex(for: firstExpandedGroup.id).rows.count
-                == 1_000
-        )
-        #expect(
-            cache.expandedGroupIndex(for: secondExpandedGroup.id).rows.count
-                == 1_000
-        )
-        #expect(cache.workCounts.activeGroupIndexBuilds == 2)
-        #expect(cache.workCounts.memberRowsBuilt == 2_000)
+        let activatedFirstGroup = cache.updateActiveGroup(groupID: firstGroup.id)
+        #expect(activatedFirstGroup)
+        #expect(cache.activeGroupIndex.occurrence?.id == firstGroup.id)
+        #expect(cache.activeGroupIndex.rows.count == 1_000)
+        #expect(cache.workCounts.activeGroupIndexBuilds == 1)
+        #expect(cache.workCounts.memberRowsBuilt == 1_000)
 
-        let workAfterExpandedBuild = cache.workCounts
-        let firstExpandedIndex = cache.expandedGroupIndex(
-            for: firstExpandedGroup.id
-        )
+        let workAfterFirstBuild = cache.workCounts
+        let firstIndex = cache.activeGroupIndex
         let matchingMembers = ProxyActiveGroupProjection(
-            index: firstExpandedIndex,
+            index: firstIndex,
             query: "42-999"
         )
         _ = ProxyActiveGroupProjection(
-            index: firstExpandedIndex,
+            index: firstIndex,
             query: "42-998"
         )
         #expect(matchingMembers.members.map(\.name) == ["Node 42-999"])
-        #expect(cache.workCounts == workAfterExpandedBuild)
-        let didReuseExpandedGroups = cache.updateExpandedGroups(
-            groupIDs: [firstExpandedGroup.id, secondExpandedGroup.id]
-        )
-        #expect(!didReuseExpandedGroups)
-        #expect(cache.workCounts == workAfterExpandedBuild)
+        #expect(cache.workCounts == workAfterFirstBuild)
+        let changedFirstGroupAgain = cache.updateActiveGroup(groupID: firstGroup.id)
+        #expect(!changedFirstGroupAgain)
+        #expect(cache.workCounts == workAfterFirstBuild)
 
-        let lastMember = try #require(firstExpandedIndex.rows.last)
+        let lastMember = try #require(firstIndex.rows.last)
         #expect(
             ProxyProjection.memberMutationTarget(
-                groupID: firstExpandedGroup.id,
+                groupID: firstGroup.id,
                 memberID: lastMember.id,
-                index: firstExpandedIndex,
+                index: firstIndex,
                 actionAvailable: true,
                 requiresSelectableGroup: true
             ) == ProxyMemberMutationTarget(
@@ -930,19 +1421,14 @@ struct WorkbenchProxyWorkspaceTests {
             )
         )
 
-        let didCloseFirstGroup = cache.updateExpandedGroups(
-            groupIDs: [secondExpandedGroup.id]
-        )
-        #expect(didCloseFirstGroup)
-        #expect(
-            cache.expandedGroupIndex(for: firstExpandedGroup.id).occurrence
-                == nil
-        )
-        #expect(
-            cache.expandedGroupIndex(for: secondExpandedGroup.id).rows.count
-                == 1_000
-        )
-        #expect(cache.workCounts == workAfterExpandedBuild)
+        let activatedSecondGroup = cache.updateActiveGroup(groupID: secondGroup.id)
+        #expect(activatedSecondGroup)
+        #expect(cache.activeGroupIndex.occurrence?.id == secondGroup.id)
+        #expect(cache.activeGroupIndex.rows.count == 1_000)
+        #expect(cache.activeGroupIndex.rows.allSatisfy { $0.name.hasPrefix("Node 7-") })
+        #expect(cache.workCounts.activeGroupIndexBuilds == 2)
+        #expect(cache.workCounts.memberRowsBuilt == 2_000)
+        let workAfterSecondBuild = cache.workCounts
 
         let didReuseCatalog = cache.updateCatalog(
             catalog,
@@ -950,7 +1436,13 @@ struct WorkbenchProxyWorkspaceTests {
             visibility: .followMode
         )
         #expect(!didReuseCatalog)
-        #expect(cache.workCounts == workAfterExpandedBuild)
+        #expect(cache.workCounts == workAfterSecondBuild)
+
+        let clearedActiveGroup = cache.updateActiveGroup(groupID: nil)
+        #expect(clearedActiveGroup)
+        #expect(cache.activeGroupIndex.occurrence == nil)
+        #expect(cache.activeGroupIndex.rows.isEmpty)
+        #expect(cache.workCounts == workAfterSecondBuild)
     }
 
     @Test func catalogRevisionRequiresCurrentControllerAndGeneration() {
@@ -1131,7 +1623,7 @@ struct WorkbenchProxyWorkspaceTests {
         )
     }
 
-    @Test func workspaceReconciliationDoesNotBuildRowsForEveryStoredGroup() {
+    @Test func workspaceReconciliationOnlyValidatesActiveGroupsInspectedMember() {
         let groups = ProxyProjection.arrangedGroups(
             (0..<100).map { groupIndex in
                 Self.group(
@@ -1144,24 +1636,17 @@ struct WorkbenchProxyWorkspaceTests {
             visibility: .followMode
         )
         var workspace = WorkbenchDestinationWorkspace()
-        workspace.openGroupIDs = groups.map(\.id)
         workspace.activeGroupID = groups[42].id
-        workspace.selectedGroupMemberIDs = Dictionary(
-            uniqueKeysWithValues: groups.compactMap { occurrence in
-                ProxyProjection.preferredMemberID(in: occurrence.group).map {
-                    (occurrence.id, $0)
-                }
-            }
-        )
+        workspace.inspectedProxyMemberID = ProxyProjection.preferredMemberID(in: groups[42].group)
 
         let result = ProxyWorkspaceProjection.reconciliation(
             workspace,
             groups: groups
         )
 
-        #expect(result.workspace.openGroupIDs == groups.map(\.id))
-        #expect(result.workspace.selectedGroupMemberIDs.count == 100)
-        #expect(result.inspectedMemberCount == 100)
+        #expect(result.workspace.activeGroupID == groups[42].id)
+        #expect(result.workspace.inspectedProxyMemberID == workspace.inspectedProxyMemberID)
+        #expect(result.inspectedMemberCount == 1)
     }
 
     @Test func proxyAccessibilityIndexKeepsEveryPageGloballyBounded() {
@@ -1183,8 +1668,8 @@ struct WorkbenchProxyWorkspaceTests {
             let accessibilityIndex = ProxyAccessibilityIndex(
                 groups: projection.visibleGroups,
                 directoryItems: projection.visibleDirectoryItems,
-                openGroupIDs: [],
-                expandedGroups: [:]
+                activeGroupID: nil,
+                activeGroup: .empty
             )
             var lowerBound = 0
             var traversedIDs: [String] = []
@@ -1207,7 +1692,7 @@ struct WorkbenchProxyWorkspaceTests {
         }
     }
 
-    @Test func proxyAccessibilityIndexFlattensExpandedMembersIntoOneGlobalWindow() throws {
+    @Test func proxyAccessibilityIndexIncludesOnlyActiveMembersInBoundedWindow() throws {
         let projection = ProxyGroupCatalogProjection(
             catalog: PolicyGroupCatalogSnapshot(
                 mode: "Rule",
@@ -1222,35 +1707,34 @@ struct WorkbenchProxyWorkspaceTests {
             visibility: .alwaysShow,
             query: ""
         )
-        let expandedGroups = Dictionary(
-            uniqueKeysWithValues: projection.visibleGroups.map { occurrence in
-                let index = ProxyProjection.activeGroupIndex(
-                    in: projection.arrangedGroups,
-                    groupID: occurrence.id
-                )
-                return (
-                    occurrence.id,
-                    ProxyActiveGroupProjection(index: index, query: "")
-                )
-            }
+        let activeID = try #require(projection.visibleGroups.last?.id)
+        let active = ProxyActiveGroupProjection(
+            index: ProxyProjection.activeGroupIndex(
+                in: projection.arrangedGroups,
+                groupID: activeID
+            ),
+            query: ""
         )
-        let openGroupIDs = projection.visibleGroups.map(\.id)
         let accessibilityIndex = ProxyAccessibilityIndex(
             groups: projection.visibleGroups,
             directoryItems: projection.visibleDirectoryItems,
-            openGroupIDs: openGroupIDs,
-            expandedGroups: expandedGroups
+            activeGroupID: activeID,
+            activeGroup: active
         )
 
-        #expect(accessibilityIndex.totalCount == 162)
+        #expect(accessibilityIndex.totalCount == 82)
         #expect(
             accessibilityIndex.orderedIDs.first
-                == ProxyAccessibilityIndex.groupElementID(openGroupIDs[0])
+                == ProxyAccessibilityIndex.groupElementID(projection.visibleGroups[0].id)
         )
         #expect(
-            accessibilityIndex.orderedIDs[81]
-                == ProxyAccessibilityIndex.groupElementID(openGroupIDs[1])
+            accessibilityIndex.orderedIDs[1]
+                == ProxyAccessibilityIndex.groupElementID(activeID)
         )
+        #expect(accessibilityIndex.elements(in: 0..<82).allSatisfy { element in
+            guard case .member(let member) = element else { return true }
+            return member.groupOccurrenceID == activeID && member.member.name.hasPrefix("Node 1-")
+        })
 
         var lowerBound = 0
         var traversedIDs: [String] = []
@@ -1269,10 +1753,10 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(traversedIDs == accessibilityIndex.orderedIDs)
         #expect(Set(traversedIDs).count == accessibilityIndex.totalCount)
         #expect(try #require(accessibilityIndex.element(at: 0)).id == traversedIDs[0])
-        #expect(try #require(accessibilityIndex.element(at: 161)).id == traversedIDs[161])
+        #expect(try #require(accessibilityIndex.element(at: 81)).id == traversedIDs[81])
     }
 
-    @Test func proxyAccessibilityIndexRevealsSelectionAndClampsAfterCollapse() throws {
+    @Test func proxyAccessibilityIndexRevealsSelectionAndClampsWhenActiveGroupClears() throws {
         let projection = ProxyGroupCatalogProjection(
             catalog: PolicyGroupCatalogSnapshot(
                 mode: "Rule",
@@ -1292,13 +1776,13 @@ struct WorkbenchProxyWorkspaceTests {
             in: projection.arrangedGroups,
             groupID: group.id
         )
-        let expanded = ProxyActiveGroupProjection(index: activeIndex, query: "")
-        let selectedMemberID = try #require(expanded.members.last?.id)
+        let active = ProxyActiveGroupProjection(index: activeIndex, query: "")
+        let selectedMemberID = try #require(active.members.last?.id)
         let accessibilityIndex = ProxyAccessibilityIndex(
             groups: projection.visibleGroups,
             directoryItems: projection.visibleDirectoryItems,
-            openGroupIDs: [group.id],
-            expandedGroups: [group.id: expanded]
+            activeGroupID: group.id,
+            activeGroup: active
         )
         let selectedElementID = try #require(
             accessibilityIndex.selectedElementID(
@@ -1318,21 +1802,21 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(selectedWindow.range.contains(selectedIndex))
         #expect(selectedWindow.range.count <= WorkbenchAccessibilityWindow.capacity)
 
-        let collapsed = ProxyAccessibilityIndex(
+        let inactive = ProxyAccessibilityIndex(
             groups: projection.visibleGroups,
             directoryItems: projection.visibleDirectoryItems,
-            openGroupIDs: [],
-            expandedGroups: [group.id: expanded]
+            activeGroupID: nil,
+            activeGroup: active
         )
         let clampedWindow = WorkbenchAccessibilityWindow.resolve(
-            totalCount: collapsed.totalCount,
+            totalCount: inactive.totalCount,
             preferredLowerBound: selectedWindow.lowerBound
         )
 
-        #expect(collapsed.totalCount == 1)
+        #expect(inactive.totalCount == 1)
         #expect(clampedWindow.range == 0..<1)
         #expect(
-            collapsed.selectedElementID(
+            inactive.selectedElementID(
                 activeGroupID: group.id,
                 selectedMemberID: selectedMemberID
             ) == ProxyAccessibilityIndex.groupElementID(group.id)
@@ -1585,6 +2069,29 @@ struct WorkbenchProxyWorkspaceTests {
             at: start.addingTimeInterval(0.07)
         )
         #expect(coordinator.commitRevision == 2)
+    }
+
+    private static func workspaceInput(
+        controllerID: RouterProfile.ID,
+        generation: UUID
+    ) -> ProxyWorkspacePresentationInput {
+        ProxyWorkspacePresentationInput(
+            controllerID: controllerID,
+            generation: generation,
+            workspace: WorkbenchDestinationWorkspace(),
+            query: "",
+            visibility: .alwaysShow,
+            healthFilter: .all,
+            activity: ProxyOperationActivity(
+                switchingGroupID: nil,
+                switchingSurgePolicyGroup: nil,
+                measuringDelayGroupID: nil,
+                testingSurgePolicyGroup: nil,
+                clearingFixedGroupID: nil,
+                measuringDelayNode: nil
+            ),
+            canClearFixedSelection: false
+        )
     }
 
     private static func group(

@@ -617,7 +617,7 @@ private struct RawProxySnapshot: Decodable {
             }
         }
 
-        type = decodedType ?? "Proxy"
+        type = decodedType ?? ""
         now = decodedNow
         all = decodedAll ?? []
         alive = decodedAlive

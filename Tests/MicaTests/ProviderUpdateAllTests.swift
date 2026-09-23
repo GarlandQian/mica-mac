@@ -117,7 +117,7 @@ struct ProviderUpdateAllTests {
         let batchTask = try #require(model.providerTask)
         await harness.waitForFirstUpdate()
 
-        model.updateProxyProvider(providers[1])
+        model.updateProxyProvider(providers[1], scope: commandScope(for: model))
 
         #expect(!batchTask.isCancelled)
         #expect(model.providerUpdateAllProgress?.isRunning == true)

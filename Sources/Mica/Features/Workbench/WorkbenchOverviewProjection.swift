@@ -51,14 +51,15 @@ struct OverviewTimelineChartScale: Equatable, Sendable {
     let axisValues: [Int]
 
     static func traffic(
-        _ samples: [TrafficTimeline.Sample]
+        _ samples: [TrafficTimeline.Sample],
+        value: KeyPath<TrafficTimeline.Sample, Int>
     ) -> OverviewTimelineChartScale {
         let maximum = samples.reduce(0) { partial, sample in
-            max(partial, max(sample.upload, sample.download))
+            max(partial, sample[keyPath: value])
         }
         return resolve(
             maximumObservedValue: maximum,
-            minimumPositiveMaximum: 60_000
+            minimumPositiveMaximum: 1
         )
     }
 
@@ -82,7 +83,7 @@ struct OverviewTimelineChartScale: Equatable, Sendable {
         }
         return resolve(
             maximumObservedValue: maximum,
-            minimumPositiveMaximum: 100
+            minimumPositiveMaximum: 1
         )
     }
 
@@ -261,7 +262,7 @@ final class OverviewTimelineProjectionCache {
         connections sourceConnections: [ConnectionCountTimeline.Sample],
         isPaused: Bool = false
     ) -> OverviewTimelineProjectionSnapshot {
-        if isPaused, latestSnapshot != .empty {
+        if isPaused, trafficKey?.generation == generation, latestSnapshot != .empty {
             return latestSnapshot
         }
 

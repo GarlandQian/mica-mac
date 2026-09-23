@@ -19,6 +19,17 @@ private func makeSleepingTask() -> Task<Void, Never> {
     }
 }
 
+@MainActor
+private func makeSleepingSessionTask(
+    slot: LiveSessionTaskSlot,
+    model: AppModel
+) -> Task<Void, Never>? {
+    guard let identity = model.liveSessionTasks.identity else { return nil }
+    return model.liveSessionTasks.start(slot, for: identity) { _ in
+        try? await Task.sleep(for: .seconds(60))
+    }
+}
+
 private actor TransactionProfileStore: RouterProfileStore {
     private var profiles: [RouterProfile]
     private let failsOnSave: Bool
@@ -789,11 +800,10 @@ struct LiveSessionTransactionTests {
         model.installLiveSessionRuntime(for: profile, generation: generation)
         let oldRuntime = try #require(model.liveSessionRuntime)
 
-        let oldProducers = (0..<4).map { _ in makeSleepingTask() }
-        model.liveTrafficTask = oldProducers[0]
-        model.liveLogsTask = oldProducers[1]
-        model.liveMemoryTask = oldProducers[2]
-        model.liveConnectionsTask = oldProducers[3]
+        let producerSlots: [LiveSessionTaskSlot] = [.traffic, .logs, .memory, .connections]
+        let oldProducers = try producerSlots.map {
+            try #require(makeSleepingSessionTask(slot: $0, model: model))
+        }
 
         model.restartRequestedMihomoLiveStreamsForManualRefresh(
             router: profile,
@@ -811,10 +821,7 @@ struct LiveSessionTransactionTests {
                     generation: generation
                 )
         )
-        #expect(model.liveTrafficTask == nil)
-        #expect(model.liveLogsTask == nil)
-        #expect(model.liveMemoryTask == nil)
-        #expect(model.liveConnectionsTask == nil)
+        #expect(producerSlots.allSatisfy { !model.liveSessionTasks.contains($0) })
 
         model.handleLiveStreamFailure(
             .logs,
@@ -955,7 +962,7 @@ struct LiveSessionTransactionTests {
         #expect(model.activeSessionControllerKind == .mihomoCompatible)
         #expect(model.controllerSession.controllerID == profile.id)
         #expect(model.controllerSession.generation == generation)
-        #expect(model.backendProbeTask == nil)
+        #expect(!model.liveSessionTasks.contains(.probe))
     }
 
     @MainActor
@@ -1190,7 +1197,7 @@ struct LiveSessionTransactionTests {
     }
 
     @MainActor
-    @Test func leavingSessionCancelsTheCompleteLiveTaskTree() {
+    @Test func leavingSessionCancelsTheCompleteLiveTaskTree() throws {
         let profile = RouterProfile(
             displayName: "Controller",
             host: "127.0.0.1",
@@ -1204,33 +1211,43 @@ struct LiveSessionTransactionTests {
         )
         model.controllerSession.begin(controllerID: profile.id)
 
-        let tasks = (0..<11).map { _ in makeSleepingTask() }
-        model.initialSessionRefreshTask = tasks[0]
-        model.fastSessionRefreshTask = tasks[1]
-        model.mediumSessionRefreshTask = tasks[2]
-        model.slowSessionRefreshTask = tasks[3]
-        model.manualSessionRefreshTask = tasks[4]
-        model.liveTrafficTask = tasks[5]
-        model.liveLogsTask = tasks[6]
-        model.liveMemoryTask = tasks[7]
-        model.liveConnectionsTask = tasks[8]
-        model.liveRetryTask = tasks[9]
-        model.backendProbeTask = tasks[10]
+        let tasks = try LiveSessionTaskSlot.allCases.map {
+            try #require(makeSleepingSessionTask(slot: $0, model: model))
+        }
 
         model.leaveLiveSession()
 
         #expect(tasks.allSatisfy { $0.isCancelled })
-        #expect(model.initialSessionRefreshTask == nil)
-        #expect(model.fastSessionRefreshTask == nil)
-        #expect(model.mediumSessionRefreshTask == nil)
-        #expect(model.slowSessionRefreshTask == nil)
-        #expect(model.manualSessionRefreshTask == nil)
-        #expect(model.liveTrafficTask == nil)
-        #expect(model.liveLogsTask == nil)
-        #expect(model.liveMemoryTask == nil)
-        #expect(model.liveConnectionsTask == nil)
-        #expect(model.liveRetryTask == nil)
-        #expect(model.backendProbeTask == nil)
+        #expect(model.liveSessionTasks.activeSlots.isEmpty)
+        #expect(model.liveSessionTasks.identity == nil)
+    }
+
+    @MainActor
+    @Test func staleStreamStartCannotCancelCurrentSessionProducers() throws {
+        let profile = RouterProfile(
+            displayName: "Controller",
+            host: "127.0.0.1",
+            controllerKind: .unsupported
+        )
+        let model = AppModel(
+            routers: [profile],
+            selectedRouterID: profile.id,
+            profileStore: InMemoryRouterProfileStore(),
+            secretStore: InMemorySecretStore()
+        )
+        model.controllerSession.begin(controllerID: profile.id)
+        model.liveStreamRequested = true
+        model.liveStreamState = .connecting
+        let producer = try #require(makeSleepingSessionTask(slot: .traffic, model: model))
+
+        model.startLiveStreams(for: profile, isRetry: true, generation: UUID())
+
+        #expect(!producer.isCancelled)
+        #expect(model.liveSessionTasks.contains(.traffic))
+        #expect(model.liveStreamRequested)
+        #expect(model.liveStreamState == .connecting)
+        #expect(model.liveSessionRuntime == nil)
+        model.leaveLiveSession()
     }
 
     @MainActor

@@ -36,75 +36,20 @@ public enum MihomoClientError: Error, LocalizedError, Sendable {
     }
 }
 
-public enum ControllerConnectionFailureReason: Equatable, Sendable {
-    case hostNotFound
-    case connectionRefused
-    case timedOut
-    case tlsTrustFailed
-    case networkUnavailable
-    case cancelled
-    case other
-
-    var errorDescription: String {
-        switch self {
-        case .hostNotFound:
-            "Could not resolve the router host. Check the hostname, mDNS name, or router IP address."
-        case .connectionRefused:
-            "The router is reachable, but the controller port refused the connection. Check that the external-controller is listening on the LAN address and port."
-        case .timedOut:
-            "The controller did not respond before the timeout. Check that the Mac and router are on the same network and that the firewall allows the controller port."
-        case .tlsTrustFailed:
-            "TLS trust failed. Check the router certificate, use a trusted certificate, or choose the self-signed TLS policy only for a router you control."
-        case .networkUnavailable:
-            "The Mac is offline or cannot reach the router network."
-        case .cancelled:
-            "The controller request was cancelled."
-        case .other:
-            "The network request failed before reaching the controller."
-        }
-    }
-}
-
 public actor MihomoClient {
-    private let profile: RouterProfile
-    private let secret: String?
     private let session: URLSession
-    private let transport: any ControllerHTTPTransport
-    private let selfSignedCertificateDelegate: SelfSignedCertificateDelegate?
+    private let http: ControllerHTTPRequestExecutor<MihomoEndpoint>
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
     public init(profile: RouterProfile, secret: String? = nil, session: URLSession? = nil) {
-        self.profile = profile
-        self.secret = secret
-
-        if let session {
-            self.session = session
-            self.transport = URLSessionControllerHTTPTransport(session: session)
-            self.selfSignedCertificateDelegate = nil
-        } else {
-            let configuration = URLSessionConfiguration.default
-            configuration.timeoutIntervalForRequest = 8
-            configuration.timeoutIntervalForResource = 20
-
-            if profile.scheme == .https, profile.tlsPolicy == .allowSelfSigned {
-                let delegate = SelfSignedCertificateDelegate()
-                let session = URLSession(
-                    configuration: configuration,
-                    delegate: delegate,
-                    delegateQueue: nil
-                )
-                self.session = session
-                self.transport = URLSessionControllerHTTPTransport(session: session)
-                self.selfSignedCertificateDelegate = delegate
-            } else {
-                let session = URLSession(configuration: configuration)
-                self.session = session
-                self.transport = URLSessionControllerHTTPTransport(session: session)
-                self.selfSignedCertificateDelegate = nil
-            }
-        }
-
+        let session = session ?? URLSessionControllerHTTPTransport.makeSession(for: profile)
+        self.session = session
+        self.http = ControllerHTTPRequestExecutor(
+            profile: profile,
+            authentication: .bearer(secret),
+            transport: URLSessionControllerHTTPTransport(session: session)
+        )
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
     }
@@ -114,11 +59,12 @@ public actor MihomoClient {
         secret: String? = nil,
         dataLoader: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
     ) {
-        self.profile = profile
-        self.secret = secret
         self.session = URLSession(configuration: .ephemeral)
-        self.transport = ClosureControllerHTTPTransport(loader: dataLoader)
-        self.selfSignedCertificateDelegate = nil
+        self.http = ControllerHTTPRequestExecutor(
+            profile: profile,
+            authentication: .bearer(secret),
+            transport: ClosureControllerHTTPTransport(loader: dataLoader)
+        )
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
     }
@@ -144,14 +90,7 @@ public actor MihomoClient {
     }
 
     public func proxies() async throws -> ProxiesResponse {
-        let request = try makeURLRequest(.proxies)
-        let (data, response) = try await loadData(for: request)
-        try validate(response: response)
-
-        guard !data.isEmpty else {
-            throw MihomoClientError.emptyResponse
-        }
-
+        let data = try await http.data(for: .proxies)
         do {
             return try ProxiesResponse.decodePreservingProxyOrder(from: data, decoder: decoder)
         } catch {
@@ -196,14 +135,7 @@ public actor MihomoClient {
     }
 
     public func proxyProviders() async throws -> ProxyProvidersResponse {
-        let request = try makeURLRequest(.proxyProviders)
-        let (data, response) = try await loadData(for: request)
-        try validate(response: response)
-
-        guard !data.isEmpty else {
-            throw MihomoClientError.emptyResponse
-        }
-
+        let data = try await http.data(for: .proxyProviders)
         do {
             return try ProxyProvidersResponse.decodePreservingProviderOrder(from: data, decoder: decoder)
         } catch {
@@ -212,14 +144,7 @@ public actor MihomoClient {
     }
 
     public func ruleProviders() async throws -> RuleProvidersResponse {
-        let request = try makeURLRequest(.ruleProviders)
-        let (data, response) = try await loadData(for: request)
-        try validate(response: response)
-
-        guard !data.isEmpty else {
-            throw MihomoClientError.emptyResponse
-        }
-
+        let data = try await http.data(for: .ruleProviders)
         do {
             return try RuleProvidersResponse.decodePreservingProviderOrder(from: data, decoder: decoder)
         } catch {
@@ -433,93 +358,29 @@ public actor MihomoClient {
         }
     }
 
-    private func request<Response: Decodable>(_ endpoint: MihomoEndpoint) async throws -> Response {
-        let request = try makeURLRequest(endpoint)
-        let (data, response) = try await loadData(for: request)
-        try validate(response: response)
-
-        guard !data.isEmpty else {
-            throw MihomoClientError.emptyResponse
-        }
-
-        do {
-            return try decoder.decode(Response.self, from: data)
-        } catch {
-            throw MihomoClientError.malformedResponse(endpoint.pathDescription)
-        }
+    private func request<Response: Decodable & Sendable>(_ endpoint: MihomoEndpoint) async throws -> Response {
+        try await http.decode(endpoint, using: decoder)
     }
 
     private func requestNoContent(_ endpoint: MihomoEndpoint, body: Data? = nil) async throws {
-        var request = try makeURLRequest(endpoint)
-        request.httpBody = body
-
-        if body != nil {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-
-        let (_, response) = try await loadData(for: request)
-        try validate(response: response)
-    }
-
-    private func loadData(for request: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await transport.data(for: request)
-        } catch {
-            let mapped = Self.clientError(for: error)
-            if case .connectionFailure(.cancelled) = mapped {
-                throw CancellationError()
-            }
-            throw mapped
-        }
-    }
-
-    private func makeURLRequest(_ endpoint: MihomoEndpoint) throws -> URLRequest {
-        let baseURL: URL
-        do {
-            baseURL = try profile.baseURL()
-        } catch {
-            throw MihomoClientError.invalidURL(endpoint.pathDescription)
-        }
-        let url = try endpoint.url(relativeTo: baseURL)
-        var request = URLRequest(url: url, timeoutInterval: 8)
-        request.httpMethod = endpoint.method.rawValue
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        if let secret, !secret.isEmpty {
-            request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
-        }
-
-        return request
+        _ = try await http.data(for: endpoint, body: body, allowsEmptyResponse: true)
     }
 
     private func makeStreamRequest(_ endpoint: MihomoEndpoint) throws -> URLRequest {
-        let baseURL: URL
-        do {
-            baseURL = try profile.baseURL()
-        } catch {
-            throw MihomoClientError.invalidURL(endpoint.pathDescription)
-        }
-        let httpURL = try endpoint.url(relativeTo: baseURL)
-        guard var components = URLComponents(url: httpURL, resolvingAgainstBaseURL: false) else {
+        var request = try http.makeRequest(for: endpoint)
+        guard let httpURL = request.url,
+              var components = URLComponents(url: httpURL, resolvingAgainstBaseURL: false) else {
             throw MihomoClientError.invalidURL(endpoint.pathDescription)
         }
 
-        switch profile.scheme {
-        case .http:
-            components.scheme = "ws"
-        case .https:
-            components.scheme = "wss"
-        }
-
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
         guard let streamURL = components.url else {
             throw MihomoClientError.invalidURL(endpoint.pathDescription)
         }
 
-        var request = URLRequest(url: streamURL, timeoutInterval: 8)
+        request.url = streamURL
         request.httpMethod = HTTPMethod.get.rawValue
-        if let secret, !secret.isEmpty {
-            request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
-        }
+        request.setValue(nil, forHTTPHeaderField: "Accept")
         return request
     }
 
@@ -578,21 +439,6 @@ public actor MihomoClient {
         }
     }
 
-    private func validate(response: URLResponse) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw MihomoClientError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200..<300:
-            return
-        case 401, 403:
-            throw MihomoClientError.unauthorized
-        default:
-            throw MihomoClientError.unexpectedStatus(httpResponse.statusCode)
-        }
-    }
-
     private func legacySmartWeights(forGroups groupNames: [String]) async throws -> SmartWeightsResponse? {
         try await withThrowingTaskGroup(
             of: SmartWeightFallbackResult.self,
@@ -630,52 +476,7 @@ public actor MihomoClient {
     }
 
     static func clientError(for error: Error) -> MihomoClientError {
-        if let error = error as? MihomoClientError {
-            return error
-        }
-
-        if let urlError = error as? URLError {
-            return clientError(for: urlError)
-        }
-
-        let nsError = error as NSError
-        if nsError.domain == NSURLErrorDomain {
-            let code = URLError.Code(rawValue: nsError.code)
-            return clientError(for: URLError(code))
-        }
-
-        if error is CancellationError {
-            return .connectionFailure(.cancelled)
-        }
-
-        return .connectionFailure(.other)
-    }
-
-    private static func clientError(for error: URLError) -> MihomoClientError {
-        switch error.code {
-        case .cancelled:
-            .connectionFailure(.cancelled)
-        case .cannotFindHost:
-            .connectionFailure(.hostNotFound)
-        case .cannotConnectToHost:
-            .connectionFailure(.connectionRefused)
-        case .timedOut:
-            .connectionFailure(.timedOut)
-        case .secureConnectionFailed,
-             .serverCertificateHasBadDate,
-             .serverCertificateUntrusted,
-             .serverCertificateHasUnknownRoot,
-             .serverCertificateNotYetValid,
-             .clientCertificateRejected,
-             .clientCertificateRequired:
-            .connectionFailure(.tlsTrustFailed)
-        case .networkConnectionLost:
-            .connectionFailure(.other)
-        case .notConnectedToInternet:
-            .connectionFailure(.networkUnavailable)
-        default:
-            .connectionFailure(.other)
-        }
+        ControllerHTTPRequestExecutor<MihomoEndpoint>.failure(for: error)
     }
 }
 
@@ -693,18 +494,13 @@ private struct SelectProxyRequest: Encodable {
     var name: String
 }
 
-private final class SelfSignedCertificateDelegate: NSObject, URLSessionDelegate {
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let serverTrust = challenge.protectionSpace.serverTrust else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-
-        completionHandler(.useCredential, URLCredential(trust: serverTrust))
+extension MihomoClientError: ControllerHTTPRequestFailure {
+    var connectionFailureReason: ControllerConnectionFailureReason? {
+        guard case .connectionFailure(let reason) = self else { return nil }
+        return reason
     }
+}
+
+extension MihomoEndpoint: ControllerHTTPEndpoint {
+    typealias Failure = MihomoClientError
 }

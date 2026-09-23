@@ -8,6 +8,7 @@ struct OverviewTopologySection: View {
     @State private var structureInput: OverviewTopologyCatalogInput?
 
     let runtime: OverviewTopologyRuntime
+    let minimumFlowHeight: CGFloat
     @Binding var destination: WorkbenchDestination
 
     var body: some View {
@@ -30,6 +31,7 @@ struct OverviewTopologySection: View {
                     revision: visibleInput.catalogRevision,
                     language: language,
                     runtime: runtime,
+                    minimumFlowHeight: minimumFlowHeight,
                     destination: $destination
                 )
             } else {
@@ -137,6 +139,21 @@ private struct OverviewTopologyHeaderControls: View {
 
     var body: some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
+            if runtime.focusedPaths != nil || runtime.displayMode == .complete {
+                Button {
+                    runtime.returnToOverview()
+                } label: {
+                    Label(MicaStrings.localizedKey("overview.topology_back_overview", language: language), systemImage: "arrow.left")
+                }
+                .buttonStyle(.borderless)
+            } else {
+                Button {
+                    runtime.showCompleteGraph()
+                } label: {
+                    Label(MicaStrings.localizedKey("overview.topology_view_all", language: language), systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(.borderless)
+            }
             if runtime.isPaused {
                 Text(
                     MicaStrings.localizedKey(
@@ -155,16 +172,6 @@ private struct OverviewTopologyHeaderControls: View {
             ) {
                 runtime.togglePause()
             }
-            WorkbenchIconCommand(
-                titleKey: runtime.isExpanded
-                    ? "overview.show_less"
-                    : "overview.show_all",
-                systemImage: runtime.isExpanded
-                    ? "list.bullet.indent"
-                    : "list.bullet"
-            ) {
-                runtime.isExpanded.toggle()
-            }
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -180,6 +187,7 @@ private struct OverviewTopologyWorkspace: View {
     let revision: UInt64
     let language: AppLanguage
     let runtime: OverviewTopologyRuntime
+    let minimumFlowHeight: CGFloat
     @Binding var destination: WorkbenchDestination
 
     var body: some View {
@@ -191,24 +199,28 @@ private struct OverviewTopologyWorkspace: View {
         } else {
             let freezesPresentation = runtime.isPaused
                 || runtime.interaction.snapshot.isHovering
+                || runtime.focusedPaths != nil
             let presentationRevision = freezesPresentation
                 ? runtime.presentation?.request.revision ?? revision
                 : revision
-            let resolvedMinimumFlowHeight = minimumFlowHeight(
-                for: runtime.availableWidth
-            )
+            let resolvedMinimumFlowHeight = Int(minimumFlowHeight.rounded())
             let request = OverviewTopologyRequest(
                 generation: generation,
                 revision: presentationRevision,
                 availableWidth: runtime.availableWidth,
-                minimumFlowHeight: resolvedMinimumFlowHeight
+                minimumFlowHeight: resolvedMinimumFlowHeight,
+                displayMode: runtime.displayMode,
+                languageID: language.rawValue
             )
             let visibleTopologyIsEmpty = runtime.presentation.flatMap { presentation in
                 presentation.canRemainVisible(whileResolving: request)
                     ? presentation.topology.isEmpty
                     : nil
             }
-            let reservedMinimumHeight = OverviewTopologyHeightReservation.minimumHeight(
+            // A resolved overview already has a content-sized canvas. Reserving
+            // the whole window budget here would leave the same empty space
+            // below a sparse graph and push the trends out of a short window.
+            let reservedMinimumHeight = request.displayMode == .overview ? nil : OverviewTopologyHeightReservation.minimumHeight(
                 visibleTopologyIsEmpty: visibleTopologyIsEmpty,
                 requestedMinimum: resolvedMinimumFlowHeight
             )
@@ -222,6 +234,7 @@ private struct OverviewTopologyWorkspace: View {
                     await rebuildPresentation(for: request)
                 }
                 .onChange(of: request.generation) { _, _ in
+                    runtime.returnToOverview()
                     runtime.interaction.reset()
                 }
                 .onChange(of: runtime.interaction.snapshot) { _, snapshot in
@@ -237,20 +250,22 @@ private struct OverviewTopologyWorkspace: View {
         }
     }
 
-    private func minimumFlowHeight(for availableWidth: Int) -> Int {
-        Int(
-            OverviewTopologyResponsiveHeight.minimumFlowHeight(
-                forAvailableWidth: CGFloat(availableWidth)
-            ).rounded()
-        )
-    }
-
     @ViewBuilder
     private func topologyBody(for request: OverviewTopologyRequest) -> some View {
         if let presentation = runtime.presentation,
            presentation.canRemainVisible(whileResolving: request) {
             VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
-                if presentation.topology.isEmpty {
+                if let focus = runtime.focusedPaths,
+                   focus.structure.generation == generation {
+                    OverviewTopologyFocusedPathsView(
+                        focus: focus,
+                        language: language,
+                        canNavigate: focus.canNavigate(generation: generation, revision: revision),
+                        onOpenPath: openPathInConnections,
+                        onReturn: runtime.returnToOverview
+                    )
+                    .frame(height: canvasHeight)
+                } else if presentation.diagram.isEmpty {
                     VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
                         OverviewTopologyIdleSummary(
                             connectionCount: presentation.topology.connectionCount,
@@ -262,20 +277,20 @@ private struct OverviewTopologyWorkspace: View {
                             detailKey: "overview.topology_empty_detail"
                         )
 
-                        if runtime.isExpanded {
+                        ScrollView {
                             OverviewTopologyPathRows(
                                 paths: presentation.topology.paths,
                                 language: language,
                                 interaction: runtime.interaction,
                                 onOpenPath: openPathInConnections
                             )
-                            .accessibilityHidden(true)
                         }
+                        .frame(maxHeight: canvasHeight - 100)
                     }
                     .accessibilityRepresentation {
                         OverviewTopologyAccessibilityRepresentation(
                             paths: presentation.topology.paths,
-                            structure: presentation.request.structure,
+                            structure: presentation.request.diagramStructure,
                             topologyIndex: presentation.index,
                             policyCache: runtime.policyInspectionCache,
                             language: language,
@@ -285,15 +300,23 @@ private struct OverviewTopologyWorkspace: View {
                         )
                     }
                 } else {
+                    if presentation.request.displayMode == .overview {
+                        overviewSummary(presentation)
+                    }
                     OverviewTopologyViewport(
-                        topology: presentation.topology,
+                        topology: presentation.diagram,
                         request: presentation.request,
-                        index: presentation.index,
+                        index: presentation.diagramIndex,
                         layout: presentation.layout,
                         language: language,
                         runtime: runtime,
                         interaction: runtime.interaction,
-                        showsPathRows: runtime.isExpanded,
+                        viewportHeight: OverviewTopologyViewportSizing.height(
+                            displayMode: presentation.request.displayMode,
+                            requestedHeight: minimumFlowHeight,
+                            contentHeight: presentation.layout.size.height
+                        ),
+                        originalPaths: presentation.topology.paths,
                         onOpenPath: openPathInConnections,
                         onOpenProxies: openProxies(for:)
                     )
@@ -310,6 +333,23 @@ private struct OverviewTopologyWorkspace: View {
         }
     }
 
+    private var canvasHeight: CGFloat {
+        min(max(minimumFlowHeight, 280), 500)
+    }
+
+    private func overviewSummary(_ presentation: OverviewTopologyPresentation) -> some View {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
+            Text(MicaStrings.localized("overview.topology_summary_count \(presentation.topology.connectionCount)", language: language))
+            if presentation.summary.mergedNameCount > 0 {
+                Text("·")
+                Text(MicaStrings.localized("overview.topology_merged_count \(presentation.summary.mergedNameCount) \(presentation.summary.mergedConnectionCount)", language: language))
+            }
+        }
+        .micaThemeFont(.caption)
+        .foregroundStyle(MicaTheme.textSecondary)
+        .accessibilityElement(children: .combine)
+    }
+
     @MainActor
     private func rebuildPresentation(for request: OverviewTopologyRequest) async {
         do {
@@ -319,8 +359,8 @@ private struct OverviewTopologyWorkspace: View {
             )
             guard !Task.isCancelled else { return }
             runtime.interaction.configure(
-                structure: nextPresentation.request.structure,
-                index: nextPresentation.index
+                structure: nextPresentation.request.diagramStructure,
+                index: nextPresentation.diagramIndex
             )
             runtime.presentation = nextPresentation
         } catch is CancellationError {
@@ -334,6 +374,9 @@ private struct OverviewTopologyWorkspace: View {
     }
 
     private func openPathInConnections(_ path: ConnectionTopology.PathRecord) {
+        guard appModel.controllerSessionPresentation.generation == generation,
+              runtime.presentation?.request.revision == appModel.connectionsStructureRevision,
+              appModel.selectedRouterID == controllerID else { return }
         if let controllerID {
             workspaceStore.stageConnectionNavigation(
                 WorkbenchConnectionNavigationSelection(
@@ -399,6 +442,14 @@ private struct OverviewTopologyWorkspace: View {
             workspaceStore.clearInspectorSelection(ownedBy: .overview)
             return
         }
+        if runtime.displayMode == .overview {
+            guard snapshot.isPinned, runtime.focusedPaths == nil,
+                  let presentation = runtime.presentation,
+                  presentation.request.generation == generation else { return }
+            workspaceStore.clearInspectorSelection(ownedBy: .overview)
+            runtime.focusPaths(for: selection, presentation: presentation, language: language)
+            return
+        }
         guard snapshot.isPinned,
               case .node(let nodeID) = selection,
               let node = runtime.presentation?.index.node(id: nodeID),
@@ -448,7 +499,8 @@ private struct OverviewTopologyViewport: View {
     let language: AppLanguage
     let runtime: OverviewTopologyRuntime
     let interaction: OverviewTopologyInteractionState
-    let showsPathRows: Bool
+    let viewportHeight: CGFloat
+    let originalPaths: [ConnectionTopology.PathRecord]
     let onOpenPath: (ConnectionTopology.PathRecord) -> Void
     let onOpenProxies: (ConnectionTopology.Node) -> Void
 
@@ -459,28 +511,47 @@ private struct OverviewTopologyViewport: View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             topologyGraph
                 .accessibilityRepresentation {
-                    OverviewTopologyAccessibilityRepresentation(
-                        paths: topology.paths,
-                        structure: request.structure,
-                        topologyIndex: index,
-                        policyCache: runtime.policyInspectionCache,
-                        language: language,
-                        interaction: interaction,
-                        onOpenPath: onOpenPath,
-                        onOpenProxies: onOpenProxies
-                    )
+                    if request.displayMode == .overview {
+                        overviewAccessibility
+                    } else {
+                        OverviewTopologyAccessibilityRepresentation(
+                            paths: originalPaths,
+                            structure: request.diagramStructure,
+                            topologyIndex: index,
+                            policyCache: runtime.policyInspectionCache,
+                            language: language,
+                            interaction: interaction,
+                            onOpenPath: onOpenPath,
+                            onOpenProxies: onOpenProxies
+                        )
+                    }
                 }
+        }
+    }
 
-            if showsPathRows {
-                OverviewTopologyPathRows(
-                    paths: topology.paths,
-                    language: language,
-                    interaction: interaction,
-                    onOpenPath: onOpenPath
-                )
-                .accessibilityHidden(true)
+    private var overviewAccessibility: some View {
+        VStack {
+            ForEach(topology.columns) { column in
+                Text(OverviewTopologyProjection.columnTitle(column.id, language: language))
+                ForEach(column.nodes) { node in
+                    Button {
+                        interaction.togglePinnedSelection(.node(node.id))
+                    } label: {
+                        Text(verbatim: "\(node.name), \(node.connectionCount)")
+                    }
+                    .accessibilityHint(MicaStrings.localizedKey("overview.topology_related_paths", language: language))
+                }
+            }
+            Text(MicaStrings.localizedKey("overview.topology_related_paths", language: language))
+            ForEach(topology.edges) { edge in
+                Button {
+                    interaction.togglePinnedSelection(.edge(edge.id))
+                } label: {
+                    Text(verbatim: "\(edge.sourceName) → \(edge.targetName), \(edge.connectionCount)")
+                }
             }
         }
+        .accessibilityElement(children: .contain)
     }
 
     /// Standard hover tooltip carrying the exact label and factual route detail.
@@ -495,11 +566,18 @@ private struct OverviewTopologyViewport: View {
             in: index,
             language: language
         )
-        let description = OverviewTopologyProjection.selectionDescription(
-            selection,
-            in: index,
-            language: language
-        )
+        let description: String
+        if request.displayMode == .overview {
+            let count: Int
+            switch selection {
+            case .node(let id): count = index.node(id: id)?.connectionCount ?? 0
+            case .edge(let id): count = index.edge(id: id)?.connectionCount ?? 0
+            case .path: count = 1
+            }
+            description = MicaStrings.localized("overview.topology_summary_count \(count)", language: language)
+        } else {
+            description = OverviewTopologyProjection.selectionDescription(selection, in: index, language: language)
+        }
         return "\(label)\n\(description)"
     }
 
@@ -507,7 +585,7 @@ private struct OverviewTopologyViewport: View {
         // Task 08-23 R10: when long chains widen the graph past the panel the
         // viewport scrolls horizontally; the width floor keeps the content
         // pinned to the full panel width otherwise.
-        ScrollView(.horizontal) {
+        ScrollView(request.displayMode == .overview ? [.vertical] : [.horizontal, .vertical]) {
             LazyVStack(spacing: 0) {
                 ForEach(layout.renderBands) { band in
                     OverviewTopologyBandLayers(
@@ -528,6 +606,10 @@ private struct OverviewTopologyViewport: View {
                 width: max(layout.size.width, CGFloat(request.availableWidth)),
                 alignment: .center
             )
+            .frame(
+                minHeight: viewportHeight,
+                alignment: request.displayMode == .overview ? .top : .center
+            )
         }
         .scrollPosition($scrollPosition)
         .scrollIndicators(
@@ -546,7 +628,7 @@ private struct OverviewTopologyViewport: View {
             guard state.isPinned else { return }
             revealSelection(state.selection, in: visibleTopologyRect)
         }
-        .frame(height: layout.size.height)
+        .frame(height: viewportHeight)
         .frame(maxWidth: .infinity, alignment: .center)
         .background(
             MicaTheme.surface,
@@ -646,7 +728,7 @@ private struct OverviewTopologyViewport: View {
                 }
             }
 
-            if let policyNode = resolvablePolicyNode(for: selection) {
+            if request.displayMode == .complete, let policyNode = resolvablePolicyNode(for: selection) {
                 Button { onOpenProxies(policyNode) } label: {
                     Label(
                         MicaStrings.localizedKey(
@@ -712,19 +794,25 @@ private struct OverviewTopologyViewport: View {
             for: selection,
             index: index,
             layout: layout
-        ), let offset = OverviewTopologyViewportTargetResolver.contentOffsetX(
+        ) else { return }
+        let offsetX = OverviewTopologyViewportTargetResolver.contentOffsetX(
             for: target,
             visibleRect: visibleRect,
             contentWidth: layout.size.width
-        ) else {
-            return
-        }
+        )
+        let offsetY = OverviewTopologyViewportTargetResolver.contentOffsetY(
+            for: target,
+            visibleRect: visibleRect,
+            contentHeight: layout.size.height
+        )
+        guard offsetX != nil || offsetY != nil else { return }
+        let point = CGPoint(x: offsetX ?? visibleRect.minX, y: offsetY ?? visibleRect.minY)
 
         if reduceMotion {
-            scrollPosition.scrollTo(x: offset)
+            scrollPosition.scrollTo(point: point)
         } else {
             withAnimation(MicaTheme.Motion.reveal) {
-                scrollPosition.scrollTo(x: offset)
+                scrollPosition.scrollTo(point: point)
             }
         }
     }
@@ -768,7 +856,8 @@ private struct OverviewTopologyViewport: View {
     /// flip neither key, so they never re-resolve the catalog nor invalidate
     /// the band equality gate (task 08-20 R5).
     private var nodeStatusByID: [String: MicaTheme.Status] {
-        runtime.nodeStatuses(
+        guard request.displayMode == .complete else { return [:] }
+        return runtime.nodeStatuses(
             topology: topology,
             topologyRevision: request.revision,
             policyRevision: appModel.policyGroupCatalogRevision,
@@ -966,6 +1055,7 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
                 )
             }
         )
+        let density = OverviewTopologyDensityStyle(edgeCount: layout.edges.count, nodeCount: layout.nodes.count)
         ZStack {
             OverviewTopologyBaseBand(
                 request: request,
@@ -973,6 +1063,7 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
                 allowsMotion: allowsMotion,
                 nodeStatusByID: nodeStatusByID,
                 tintByNodeID: tintByNodeID,
+                density: density,
                 interaction: interaction
             )
             .equatable()
@@ -980,6 +1071,7 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
             OverviewTopologyLabelBand(
                 band: band,
                 language: language,
+                isSummary: request.displayMode == .overview,
                 interaction: interaction
             )
 
@@ -996,6 +1088,7 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
             height: band.bounds.height,
             alignment: .topLeading
         )
+        .clipped()
     }
 }
 
@@ -1013,6 +1106,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
     /// Color is not Equatable, but the map is a pure function of `request`,
     /// so == gating on `request` remains exact.
     let tintByNodeID: [String: Color]
+    let density: OverviewTopologyDensityStyle
     let interaction: OverviewTopologyInteractionState
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -1054,33 +1148,14 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
             )
             context.translateBy(x: 0, y: -band.bounds.minY)
 
-            // Column identity ticks under the titles (task 08-23 R4).
-            for column in band.columns {
-                let slice = OverviewTopologyHeaderGeometry.sliceWidth(
-                    for: column,
-                    in: band
-                )
-                let tickCenterX = band.bounds.minX
-                    + OverviewTopologyHeaderGeometry.clampedCenter(
-                        sliceWidth: slice,
-                        columnCenterX: column.centerX - band.bounds.minX,
-                        bandWidth: band.bounds.width
-                    )
+            if !band.columns.isEmpty {
                 context.fill(
-                    Path(
-                        roundedRect: CGRect(
-                            x: tickCenterX - 11,
-                            y: band.bounds.minY
-                                + OverviewTopologyLayout.columnHeaderHeight - 6,
-                            width: 22,
-                            height: 2.5
-                        ),
-                        cornerRadius: 1.25
-                    ),
-                    with: .color(
-                        OverviewTopologyProjection.columnTint(for: column.id)
-                            .opacity(0.85)
-                    )
+                    Path(CGRect(x: 0, y: 0, width: size.width, height: OverviewTopologyLayout.columnHeaderHeight)),
+                    with: .color(MicaTheme.Topology.headerSurface)
+                )
+                context.fill(
+                    Path(CGRect(x: 0, y: OverviewTopologyLayout.columnHeaderHeight, width: size.width, height: 0.5)),
+                    with: .color(MicaTheme.separator)
                 )
             }
 
@@ -1088,34 +1163,19 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
             let highlightedNodeIDs = snapshot.highlight.nodeIDs
             let isDimmed = snapshot.activeSelection != nil
 
-            // Pass 1: everything not on the active trajectory, tiered by the
-            // controller-reported status of the policy hop the edge touches.
+            // Ordinary edges carry stage identity with density-bounded ink.
             for edge in band.edges where !highlightedEdgeIDs.contains(edge.edge.id) {
-                let targetStatus = statusByID[edge.edge.targetID] ?? .neutral
-                let status = targetStatus != .neutral
-                    ? targetStatus
-                    : statusByID[edge.edge.sourceID] ?? .neutral
                 OverviewTopologyDrawing.drawEdge(
                     edge,
-                    status: status,
                     sourceTint: tintByNodeID[edge.edge.sourceID]
                         ?? MicaTheme.textTertiary,
                     targetTint: tintByNodeID[edge.edge.targetID]
                         ?? MicaTheme.textTertiary,
+                    density: density,
                     isDimmed: isDimmed,
                     in: &context
                 )
             }
-            for node in band.nodes where !highlightedNodeIDs.contains(node.node.id) {
-                OverviewTopologyDrawing.drawNode(
-                    node,
-                    status: statusByID[node.node.id] ?? .neutral,
-                    tint: tintByNodeID[node.node.id] ?? MicaTheme.textTertiary,
-                    isDimmed: isDimmed,
-                    in: &context
-                )
-            }
-
             // Pass 2: the single dominant trajectory redraws in accent.
             if isDimmed {
                 MicaPerformanceObservation.recordDebug(
@@ -1130,18 +1190,23 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                 for edge in band.edges where highlightedEdgeIDs.contains(edge.edge.id) {
                     OverviewTopologyDrawing.drawEdge(
                         edge,
+                        density: density,
                         isHighlighted: true,
                         in: &context
                     )
                 }
-                for node in band.nodes where highlightedNodeIDs.contains(node.node.id) {
-                    OverviewTopologyDrawing.drawNode(
-                        node,
-                        status: .neutral,
-                        isHighlighted: true,
-                        in: &context
-                    )
-                }
+            }
+            // All cards paint last so even a highlighted route cannot cross a
+            // name in another column. Edge ports remain at the card boundary.
+            for node in band.nodes {
+                OverviewTopologyDrawing.drawNode(
+                    node,
+                    status: statusByID[node.node.id] ?? .neutral,
+                    tint: tintByNodeID[node.node.id] ?? MicaTheme.textTertiary,
+                    isDimmed: isDimmed && !highlightedNodeIDs.contains(node.node.id),
+                    isHighlighted: highlightedNodeIDs.contains(node.node.id),
+                    in: &context
+                )
             }
         }
         .accessibilityHidden(true)
@@ -1160,6 +1225,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
 private struct OverviewTopologyLabelBand: View {
     let band: OverviewTopologyLayout.RenderBand
     let language: AppLanguage
+    let isSummary: Bool
     let interaction: OverviewTopologyInteractionState
 
     var body: some View {
@@ -1193,12 +1259,18 @@ private struct OverviewTopologyLabelBand: View {
             for: column,
             in: band
         )
-        return Text(
-            verbatim: OverviewTopologyProjection.columnTitle(
-                column.id,
-                language: language
-            )
-        )
+        return HStack(spacing: 6) {
+            Image(systemName: OverviewTopologyDrawing.symbol(for: column.id))
+                .foregroundStyle(OverviewTopologyProjection.columnTint(for: column.id))
+            Text(verbatim: column.id == .policyHop(0) && isSummary
+                ? MicaStrings.localizedKey("overview.topology_entry", language: language)
+                : OverviewTopologyProjection.columnTitle(column.id, language: language))
+            if column.nodeCount > 0 {
+                Text(column.nodeCount.formatted())
+                    .micaThemeFont(.dataCaption)
+                    .foregroundStyle(MicaTheme.textTertiary)
+            }
+        }
         .micaThemeFont(.label, weight: .semibold)
         .foregroundStyle(MicaTheme.textSecondary)
         .lineLimit(1)
@@ -1223,10 +1295,18 @@ private struct OverviewTopologyLabelBand: View {
         _ node: OverviewTopologyLayout.NodeGeometry,
         emphasis: LabelEmphasis
     ) -> some View {
-        Text(verbatim: node.node.name)
+        ZStack(alignment: .topLeading) {
+            Image(systemName: OverviewTopologyDrawing.symbol(for: node.node.columnID))
+                .micaThemeFont(.label, weight: .medium)
+                .foregroundStyle(emphasis == .highlighted ? MicaTheme.accent : OverviewTopologyProjection.columnTint(for: node.node.columnID))
+                .opacity(emphasis == .dimmed ? 0.4 : 1)
+                .frame(width: 16, height: 16)
+                .position(x: node.rect.minX + 18 - band.bounds.minX, y: node.rect.midY - band.bounds.minY)
+
+            nodeName(node.node, emphasis: emphasis)
             .micaThemeFont(
-                .caption,
-                weight: emphasis == .highlighted ? .medium : nil
+                node.node.columnID == .source ? .dataLabel : .label,
+                weight: emphasis == .highlighted ? .semibold : .medium
             )
             .foregroundStyle(labelColor(for: emphasis))
             .lineLimit(1)
@@ -1238,16 +1318,39 @@ private struct OverviewTopologyLabelBand: View {
                 x: node.labelRect.midX - band.bounds.minX,
                 y: node.labelRect.midY - band.bounds.minY
             )
+        }
+    }
+
+    @ViewBuilder
+    private func nodeName(_ node: ConnectionTopology.Node, emphasis: LabelEmphasis) -> some View {
+        if isSummary {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: node.name)
+                Text(verbatim: node.connectionCount.formatted())
+                    .micaThemeFont(.dataCaption)
+                    .foregroundStyle(emphasis == .dimmed ? MicaTheme.textTertiary : MicaTheme.textSecondary)
+            }
+        } else if node.columnID == .rule, let separator = node.name.range(of: ": "),
+           separator.upperBound < node.name.endIndex {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: String(node.name[separator.upperBound...]))
+                Text(verbatim: String(node.name[..<separator.lowerBound]))
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(emphasis == .dimmed ? MicaTheme.textTertiary : MicaTheme.textSecondary)
+            }
+        } else {
+            Text(verbatim: node.name)
+        }
     }
 
     private func labelColor(for emphasis: LabelEmphasis) -> Color {
         switch emphasis {
         case .standard:
-            MicaTheme.textSecondary
+            MicaTheme.textPrimary
         case .dimmed:
             MicaTheme.textTertiary
         case .highlighted:
-            MicaTheme.accent
+            MicaTheme.textPrimary
         }
     }
 }
@@ -1481,7 +1584,7 @@ private struct OverviewTopologyAccessibilityNodes: View {
         }
         let fieldValues = inspection.fields.map { field in
             let title = field.label.resolved(language: language)
-            return "\(title): \(field.value)"
+            return "\(title): \(field.displayValue())"
         }
         return ([inspection.subtitle].compactMap { $0 } + fieldValues)
             .compactMap(\.overviewNonBlank)
@@ -1574,19 +1677,25 @@ private struct OverviewTopologyAccessibilityGroup: View {
 }
 
 private enum OverviewTopologyDrawing {
-    /// Bounded weighted-route rendering. Counts determine a narrow 1.5...7pt
-    /// stroke, while selection, reported status, and column identity determine
-    /// presentation priority. No edge produces a closed area fill.
+    static func symbol(for column: ConnectionTopology.Column.ID) -> String {
+        switch column {
+        case .source: "network"
+        case .rule: "line.3.horizontal.decrease"
+        case .policyHop: "arrow.triangle.branch"
+        case .finalOutbound: "arrow.up.right"
+        }
+    }
+    /// Dense graphs reduce background ink; explicit selection stays readable.
     static func drawEdge(
         _ edge: OverviewTopologyLayout.EdgeGeometry,
-        status: MicaTheme.Status = .neutral,
         sourceTint: Color = MicaTheme.textTertiary,
         targetTint: Color = MicaTheme.textTertiary,
+        density: OverviewTopologyDensityStyle,
         isDimmed: Bool = false,
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
     ) {
-        let lineWidth = edge.width + (isHighlighted ? 1.5 : 0)
+        let lineWidth = isHighlighted ? min(edge.width, 3) + 1.25 : min(edge.width, density.maximumLineWidth)
         let style = StrokeStyle(
             lineWidth: lineWidth,
             lineCap: .round,
@@ -1594,6 +1703,11 @@ private enum OverviewTopologyDrawing {
         )
 
         if isHighlighted {
+            context.stroke(
+                edge.drawingPath,
+                with: .color(MicaTheme.accent.opacity(0.10)),
+                style: StrokeStyle(lineWidth: lineWidth + 5, lineCap: .round, lineJoin: .round)
+            )
             context.stroke(
                 edge.drawingPath,
                 with: .color(MicaTheme.accent.opacity(0.88)),
@@ -1604,15 +1718,7 @@ private enum OverviewTopologyDrawing {
         if isDimmed {
             context.stroke(
                 edge.drawingPath,
-                with: .color(MicaTheme.edgeDimmed),
-                style: style
-            )
-            return
-        }
-        if status != .neutral {
-            context.stroke(
-                edge.drawingPath,
-                with: .color(status.color.opacity(0.52)),
+                with: .color(MicaTheme.edgeDimmed.opacity(min(0.6, density.edgeOpacity * 1.5))),
                 style: style
             )
             return
@@ -1621,8 +1727,8 @@ private enum OverviewTopologyDrawing {
             edge.drawingPath,
             with: .linearGradient(
                 Gradient(colors: [
-                    sourceTint.opacity(0.28),
-                    targetTint.opacity(0.28),
+                    sourceTint.opacity(density.edgeOpacity),
+                    targetTint.opacity(density.edgeOpacity),
                 ]),
                 startPoint: edge.source,
                 endPoint: edge.target
@@ -1631,8 +1737,8 @@ private enum OverviewTopologyDrawing {
         )
     }
 
-    /// A narrow route rail with restrained fill and a crisp outline. Accent and
-    /// reported status remain higher priority than the column identity tint.
+    /// Opaque cards keep names separate from the route network. Reported
+    /// status uses a small marker instead of coloring every connected edge.
     static func drawNode(
         _ node: OverviewTopologyLayout.NodeGeometry,
         status: MicaTheme.Status,
@@ -1641,38 +1747,21 @@ private enum OverviewTopologyDrawing {
         isHighlighted: Bool = false,
         in context: inout GraphicsContext
     ) {
-        if isHighlighted {
-            context.fill(
-                node.drawingPath,
-                with: .color(MicaTheme.accent.opacity(0.88))
-            )
-            context.stroke(
-                node.drawingPath,
-                with: .color(MicaTheme.accent),
-                lineWidth: 1
-            )
-            return
-        }
-        if status != .neutral {
-            context.fill(
-                node.drawingPath,
-                with: .color(status.color.opacity(isDimmed ? 0.20 : 0.52))
-            )
-            context.stroke(
-                node.drawingPath,
-                with: .color(status.color.opacity(isDimmed ? 0.35 : 0.82)),
-                lineWidth: 1
-            )
-            return
-        }
+        context.fill(node.drawingPath, with: .color(MicaTheme.Topology.nodeSurface))
         context.fill(
             node.drawingPath,
-            with: .color(tint.opacity(isDimmed ? 0.14 : 0.28))
+            with: .color((isHighlighted ? MicaTheme.accent : tint).opacity(isHighlighted ? 0.12 : 0.025))
         )
         context.stroke(
             node.drawingPath,
-            with: .color(tint.opacity(isDimmed ? 0.28 : 0.68)),
-            lineWidth: 1
+            with: .color(isHighlighted ? MicaTheme.accent : tint.opacity(isDimmed ? 0.12 : 0.35)),
+            lineWidth: isHighlighted ? 1.25 : 0.75
         )
+        if status != .neutral {
+            context.fill(
+                Path(ellipseIn: CGRect(x: node.rect.maxX - 10, y: node.rect.midY - 2.5, width: 5, height: 5)),
+                with: .color(status.color.opacity(isDimmed ? 0.3 : 1))
+            )
+        }
     }
 }

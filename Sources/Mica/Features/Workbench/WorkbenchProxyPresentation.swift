@@ -580,7 +580,7 @@ struct ProxyAccessibilityIndex: Equatable {
     struct GroupElement: Identifiable, Equatable {
         let occurrence: ProxyGroupOccurrence
         let item: ProxyGroupDirectoryItem
-        let isExpanded: Bool
+        let isActive: Bool
 
         var id: String {
             ProxyAccessibilityIndex.groupElementID(occurrence.id)
@@ -616,7 +616,7 @@ struct ProxyAccessibilityIndex: Equatable {
     private struct GroupRecord: Equatable {
         let occurrence: ProxyGroupOccurrence
         let item: ProxyGroupDirectoryItem
-        let isExpanded: Bool
+        let isActive: Bool
         let members: [ProxyNodeRowProjection]
         let lowerBound: Int
 
@@ -628,8 +628,8 @@ struct ProxyAccessibilityIndex: Equatable {
     static let empty = ProxyAccessibilityIndex(
         groups: [],
         directoryItems: [],
-        openGroupIDs: [],
-        expandedGroups: [:]
+        activeGroupID: nil,
+        activeGroup: .empty
     )
 
     private let groups: [GroupRecord]
@@ -641,13 +641,12 @@ struct ProxyAccessibilityIndex: Equatable {
     init(
         groups: [ProxyGroupOccurrence],
         directoryItems: [ProxyGroupDirectoryItem],
-        openGroupIDs: [String],
-        expandedGroups: [String: ProxyActiveGroupProjection]
+        activeGroupID: String?,
+        activeGroup: ProxyActiveGroupProjection
     ) {
         let itemsByID = Dictionary(
             uniqueKeysWithValues: directoryItems.map { ($0.id, $0) }
         )
-        let openIDs = Set(openGroupIDs)
         var records: [GroupRecord] = []
         records.reserveCapacity(groups.count)
         var orderedIDs: [String] = []
@@ -655,10 +654,8 @@ struct ProxyAccessibilityIndex: Equatable {
 
         for occurrence in groups {
             guard let item = itemsByID[occurrence.id] else { continue }
-            let isExpanded = openIDs.contains(occurrence.id)
-            let members = isExpanded
-                ? expandedGroups[occurrence.id]?.members ?? []
-                : []
+            let isActive = activeGroupID == occurrence.id
+            let members = isActive ? activeGroup.members : []
             let lowerBound = orderedIDs.count
             let groupID = Self.groupElementID(occurrence.id)
             orderedIDs.append(groupID)
@@ -677,7 +674,7 @@ struct ProxyAccessibilityIndex: Equatable {
                 GroupRecord(
                     occurrence: occurrence,
                     item: item,
-                    isExpanded: isExpanded,
+                    isActive: isActive,
                     members: members,
                     lowerBound: lowerBound
                 )
@@ -710,7 +707,7 @@ struct ProxyAccessibilityIndex: Equatable {
                     GroupElement(
                         occurrence: group.occurrence,
                         item: group.item,
-                        isExpanded: group.isExpanded
+                        isActive: group.isActive
                     )
                 )
             } else {
@@ -807,10 +804,8 @@ struct ProxyCatalogProjectionCache {
 
     private var catalogKey: CatalogKey?
     private var activeGroupKey: ActiveGroupKey?
-    private var expandedGroupKeys: [String: ActiveGroupKey] = [:]
     private(set) var groupIndex = ProxyGroupCatalogIndex.empty
     private(set) var activeGroupIndex = ProxyActiveGroupIndex.empty
-    private var expandedGroupIndexes: [String: ProxyActiveGroupIndex] = [:]
     private(set) var workCounts = ProxyCatalogProjectionWorkCounts()
 
     @discardableResult
@@ -833,8 +828,6 @@ struct ProxyCatalogProjectionCache {
         catalogKey = nextKey
         activeGroupKey = nil
         activeGroupIndex = .empty
-        expandedGroupKeys.removeAll(keepingCapacity: true)
-        expandedGroupIndexes.removeAll(keepingCapacity: true)
         workCounts.catalogIndexBuilds += 1
         workCounts.groupRecordsBuilt += groupIndex.records.count
         return true
@@ -873,58 +866,6 @@ struct ProxyCatalogProjectionCache {
     func activeProjection(query: String) -> ProxyActiveGroupProjection {
         ProxyActiveGroupProjection(index: activeGroupIndex, query: query)
     }
-
-    @discardableResult
-    mutating func updateExpandedGroups(groupIDs: [String]) -> Bool {
-        guard let catalogKey else {
-            let changed = !expandedGroupIndexes.isEmpty
-            expandedGroupKeys.removeAll(keepingCapacity: true)
-            expandedGroupIndexes.removeAll(keepingCapacity: true)
-            return changed
-        }
-
-        let requestedIDs = Set(groupIDs)
-        var changed = false
-        let staleGroupIDs = expandedGroupIndexes.keys.filter {
-            !requestedIDs.contains($0)
-        }
-        for groupID in staleGroupIDs {
-            expandedGroupIndexes.removeValue(forKey: groupID)
-            expandedGroupKeys.removeValue(forKey: groupID)
-            changed = true
-        }
-
-        for groupID in groupIDs {
-            let nextKey = ActiveGroupKey(
-                catalog: catalogKey,
-                groupID: groupID
-            )
-            guard expandedGroupKeys[groupID] != nextKey else { continue }
-
-            let index = ProxyProjection.activeGroupIndex(
-                in: groupIndex.arrangedGroups,
-                groupID: groupID,
-                revision: groupIndex.revision
-            )
-            guard index.occurrence != nil else {
-                expandedGroupIndexes.removeValue(forKey: groupID)
-                expandedGroupKeys.removeValue(forKey: groupID)
-                changed = true
-                continue
-            }
-
-            expandedGroupIndexes[groupID] = index
-            expandedGroupKeys[groupID] = nextKey
-            workCounts.activeGroupIndexBuilds += 1
-            workCounts.memberRowsBuilt += index.rows.count
-            changed = true
-        }
-        return changed
-    }
-
-    func expandedGroupIndex(for groupID: String) -> ProxyActiveGroupIndex {
-        expandedGroupIndexes[groupID] ?? .empty
-    }
 }
 
 struct ProxyReportedMetadataField: Identifiable, Equatable {
@@ -943,16 +884,14 @@ struct ProxyReportedMetadataField: Identifiable, Equatable {
             }
     }
 
-    private static func displayText(for value: MihomoJSONValue) -> String? {
+    static func displayText(for value: MihomoJSONValue) -> String? {
         switch value {
         case .string(let text):
             return text.isEmpty ? "\"\"" : text
         case .number(let number):
             guard number.isFinite else { return String(number) }
-            if number.rounded() == number,
-               number >= Double(Int64.min),
-               number <= Double(Int64.max) {
-                return String(Int64(number))
+            if let integer = Int64(exactly: number) {
+                return String(integer)
             }
             return String(number)
         case .bool(let enabled):
@@ -1040,136 +979,44 @@ enum ProxyWorkspaceProjection {
         groups: [ProxyGroupOccurrence]
     ) -> ProxyWorkspaceReconciliationResult {
         var next = workspace
-        let orderedIDs = groups.map(\.id)
-        let validIDs = Set(orderedIDs)
-        let requestedOpenIDs = Set(workspace.openGroupIDs)
-
-        next.openGroupIDs = orderedIDs.filter(requestedOpenIDs.contains)
-        if let activeGroupID = workspace.activeGroupID,
-           next.openGroupIDs.contains(activeGroupID) {
-            next.activeGroupID = activeGroupID
-        } else {
-            next.activeGroupID = next.openGroupIDs.first
+        let active = groups.first { $0.id == workspace.activeGroupID } ?? groups.first
+        if next.activeGroupID != active?.id {
+            next.activeGroupID = active?.id
+            next.proxyMemberQuery = ""
+            next.inspectedProxyMemberID = nil
         }
-
-        next.groupFilters = workspace.groupFilters.filter {
-            validIDs.contains($0.key)
-        }
-        var selectedGroupMemberIDs = workspace.selectedGroupMemberIDs.filter {
-            validIDs.contains($0.key)
-        }
-        var inspectedMemberCount = 0
-        var staleSelectionGroupIDs: [String] = []
-        for (groupID, selectedID) in selectedGroupMemberIDs {
-            guard let occurrence = groups.first(where: { $0.id == groupID }) else {
-                staleSelectionGroupIDs.append(groupID)
-                continue
-            }
+        var inspectedCount = 0
+        if let selectedID = next.inspectedProxyMemberID, let active {
             let resolution = ProxyProjection.memberResolution(
                 memberID: selectedID,
-                in: occurrence.group
+                in: active.group
             )
-            inspectedMemberCount += resolution.inspectedCount
-            if resolution.member == nil {
-                staleSelectionGroupIDs.append(groupID)
-            }
+            inspectedCount = resolution.inspectedCount
+            if resolution.member == nil { next.inspectedProxyMemberID = nil }
         }
-        for groupID in staleSelectionGroupIDs {
-            selectedGroupMemberIDs.removeValue(forKey: groupID)
-        }
-        next.selectedGroupMemberIDs = selectedGroupMemberIDs
         return ProxyWorkspaceReconciliationResult(
             workspace: next,
-            inspectedMemberCount: inspectedMemberCount
+            inspectedMemberCount: inspectedCount
         )
     }
 
-    static func opening(
+    static func activating(
         _ groupID: String,
         in workspace: WorkbenchDestinationWorkspace,
         groups: [ProxyGroupOccurrence],
-        preferredMemberID: String?
+        preferredMemberID: String? = nil
     ) -> WorkbenchDestinationWorkspace {
-        guard let occurrence = groups.first(where: { $0.id == groupID }) else {
+        guard groups.contains(where: { $0.id == groupID }) else {
             return reconciled(workspace, groups: groups)
         }
-
-        var next = reconciled(workspace, groups: groups)
-        let requested = Set(next.openGroupIDs).union([groupID])
-        next.openGroupIDs = groups.map(\.id).filter(requested.contains)
-        next.activeGroupID = groupID
-        if let selectedID = next.selectedGroupMemberIDs[groupID],
-           ProxyProjection.memberResolution(
-               memberID: selectedID,
-               in: occurrence.group
-           ).member == nil {
-            next.selectedGroupMemberIDs.removeValue(forKey: groupID)
-        }
-        if next.selectedGroupMemberIDs[groupID] == nil,
-           let preferredMemberID {
-            next.selectedGroupMemberIDs[groupID] = preferredMemberID
-        }
-        return next
-    }
-
-    static func closingInspector(
-        for groupID: String,
-        in workspace: WorkbenchDestinationWorkspace
-    ) -> WorkbenchDestinationWorkspace {
         var next = workspace
-        next.selectedGroupMemberIDs.removeValue(forKey: groupID)
-        return next
-    }
-
-    static func closing(
-        _ groupID: String,
-        in workspace: WorkbenchDestinationWorkspace,
-        groups: [ProxyGroupOccurrence]
-    ) -> WorkbenchDestinationWorkspace {
-        var next = reconciled(workspace, groups: groups)
-        guard let closingIndex = next.openGroupIDs.firstIndex(of: groupID) else {
-            return next
+        if next.activeGroupID != groupID {
+            next.activeGroupID = groupID
+            next.proxyMemberQuery = ""
+            next.inspectedProxyMemberID = nil
         }
-
-        let wasActive = next.activeGroupID == groupID
-        next.openGroupIDs.remove(at: closingIndex)
-        if wasActive {
-            if closingIndex < next.openGroupIDs.count {
-                next.activeGroupID = next.openGroupIDs[closingIndex]
-            } else {
-                next.activeGroupID = next.openGroupIDs.last
-            }
-        }
-        _ = reconcileActiveSelection(in: &next, groups: groups)
-        return next
-    }
-
-    static func openGroups(
-        _ openGroupIDs: [String],
-        in groups: [ProxyGroupDirectoryItem]
-    ) -> [ProxyGroupDirectoryItem] {
-        let openIDs = Set(openGroupIDs)
-        return groups.filter { openIDs.contains($0.id) }
-    }
-
-    private static func reconcileActiveSelection(
-        in workspace: inout WorkbenchDestinationWorkspace,
-        groups: [ProxyGroupOccurrence]
-    ) -> Int {
-        guard let activeGroupID = workspace.activeGroupID,
-              let selectedID = workspace.selectedGroupMemberIDs[activeGroupID],
-              let occurrence = groups.first(where: { $0.id == activeGroupID }) else {
-            return 0
-        }
-
-        let resolution = ProxyProjection.memberResolution(
-            memberID: selectedID,
-            in: occurrence.group
-        )
-        if resolution.member == nil {
-            workspace.selectedGroupMemberIDs.removeValue(forKey: activeGroupID)
-        }
-        return resolution.inspectedCount
+        if let preferredMemberID { next.inspectedProxyMemberID = preferredMemberID }
+        return reconciled(next, groups: groups)
     }
 }
 
@@ -1613,20 +1460,8 @@ enum ProxyProjection {
     }
 
     static func groupSearchText(for group: ProxyGroupViewState) -> String {
-        var values = [
-            ProxySearchText.normalize(group.id),
-            ProxySearchText.normalize(group.type),
-            ProxySearchText.normalize(group.selected),
-        ]
-        values.reserveCapacity(values.count + (group.options.count * 2))
-
-        for member in group.options {
-            values.append(ProxySearchText.normalize(member))
-            if let detail = group.detail(for: member) {
-                values.append(detail.searchableText)
-            }
-        }
-        return values.joined(separator: " ")
+        // Directory search never silently filters or activates a member.
+        [group.id, group.type].map(ProxySearchText.normalize).joined(separator: " ")
     }
 
     private static func occurrences(

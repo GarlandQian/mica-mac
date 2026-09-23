@@ -430,12 +430,7 @@ struct ConnectionTopologyTests {
             edges: []
         )
 
-        // Task 08-23 closed form: slice = min(W, 2*cx, 2*(W-cx), neighbor
-        // distances) - 8 gutter -> 112/162/162/162/112 for centers
-        // 60/230/400/570/740 in an 800-wide band. With those slices the clamp
-        // is the identity, so every title box is both in-band and pairwise
-        // non-overlapping.
-        let expectedSlices: [CGFloat] = [112, 162, 162, 162, 112]
+        let expectedSlices: [CGFloat] = [137, 162, 162, 162, 137]
         var previousBoxMax: CGFloat = -.greatestFiniteMagnitude
         for (column, expectedSlice) in zip(band.columns, expectedSlices) {
             let slice = OverviewTopologyHeaderGeometry.sliceWidth(
@@ -448,7 +443,6 @@ struct ConnectionTopologyTests {
                 columnCenterX: column.centerX,
                 bandWidth: 800
             )
-            #expect(center == column.centerX)
             let boxMin = center - slice / 2
             let boxMax = center + slice / 2
             #expect(boxMin >= 0)
@@ -457,9 +451,8 @@ struct ConnectionTopologyTests {
             previousBoxMax = boxMax
         }
 
-        // Degenerate inputs: an off-center single column gets a slice bounded
-        // by the nearer band edge, and an over-wide slice still clamps to a
-        // centered, fully-visible title.
+        // A single column uses the available band width even if its node bar
+        // sits near an edge; no adjacent title can constrain it.
         let single = OverviewTopologyLayout.RenderBand(
             id: 1,
             bounds: CGRect(x: 0, y: 0, width: 320, height: 200),
@@ -471,7 +464,7 @@ struct ConnectionTopologyTests {
             for: single.columns[0],
             in: single
         )
-        #expect(singleSlice == 72)
+        #expect(singleSlice == 312)
         let singleCenter = OverviewTopologyHeaderGeometry.clampedCenter(
             sliceWidth: singleSlice,
             columnCenterX: 40,
@@ -486,6 +479,40 @@ struct ConnectionTopologyTests {
                 bandWidth: 320
             ) == 160
         )
+    }
+
+    @Test func topologyEdgeHeadersUseInwardSpaceWithoutCrossingNeighborTitles() {
+        for offset in [CGFloat.zero, 120] {
+            let band = OverviewTopologyLayout.RenderBand(
+                id: 0,
+                bounds: CGRect(x: offset, y: 0, width: 1140, height: 300),
+                columns: [
+                    .init(id: .source, centerX: offset + 26),
+                    .init(id: .rule, centerX: offset + 298),
+                    .init(id: .policyHop(0), centerX: offset + 570),
+                    .init(id: .policyHop(1), centerX: offset + 842),
+                    .init(id: .finalOutbound, centerX: offset + 1114),
+                ],
+                nodes: [],
+                edges: []
+            )
+            var previousMax: CGFloat = -1
+            for (index, column) in band.columns.enumerated() {
+                let width = OverviewTopologyHeaderGeometry.sliceWidth(for: column, in: band)
+                let center = OverviewTopologyHeaderGeometry.clampedCenter(
+                    sliceWidth: width,
+                    columnCenterX: column.centerX - band.bounds.minX,
+                    bandWidth: band.bounds.width
+                )
+                #expect(center - width / 2 >= 0)
+                #expect(center + width / 2 <= band.bounds.width)
+                #expect(center - width / 2 > previousMax)
+                if index == 0 || index == band.columns.count - 1 {
+                    #expect(width == 154)
+                }
+                previousMax = center + width / 2
+            }
+        }
     }
 
     /// R8/AC7: columns after the first sort by the flow-weighted barycenter
@@ -547,13 +574,16 @@ struct ConnectionTopologyTests {
             topology: topology,
             availableWidth: 800
         )
-        // 7 columns (source, rule, four hops, final) x minimum step 168:
-        // 20*2 insets + 12 node width + 168*6 = 1060 > 800 panel.
         #expect(layout.columns.count == 7)
-        #expect(layout.size.width == 1060)
-        // Labels keep the full 168 - 12 node - 2x8 gap = 140pt slot.
+        #expect(layout.size.width > 800)
+        // Readable cards and routing space survive horizontal overflow.
         for node in layout.nodes {
-            #expect(node.labelRect.width == 140)
+            #expect(node.rect.width >= 144)
+            #expect(node.rect.contains(node.labelRect))
+            #expect(node.labelRect.width >= 96)
+        }
+        for (current, next) in zip(layout.nodes, layout.nodes.dropFirst()) {
+            #expect(next.rect.minX - current.rect.maxX >= 48)
         }
         // A short chain still fits the panel exactly (no gratuitous scroll).
         let short = try await OverviewTopologyLayoutBuilder.buildCancellable(

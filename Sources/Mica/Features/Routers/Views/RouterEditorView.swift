@@ -17,6 +17,7 @@ struct RouterEditorView: View {
     let discardRequestID: Int
     let onClose: () -> Void
     let onDiscardConfirmed: () -> Void
+    let onDiscardCancelled: () -> Void
     let onEditingStateChange: (Bool, Bool) -> Void
 
     init(
@@ -25,6 +26,7 @@ struct RouterEditorView: View {
         discardRequestID: Int = 0,
         onClose: @escaping () -> Void,
         onDiscardConfirmed: @escaping () -> Void,
+        onDiscardCancelled: @escaping () -> Void,
         onEditingStateChange: @escaping (Bool, Bool) -> Void = { _, _ in }
     ) {
         _draft = State(initialValue: draft)
@@ -33,6 +35,7 @@ struct RouterEditorView: View {
         self.discardRequestID = discardRequestID
         self.onClose = onClose
         self.onDiscardConfirmed = onDiscardConfirmed
+        self.onDiscardCancelled = onDiscardCancelled
         self.onEditingStateChange = onEditingStateChange
     }
 
@@ -75,11 +78,14 @@ struct RouterEditorView: View {
                             Spacer(minLength: 12)
                             Button(continueEditingTitle) {
                                 showsDiscardConfirmation = false
+                                onDiscardCancelled()
                             }
+                            .disabled(isSaving)
                             Button(discardTitle, role: .destructive) {
                                 showsDiscardConfirmation = false
                                 onDiscardConfirmed()
                             }
+                            .disabled(isSaving)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)

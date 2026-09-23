@@ -23,8 +23,7 @@ struct WorkbenchControllerSelectorSnapshot: Equatable, Sendable {
     let selectedItem: WorkbenchControllerSelectorItem?
 
     init(profiles: [RouterProfile], selectedID: RouterProfile.ID?) {
-        let items = profiles.map(WorkbenchControllerSelectorItem.init(profile:))
-        self.items = items
+        items = profiles.map(WorkbenchControllerSelectorItem.init(profile:))
         self.selectedID = selectedID
         selectedItem = items.first { $0.id == selectedID }
     }
@@ -39,300 +38,126 @@ struct WorkbenchSidebarControllerSwitcher: View {
     let onManageControllers: () -> Void
 
     var body: some View {
-        let snapshot = WorkbenchControllerSelectorSnapshot(
-            profiles: appModel.routers,
-            selectedID: appModel.selectedRouterID
-        )
-
         WorkbenchControllerSelector(
-            snapshot: snapshot,
+            snapshot: WorkbenchControllerSelectorSnapshot(
+                profiles: appModel.routers,
+                selectedID: appModel.selectedRouterID
+            ),
             isEnabled: isEnabled,
-            onSelect: select,
+            canTest: appModel.canTestSelectedRouter,
+            onSelect: { onSelectController($0.profile) },
             onAddController: onAddController,
-            onManageControllers: onManageControllers
+            onManageControllers: onManageControllers,
+            onTestController: appModel.testSelectedRouter
         )
-    }
-
-    private func select(_ item: WorkbenchControllerSelectorItem) {
-        onSelectController(item.profile)
     }
 }
 
 private struct WorkbenchControllerSelector: View {
     @Environment(\.micaAppLanguage) private var language
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isExpanded = false
 
     let snapshot: WorkbenchControllerSelectorSnapshot
     let isEnabled: Bool
+    let canTest: Bool
     let onSelect: (WorkbenchControllerSelectorItem) -> Void
     let onAddController: () -> Void
     let onManageControllers: () -> Void
+    let onTestController: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(reduceMotion ? nil : MicaTheme.Motion.reveal) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                currentControllerLabel(
-                    snapshot.selectedItem,
-                    isExpanded: isExpanded
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!isEnabled)
-
-            if isExpanded {
-                switcherContents
-                    .padding(.top, MicaTheme.Spacing.space1)
-                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .tint(MicaTheme.accent)
-        .accessibilityLabel(
-            Text(
-                MicaStrings.localizedKey(
-                    "settings.active_controller",
-                    language: language
-                )
-            )
-        )
-        .accessibilityValue(
-            Text(
-                verbatim: selectedControllerAccessibilityValue(
-                    snapshot.selectedItem
-                )
-            )
-        )
-        .help(selectedControllerHelp(snapshot.selectedItem))
-        .onChange(of: isEnabled) { _, isEnabled in
-            if !isEnabled {
-                isExpanded = false
-            }
-        }
-    }
-
-    private var switcherContents: some View {
-        LazyVStack(alignment: .leading, spacing: 0) {
-            if snapshot.items.isEmpty {
-                Text(
-                    MicaStrings.localizedKey(
-                        "settings.none",
-                        language: language
-                    )
-                )
-                .micaThemeFont(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, MicaTheme.Spacing.space2)
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: MicaTheme.Metrics.controlMinHeight,
-                    alignment: .leading
-                )
-            } else {
+        Menu {
+            Section {
                 ForEach(snapshot.items) { item in
-                    controllerButton(
-                        item,
-                        isSelected: item.id == snapshot.selectedID
+                    Button {
+                        onSelect(item)
+                    } label: {
+                        Label(
+                            "\(item.displayName) (\(item.endpointURL))",
+                            systemImage: item.id == snapshot.selectedID
+                                ? "checkmark"
+                                : item.symbolName
+                        )
+                    }
+                    .help(item.endpointURL)
+                    .accessibilityValue(Text(verbatim: item.endpointURL))
+                    .accessibilityAddTraits(
+                        item.id == snapshot.selectedID ? .isSelected : []
                     )
                 }
             }
 
-            Divider()
-                .padding(.vertical, MicaTheme.Spacing.space1)
-
-            switcherAction(
-                titleKey: "sidebar.add_controller",
-                systemImage: "plus"
-            ) {
-                isExpanded = false
-                onAddController()
+            Section {
+                Button(action: onAddController) {
+                    Label(
+                        localized("sidebar.add_controller"),
+                        systemImage: "plus"
+                    )
+                }
+                Button(action: onManageControllers) {
+                    Label(
+                        localized("sidebar.controllers"),
+                        systemImage: "server.rack"
+                    )
+                }
             }
 
-            switcherAction(
-                titleKey: "sidebar.controllers",
-                systemImage: "server.rack"
-            ) {
-                isExpanded = false
-                onManageControllers()
+            if snapshot.selectedItem != nil {
+                Section {
+                    Button(action: onTestController) {
+                        Label(
+                            localized("dashboard.help_test_controller"),
+                            systemImage: MicaSymbols.Command.test
+                        )
+                    }
+                    .disabled(!canTest)
+                }
             }
-        }
-    }
-
-    private func currentControllerLabel(
-        _ selectedItem: WorkbenchControllerSelectorItem?,
-        isExpanded: Bool
-    ) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
-            Image(systemName: selectedControllerSymbol(selectedItem))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(selectedControllerTint(selectedItem))
-                .frame(width: 18)
-                .accessibilityHidden(true)
-
-            Text(verbatim: selectedControllerName(selectedItem))
-                .micaThemeFont(.label, weight: .semibold)
-                .foregroundStyle(selectedItem == nil ? .secondary : .primary)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .micaThemeFont(.caption, weight: .semibold)
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .accessibilityHidden(true)
-        }
-        .padding(.horizontal, MicaTheme.Spacing.space2)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 36,
-            alignment: .leading
-        )
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(MicaTheme.accent.opacity(0.14).opacity(0.55))
-        )
-        .contentShape(Rectangle())
-    }
-
-    private func controllerButton(
-        _ item: WorkbenchControllerSelectorItem,
-        isSelected: Bool
-    ) -> some View {
-        Button {
-            isExpanded = false
-            onSelect(item)
         } label: {
-            HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
-                Image(
-                    systemName: isSelected
-                        ? "checkmark.circle.fill"
-                        : item.symbolName
-                )
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(isSelected ? MicaTheme.accent : .secondary)
-                .frame(width: 18)
-                .accessibilityHidden(true)
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                Image(systemName: snapshot.selectedItem?.symbolName ?? "server.rack")
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                    .frame(width: 20)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: item.displayName)
-                        .micaThemeFont(.label)
-                        .fontWeight(isSelected ? .semibold : .regular)
-                        .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: controllerName)
+                        .micaThemeFont(.body, weight: .semibold)
+                        .foregroundStyle(MicaTheme.textPrimary)
                         .lineLimit(1)
 
-                    Text(verbatim: item.endpointURL)
-                        .micaThemeFont(.dataCaption)
-                        .foregroundStyle(.secondary)
+                    Text(verbatim: snapshot.selectedItem?.endpointURL
+                        ?? localized("sidebar.add_controller"))
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(MicaTheme.textSecondary)
                         .lineLimit(1)
-                        .textSelection(.enabled)
+                        .truncationMode(.middle)
                 }
 
-                Spacer(minLength: 0)
+                Spacer(minLength: MicaTheme.Spacing.space1)
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textSecondary)
             }
             .padding(.horizontal, MicaTheme.Spacing.space2)
-            .padding(.vertical, MicaTheme.Spacing.space1)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: MicaTheme.Metrics.controlMinHeight,
-                alignment: .leading
-            )
-            .contentShape(Rectangle())
-            .background {
-                if isSelected {
-                    RoundedRectangle(
-                        cornerRadius: MicaTheme.Metrics.badgeRadius,
-                        style: .continuous
-                    )
-                    .fill(MicaTheme.accent.opacity(0.14))
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: item.displayName))
-        .accessibilityValue(
-            Text(verbatim: controllerAccessibilityValue(item, isSelected: isSelected))
-        )
-        .help(item.endpointURL)
-    }
-
-    private func switcherAction(
-        titleKey: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        let title = MicaStrings.localizedKey(titleKey, language: language)
-
-        return Button(action: action) {
-            Label {
-                Text(title)
-            } icon: {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(
-                maxWidth: .infinity,
-                minHeight: MicaTheme.Metrics.controlMinHeight,
-                alignment: .leading
-            )
-            .padding(.horizontal, MicaTheme.Spacing.space2)
+            .padding(.vertical, MicaTheme.Spacing.space2)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .contentShape(Rectangle())
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .help(title)
-        .accessibilityLabel(Text(title))
+        .menuIndicator(.hidden)
+        .disabled(!isEnabled)
+        .accessibilityLabel(Text(localized("settings.active_controller")))
+        .accessibilityValue(Text(verbatim: controllerName))
+        .help(snapshot.selectedItem?.endpointURL ?? localized("sidebar.controllers"))
     }
 
-    private func selectedControllerName(
-        _ selectedItem: WorkbenchControllerSelectorItem?
-    ) -> String {
-        selectedItem?.displayName
-            ?? MicaStrings.localizedKey("settings.none", language: language)
+    private var controllerName: String {
+        snapshot.selectedItem?.displayName ?? localized("settings.none")
     }
 
-    private func selectedControllerSymbol(
-        _ selectedItem: WorkbenchControllerSelectorItem?
-    ) -> String {
-        selectedItem?.symbolName ?? "server.rack"
-    }
-
-    private func selectedControllerTint(
-        _ selectedItem: WorkbenchControllerSelectorItem?
-    ) -> Color {
-        selectedItem == nil ? .secondary : MicaTheme.accent
-    }
-
-    private func selectedControllerHelp(
-        _ selectedItem: WorkbenchControllerSelectorItem?
-    ) -> String {
-        selectedItem?.endpointURL
-            ?? MicaStrings.localizedKey("sidebar.controllers", language: language)
-    }
-
-    private func selectedControllerAccessibilityValue(
-        _ selectedItem: WorkbenchControllerSelectorItem?
-    ) -> String {
-        guard let endpoint = selectedItem?.endpointURL else {
-            return selectedControllerName(selectedItem)
-        }
-
-        return [selectedControllerName(selectedItem), endpoint]
-            .joined(separator: "\n")
-    }
-
-    private func controllerAccessibilityValue(
-        _ item: WorkbenchControllerSelectorItem,
-        isSelected: Bool
-    ) -> String {
-        guard isSelected else { return item.endpointURL }
-
-        return [
-            MicaStrings.localizedKey("settings.active_controller", language: language),
-            item.endpointURL,
-        ]
-        .joined(separator: "\n")
+    private func localized(_ key: String) -> String {
+        MicaStrings.localizedKey(key, language: language)
     }
 }

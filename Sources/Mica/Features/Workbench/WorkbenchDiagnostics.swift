@@ -72,7 +72,11 @@ struct WorkbenchDiagnosticsView: View {
                     WorkbenchStaleNotice(message: retainedFailureMessage)
                 }
 
-                WorkbenchDiagnosticsVerdictHeader(snapshot: snapshot)
+                WorkbenchDiagnosticsVerdictHeader(
+                    snapshot: snapshot,
+                    canRecheck: diagnosticsActionAvailability.isEnabled(.refresh),
+                    onRecheck: { perform(.refresh) }
+                )
 
                 if !snapshot.issues.isEmpty {
                     WorkbenchDiagnosticsIssueWorkspace(

@@ -80,9 +80,23 @@ enum ProxyInteractionRegion: Hashable {
 struct WorkbenchProxyFilterObstructions: OptionSet, Equatable, Sendable {
     let rawValue: UInt8
 
-    static let globalSearch = Self(rawValue: 1 << 0)
-    static let groupFilter = Self(rawValue: 1 << 1)
-    static let healthFilter = Self(rawValue: 1 << 2)
+    static let groupFilter = Self(rawValue: 1 << 0)
+    static let healthFilter = Self(rawValue: 1 << 1)
+
+    static func resolve(
+        member: ProxyNodeRowProjection,
+        index: ProxyActiveGroupIndex,
+        query: String,
+        healthFilter: ProxyHealthFilter
+    ) -> Self {
+        var blockers: Self = []
+        let textProjection = ProxyActiveGroupProjection(index: index, query: query)
+        if !textProjection.members.contains(where: { $0.id == member.id }) {
+            blockers.insert(.groupFilter)
+        }
+        if !healthFilter.includes(member) { blockers.insert(.healthFilter) }
+        return blockers
+    }
 }
 
 enum WorkbenchProxyRevealObstruction: Equatable, Sendable {
@@ -97,9 +111,7 @@ enum WorkbenchProxyRevealObstruction: Equatable, Sendable {
         case .hiddenGlobal:
             "routing.reveal_blocked_global_detail"
         case .filters(_, let blockers):
-            if blockers == .globalSearch {
-                "routing.reveal_blocked_search_detail"
-            } else if blockers == .groupFilter {
+            if blockers == .groupFilter {
                 "routing.reveal_blocked_group_filter_detail"
             } else if blockers == .healthFilter {
                 "routing.reveal_blocked_health_filter_detail"
@@ -247,6 +259,7 @@ final class ProxyCatalogPresentationCoordinator {
 }
 
 @MainActor
+@Observable
 final class ProxyScrollInteractionTracker {
     private(set) var isScrolling = false
 
