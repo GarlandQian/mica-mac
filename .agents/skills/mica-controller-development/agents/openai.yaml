@@ -1,4 +1,0 @@
-interface:
-  display_name: "Mica Controller Development"
-  short_description: "Mica 控制器协议、会话状态、能力边界与开发约束"
-  default_prompt: "Use $mica-controller-development to trace and implement a Mica controller or Workbench change across transport, runtime capabilities, generation-owned state, presentation, localization, and tests."

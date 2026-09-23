@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality bar for the final verification pass."}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type-safety rules to verify in rewritten view code."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "State-management conventions to verify in chrome/inspector/selection wiring."}
-{"file": ".trellis/spec/frontend/workbench-ui-contract.md", "reason": "Must be rewritten in Phase 8; checker validates code/spec consistency after the rewrite."}
-{"file": ".trellis/tasks/08-17-global-ui-redesign/prd.md", "reason": "Acceptance criteria source for the final gate (zero old-system references, IA groups, inspector, localization, tests green)."}

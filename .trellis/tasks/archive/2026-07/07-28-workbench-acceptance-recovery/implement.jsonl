@@ -1,4 +1,0 @@
-{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"Defines Mica's six-file Workbench, navigation, visual, data-visibility, ordering, state, accessibility, and performance contracts."}
-{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"Defines controller generation safety, pause/stale behavior, session lifecycle, endpoint refresh, and mutation transaction requirements."}
-{"file":".trellis/spec/backend/controller-data-contract.md","reason":"Defines controller-reported ordering, optional-field truth, capabilities, route data, and DTO-to-presentation invariants."}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Required for tracing transport ingestion through session publication, projections, and SwiftUI without repairing only one layer."}

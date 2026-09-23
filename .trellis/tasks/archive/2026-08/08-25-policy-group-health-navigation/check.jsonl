@@ -1,6 +1,0 @@
-{"file":".trellis/spec/frontend/workbench-ui-contract.md","reason":"终检需要确认没有第二套浮层 inspector、嵌套滚动、内容玻璃、控制器顺序漂移或不稳定布局。"}
-{"file":".trellis/spec/frontend/live-session-controller-contract.md","reason":"终检需要确认快照、定位请求和跨页导航在旧 controller/generation、取消、重连和实时更新下不会污染新会话。"}
-{"file":".trellis/spec/backend/controller-data-contract.md","reason":"终检需要确认 optionality、reported order、read-only group 和 backend capability 没有被 presentation 简化或误写。"}
-{"file":"docs/DEVELOPMENT.md","reason":"终检命令和离线性能比较必须与项目现有门禁一致。"}
-{"file":".trellis/tasks/08-25-policy-group-health-navigation/research/live-session-functional-audit.md","reason":"终检逐条回归 D1/D2/D10/D11 的失败序列，确认 sibling publication、endpoint isolation、单调 freshness 和 duplicate-safe rates。"}
-{"file":".trellis/tasks/08-25-policy-group-health-navigation/research/current-diff-functional-audit.md","reason":"终检逐条回归跨页 exact target、filtered-empty、GLOBAL obstruction、一次清理、controller-current 和单一有效滚动目标。"}

@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/workbench-ui-contract.md", "reason": "Workbench 结构/导航/chrome/数据页边界与文件架构约束，重构必须在其框架内重绘视觉"}
-{"file": "docs/UI_GUIDELINES.md", "reason": "现有 UI 规范与视觉系统基线，Phase 1 需按新身份重写并保留行为契约"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "共享组件规范，D10 组件重塑需遵循并更新"}
