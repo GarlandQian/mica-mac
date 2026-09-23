@@ -2,6 +2,19 @@ import Foundation
 import MicaCore
 import SwiftUI
 
+/// Capability consumers must not observe traffic, counts, health timestamps,
+/// or the complete policy catalog each time a controller snapshot is received.
+struct UnifiedControllerSupportSnapshot: Equatable {
+    let controllerType: UnifiedControllerType
+    let capabilities: ControllerCapabilities
+
+    init?(snapshot: UnifiedControllerSnapshot) {
+        guard snapshot.checkedAt != nil else { return nil }
+        controllerType = snapshot.controllerType
+        capabilities = snapshot.capabilities
+    }
+}
+
 extension AppModel {
     var selectedRouter: RouterProfile? {
         routers.first { $0.id == selectedRouterID }
@@ -71,8 +84,8 @@ extension AppModel {
     }
 
     var selectedUnifiedControllerType: UnifiedControllerType {
-        if unifiedSnapshot.checkedAt != nil {
-            return unifiedSnapshot.controllerType
+        if let unifiedControllerSupport {
+            return unifiedControllerSupport.controllerType
         }
 
         guard let selectedRouter else {
@@ -83,8 +96,8 @@ extension AppModel {
     }
 
     var selectedUnifiedCapabilities: ControllerCapabilities {
-        if unifiedSnapshot.checkedAt != nil {
-            return unifiedSnapshot.capabilities
+        if let unifiedControllerSupport {
+            return unifiedControllerSupport.capabilities
         }
 
         guard selectedRouter != nil else {

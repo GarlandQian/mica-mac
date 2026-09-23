@@ -26,7 +26,17 @@ final class WorkbenchSourcesModel {
     let interaction = WorkbenchDataInteractionCoordinator()
     @ObservationIgnored private var cache = WorkbenchSourceProjectionCache()
     @ObservationIgnored private var latestInput: WorkbenchSourcesPresentationInput?
-    @ObservationIgnored private var isActive = false
+    @ObservationIgnored private var presentedInput: WorkbenchSourcesPresentationInput?
+    @ObservationIgnored private var presentedConfiguration: PresentationConfiguration?
+    @ObservationIgnored private var hasDeferredPresentation = false
+    @ObservationIgnored private(set) var isActive = false
+
+    private struct PresentationConfiguration: Equatable {
+        let kind: ProviderSessionKind
+        let query: String
+        let language: AppLanguage
+        let sortOrder: [KeyPathComparator<WorkbenchSourceRow>]
+    }
 
     var selectedRow: WorkbenchSourceRow? {
         guard let selectedRowID else { return nil }
@@ -57,9 +67,14 @@ final class WorkbenchSourcesModel {
             sourceCount = 0
             updatableSourceCount = 0
             latestInput = nil
+            presentedInput = nil
+            presentedConfiguration = nil
             accessibilityCursor.reset()
             rowRevision &+= 1
         }
+        latestInput = presentedInput
+        hasDeferredPresentation = false
+        interaction.apply(.ended)
         self.scope = scope
         isActive = true
         kind = workspace.activeTab.flatMap(ProviderSessionKind.init(rawValue:)) ?? .all
@@ -70,27 +85,39 @@ final class WorkbenchSourcesModel {
 
     func deactivate() {
         isActive = false
+        hasDeferredPresentation = false
+        latestInput = presentedInput
+        interaction.apply(.ended)
     }
 
     func update(_ input: WorkbenchSourcesPresentationInput) {
         guard isActive, scope == input.scope else { return }
-        let sourceChanged = latestInput?.sources != input.sources
-            || latestInput?.language != input.language
         latestInput = input
-        project(update: sourceChanged ? .source : .visibleOnly)
+        if interaction.isUserScrolling,
+           presentedConfiguration == configuration(for: input) {
+            hasDeferredPresentation = true
+            return
+        }
+        project()
+    }
+
+    func finishDeferredPresentation(scope: WorkbenchSessionIdentity) {
+        guard isActive, self.scope == scope, !interaction.isUserScrolling,
+              hasDeferredPresentation else { return }
+        project()
     }
 
     func setKind(_ kind: ProviderSessionKind) {
         guard self.kind != kind else { return }
         selectedRowID = nil
         self.kind = kind
-        project(update: .visibleOnly)
+        project()
     }
 
     func setSortOrder(_ sortOrder: [KeyPathComparator<WorkbenchSourceRow>]) {
         guard self.sortOrder != sortOrder else { return }
         self.sortOrder = sortOrder
-        project(update: .visibleOnly)
+        project()
     }
 
     func select(_ id: String?) {
@@ -136,11 +163,20 @@ final class WorkbenchSourcesModel {
         }
     }
 
-    private func project(update: WorkbenchSourceProjectionUpdate) {
+    private func configuration(for input: WorkbenchSourcesPresentationInput) -> PresentationConfiguration {
+        PresentationConfiguration(kind: kind, query: input.query, language: input.language, sortOrder: sortOrder)
+    }
+
+    private func project() {
         guard isActive, let input = latestInput else { return }
+        let sourceChanged = presentedInput?.sources != input.sources
+            || presentedInput?.language != input.language
+        hasDeferredPresentation = false
+        presentedInput = input
+        presentedConfiguration = configuration(for: input)
         let previousRows = cache.allRows
         let changed = cache.project(
-            update: update,
+            update: sourceChanged ? .source : .visibleOnly,
             sources: input.sources,
             kind: kind,
             query: input.query,

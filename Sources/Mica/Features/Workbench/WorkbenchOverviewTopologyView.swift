@@ -1,5 +1,6 @@
 import Foundation
 import MicaCore
+import Observation
 import SwiftUI
 
 struct OverviewTopologySection: View {
@@ -18,8 +19,12 @@ struct OverviewTopologySection: View {
             "overview.topology_title",
             systemImage: "point.3.connected.trianglepath.dotted",
             accessory: {
-                if visibleInput?.connections.isEmpty == false {
-                    OverviewTopologyHeaderControls(runtime: runtime)
+                if let visibleInput {
+                    OverviewTopologyHeaderAvailability(
+                        generation: request.generation,
+                        liveConnectionCount: visibleInput.connections.count,
+                        runtime: runtime
+                    )
                 }
             }
         ) {
@@ -132,6 +137,36 @@ struct OverviewTopologyLiveSignal: Equatable, Sendable {
     }
 }
 
+/// Keep freeze/hover dependencies out of the section that owns catalog intake.
+/// A populated live graph always has controls, regardless of captured geometry.
+struct OverviewTopologyHeaderAvailability: View {
+    let generation: UUID
+    let liveConnectionCount: Int
+    let runtime: OverviewTopologyRuntime
+
+    var body: some View {
+        if Self.showsControls(
+            generation: generation,
+            liveConnectionCount: liveConnectionCount,
+            runtime: runtime
+        ) {
+            OverviewTopologyHeaderControls(runtime: runtime)
+        }
+    }
+
+    static func showsControls(
+        generation: UUID,
+        liveConnectionCount: Int,
+        runtime: OverviewTopologyRuntime
+    ) -> Bool {
+        liveConnectionCount > 0 || runtime.presentationState(
+            generation: generation,
+            liveConnectionCount: liveConnectionCount,
+            liveRevision: 0
+        ).showsControls
+    }
+}
+
 private struct OverviewTopologyHeaderControls: View {
     @Environment(\.micaAppLanguage) private var language
 
@@ -191,22 +226,21 @@ private struct OverviewTopologyWorkspace: View {
     @Binding var destination: WorkbenchDestination
 
     var body: some View {
-        if connections.isEmpty {
+        let presentationState = runtime.presentationState(
+            generation: generation,
+            liveConnectionCount: connections.count,
+            liveRevision: revision
+        )
+        if presentationState.showsEmptyState {
             OverviewInlineState(
                 titleKey: "overview.topology_empty",
                 detailKey: "overview.topology_empty_detail"
             )
         } else {
-            let freezesPresentation = runtime.isPaused
-                || runtime.interaction.snapshot.isHovering
-                || runtime.focusedPaths != nil
-            let presentationRevision = freezesPresentation
-                ? runtime.presentation?.request.revision ?? revision
-                : revision
             let resolvedMinimumFlowHeight = Int(minimumFlowHeight.rounded())
             let request = OverviewTopologyRequest(
                 generation: generation,
-                revision: presentationRevision,
+                revision: presentationState.revision,
                 availableWidth: runtime.availableWidth,
                 minimumFlowHeight: resolvedMinimumFlowHeight,
                 displayMode: runtime.displayMode,
@@ -505,9 +539,10 @@ private struct OverviewTopologyViewport: View {
     let onOpenProxies: (ConnectionTopology.Node) -> Void
 
     @State private var scrollPosition = ScrollPosition(x: 0)
-    @State private var visibleTopologyRect = CGRect.zero
+    @State private var viewportGeometry = OverviewTopologyViewportGeometry()
 
     var body: some View {
+        let _ = MicaPerformanceObservation.recordDebug(.topologyViewportEvaluation)
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             topologyGraph
                 .accessibilityRepresentation {
@@ -619,14 +654,14 @@ private struct OverviewTopologyViewport: View {
         .onScrollGeometryChange(for: CGRect.self) { geometry in
             geometry.visibleRect
         } action: { previous, current in
-            visibleTopologyRect = current
+            viewportGeometry.update(current)
             if previous.width <= 0 || previous.size != current.size {
                 revealCurrentSelection(in: current)
             }
         }
         .onChange(of: viewportSelection) { _, state in
             guard state.isPinned else { return }
-            revealSelection(state.selection, in: visibleTopologyRect)
+            revealSelection(state.selection, in: viewportGeometry.visibleRect)
         }
         .frame(height: viewportHeight)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -774,8 +809,8 @@ private struct OverviewTopologyViewport: View {
     }
 
     private var hasHorizontalOverflow: Bool {
-        let viewportWidth = visibleTopologyRect.width > 0
-            ? visibleTopologyRect.width
+        let viewportWidth = viewportGeometry.size.width > 0
+            ? viewportGeometry.size.width
             : CGFloat(request.availableWidth)
         return layout.size.width > viewportWidth + 1
     }
@@ -863,6 +898,23 @@ private struct OverviewTopologyViewport: View {
             policyRevision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
+    }
+}
+
+/// Scrolling changes the exact rect used by keyboard reveal, but does not change
+/// the graph's layout or horizontal-overflow indicator. Observe only the size;
+/// retain pixel-accurate offsets without invalidating all band inputs per frame.
+@MainActor
+@Observable
+final class OverviewTopologyViewportGeometry {
+    private(set) var size = CGSize.zero
+    @ObservationIgnored private(set) var visibleRect = CGRect.zero
+
+    func update(_ rect: CGRect) {
+        visibleRect = rect
+        if size != rect.size {
+            size = rect.size
+        }
     }
 }
 

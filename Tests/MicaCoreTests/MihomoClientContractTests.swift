@@ -197,7 +197,7 @@ final class MihomoClientContractTests: XCTestCase {
                 let response = try XCTUnwrap(
                     HTTPURLResponse(
                         url: url,
-                        statusCode: 500,
+                        statusCode: 404,
                         httpVersion: "HTTP/1.1",
                         headerFields: nil
                     )

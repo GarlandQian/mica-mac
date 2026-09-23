@@ -30,14 +30,24 @@ public struct MihomoEndpoint: Sendable {
     }
 
     public func url(relativeTo baseURL: URL) throws -> URL {
-        var url = baseURL
-
-        for component in pathComponents {
-            url.appendPathComponent(component)
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw MihomoClientError.invalidURL(pathComponents.joined(separator: "/"))
         }
 
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            throw MihomoClientError.invalidURL(pathComponents.joined(separator: "/"))
+        // Each name is one route parameter, even when it contains a slash or a
+        // literal percent escape. Preserve the already-encoded base path.
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        for component in pathComponents {
+            guard var encoded = component.addingPercentEncoding(withAllowedCharacters: allowed) else {
+                throw MihomoClientError.invalidURL(pathDescription)
+            }
+            if component == "." || component == ".." {
+                encoded = component.replacingOccurrences(of: ".", with: "%2E")
+            }
+            if !components.percentEncodedPath.hasSuffix("/") {
+                components.percentEncodedPath += "/"
+            }
+            components.percentEncodedPath += encoded
         }
 
         components.queryItems = queryItems.isEmpty ? nil : queryItems

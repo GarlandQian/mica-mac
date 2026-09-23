@@ -569,6 +569,7 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
     }
 
     private var uniqueRules: [RuleKey: WorkbenchConnectionRuleNavigationTarget] = [:]
+    private var ruleIdentities: [WorkbenchConnectionRuleNavigationTarget] = []
     private var visiblePolicyTargets: [String: ProxyGroupOccurrence] = [:]
     private(set) var visiblePolicyGroups: [ProxyGroupOccurrence] = []
 
@@ -576,9 +577,30 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
         rules: [RuleViewState] = [],
         groups: [ProxyGroupOccurrence] = []
     ) {
-        visiblePolicyGroups = groups
+        replaceRules(rules)
+        replaceGroups(groups)
+    }
+
+    /// Hit counters and rule state do not change an exact navigation target.
+    /// Compare its complete identity before allocating another lookup table.
+    @discardableResult
+    mutating func replaceRules(_ rules: [RuleViewState]) -> Bool {
+        guard rules.count != ruleIdentities.count || !zip(ruleIdentities, rules).allSatisfy({ target, rule in
+            target.reportedRuleID == rule.id && target.type == rule.type && target.payload == rule.payload
+        }) else { return false }
+
+        uniqueRules.removeAll(keepingCapacity: true)
+        ruleIdentities.removeAll(keepingCapacity: true)
+        ruleIdentities.reserveCapacity(rules.count)
         var ambiguousRuleKeys: Set<RuleKey> = []
         for (sourceIndex, rule) in rules.enumerated() {
+            let target = WorkbenchConnectionRuleNavigationTarget(
+                sourceIndex: sourceIndex,
+                reportedRuleID: rule.id,
+                type: rule.type,
+                payload: rule.payload
+            )
+            ruleIdentities.append(target)
             guard rule.type.dataNonEmpty != nil,
                   rule.payload.dataNonEmpty != nil else {
                 continue
@@ -588,15 +610,17 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
                 uniqueRules.removeValue(forKey: key)
                 ambiguousRuleKeys.insert(key)
             } else if !ambiguousRuleKeys.contains(key) {
-                uniqueRules[key] = WorkbenchConnectionRuleNavigationTarget(
-                    sourceIndex: sourceIndex,
-                    reportedRuleID: rule.id,
-                    type: rule.type,
-                    payload: rule.payload
-                )
+                uniqueRules[key] = target
             }
         }
+        return true
+    }
 
+    @discardableResult
+    mutating func replaceGroups(_ groups: [ProxyGroupOccurrence]) -> Bool {
+        guard visiblePolicyGroups != groups else { return false }
+        visiblePolicyGroups = groups
+        visiblePolicyTargets.removeAll(keepingCapacity: true)
         var ambiguousPolicyTargets: Set<String> = []
         for occurrence in groups {
             let target = occurrence.group.id
@@ -611,6 +635,7 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
                 visiblePolicyTargets[target] = occurrence
             }
         }
+        return true
     }
 
     func ruleTarget(

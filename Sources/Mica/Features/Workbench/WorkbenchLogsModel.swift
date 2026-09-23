@@ -35,8 +35,9 @@ final class WorkbenchLogsModel {
     @ObservationIgnored private var cadence = WorkbenchLogFollowCadence()
     @ObservationIgnored private var latestCatalog: LogsCatalogSnapshot?
     @ObservationIgnored private var latestRequest: WorkbenchLogsPresentationRequest?
-    @ObservationIgnored private var isActive = false
+    @ObservationIgnored private(set) var isActive = false
     @ObservationIgnored private var needsInitialFollow = false
+    @ObservationIgnored private var hasDeferredPresentation = false
 
     var accessibilityWindow: WorkbenchAccessibilityWindow {
         WorkbenchAccessibilityWindow.resolve(
@@ -66,6 +67,8 @@ final class WorkbenchLogsModel {
             rowRevision &+= 1
         }
         self.scope = scope
+        interaction.apply(.ended)
+        hasDeferredPresentation = false
         isActive = true
         needsInitialFollow = true
         cancelFollow()
@@ -79,6 +82,8 @@ final class WorkbenchLogsModel {
 
     func deactivate() {
         isActive = false
+        interaction.apply(.ended)
+        hasDeferredPresentation = false
         cancelFollow()
     }
 
@@ -91,8 +96,34 @@ final class WorkbenchLogsModel {
               request.revision == catalog.entriesRevision else { return }
         if let latestRequest, latestRequest.scope == request.scope,
            request.revision < latestRequest.revision { return }
+        let presentationChanged = latestRequest?.query != request.query
+            || latestRequest?.language != request.language
+        let historyWasReset = interaction.isUserScrolling && resetsAcceptedHistory(catalog)
         latestCatalog = catalog
         latestRequest = request
+        if interaction.isUserScrolling, !historyWasReset,
+           !presentationChanged, !needsInitialFollow {
+            // Incoming entries keep accumulating in the authoritative bounded
+            // catalog. Publish its newest snapshot once the gesture finishes.
+            hasDeferredPresentation = true
+            return
+        }
+        project(now: now)
+    }
+
+    private func resetsAcceptedHistory(_ catalog: LogsCatalogSnapshot) -> Bool {
+        // Clear is asynchronous and can be followed by new entries before its
+        // publication arrives. Inspect the authoritative result, not the tap.
+        if catalog.entries.isEmpty { return true }
+        guard case .replace = catalog.lastChange,
+              let previous = latestCatalog, !previous.entries.isEmpty else { return false }
+        let previousIDs = Set(previous.entries.map(\.id))
+        return !catalog.entries.contains { previousIDs.contains($0.id) }
+    }
+
+    func finishDeferredPresentation(scope: WorkbenchSessionIdentity, now: Date = Date()) {
+        guard isActive, self.scope == scope, !interaction.isUserScrolling,
+              hasDeferredPresentation else { return }
         project(now: now)
     }
 
@@ -116,6 +147,7 @@ final class WorkbenchLogsModel {
         guard followsNewest != follows else { return }
         followsNewest = follows
         if follows {
+            project(now: now)
             selectedRowID = nil
             scrollToNewest(now: now)
         } else {
@@ -125,6 +157,7 @@ final class WorkbenchLogsModel {
     }
 
     func jumpToNewest(now: Date = Date()) {
+        project(now: now)
         selectedRowID = nil
         followsNewest = true
         scrollToNewest(now: now)
@@ -138,6 +171,7 @@ final class WorkbenchLogsModel {
 
     func consumeFollow(_ request: WorkbenchLogsFollowRequest, now: Date = Date()) {
         guard isActive, scope == request.scope, followRequest == request,
+              !interaction.isUserScrolling,
               let id = cadence.consume(
                 isEnabled: followsNewest,
                 hasSelection: selectedRowID != nil,
@@ -166,6 +200,7 @@ final class WorkbenchLogsModel {
 
     private func project(now: Date = Date()) {
         guard isActive, let catalog = latestCatalog, let request = latestRequest else { return }
+        hasDeferredPresentation = false
         let previousRows = cache.allRows
         let previousNewestID = rows.last?.id
         let changed = cache.project(

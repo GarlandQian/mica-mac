@@ -413,9 +413,20 @@ extension AppModel {
 
     func projectedSurgeDashboard(
         _ snapshot: SurgeControlSnapshot,
-        connectionRatesReceivedAt: Date?
+        connectionRatesReceivedAt: Date?,
+        domains: DashboardPublicationDomains = .baseline
     ) -> DashboardSnapshot {
-        var projected = DashboardSnapshot(surge: snapshot, language: presentationLanguage)
+        var projected: DashboardSnapshot
+        if domains == [.connections] || domains == [.connections, .insight] {
+            projected = dashboard
+            projected.replaceSurgeConnections(
+                with: snapshot,
+                includingInsight: domains.contains(.insight),
+                language: presentationLanguage
+            )
+        } else {
+            projected = DashboardSnapshot(surge: snapshot, language: presentationLanguage)
+        }
         guard let connectionRatesReceivedAt else { return projected }
 
         let response = controllerSession.connectionTransferRates.enriching(

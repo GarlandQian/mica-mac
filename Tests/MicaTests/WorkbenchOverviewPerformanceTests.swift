@@ -633,7 +633,9 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(interaction.snapshot.pinnedDate == dates[1])
 
         interaction.setHoveredDate(dates[3])
-        interaction.retainPinnedDate(in: [dates[0], dates[3]])
+        interaction.retainPinnedDate(in: OverviewTimelineSelectionWindow(
+            generation: UUID(), ranges: [dates[3]...dates[3]]
+        ))
         #expect(interaction.snapshot.hoveredDate == dates[3])
         #expect(interaction.snapshot.pinnedDate == nil)
         #expect(interaction.snapshot.selectedDate == dates[3])

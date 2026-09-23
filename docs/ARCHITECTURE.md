@@ -62,6 +62,12 @@ If only the original policy is present, an empty first slot preserves an unknown
 final outbound. The shared topology then retains the partial path and marks its
 route unavailable; it never promotes the original policy or destination address
 to an inferred exit. Active and recent Surge requests use the same projection.
+Near-live Surge connection publications rebuild only connections, traffic and
+requested connection insight; they retain the previously published slow domains.
+Baseline, metadata, policy and rule updates still perform a complete projection.
+Mihomo group projection shares immutable node details within one response, while
+preserving each group's member order and separate test results. No node-detail
+cache survives into a later response.
 
 `ControllerSession` remains the main-actor lifecycle and atomic baseline authority: generation, capability-aware connecting/reconnecting state, pause controls, endpoint last values, and committed presentation mirrors. `LiveSessionRuntime` is the generation-owned raw ingestion authority after installation. It retains five-minute timelines, the O(1) 2,000-entry/8 MiB log ring, connection-rate tracking, and pending closed rows until publication. The root destination maps visible domains; logs/traffic/connections/memory publish at 5/4/2/1 Hz with one non-restarting task slot per domain. Surge near-live polling advances the same visible traffic/count timelines and connections domain. Hidden domains retain raw state and flush once on entry. Endpoint failures retain last values and surface stale state; only never-loaded data becomes an error empty state.
 
@@ -103,10 +109,28 @@ user intent, exact reveal, inline inspection, and command dispatch.
 restoration, and bounded accessibility state. `WorkbenchSessionIdentity` scopes
 updates and delayed work to a controller generation. Views assemble explicit
 value inputs, persist preferences, and dispatch remote commands; page models do
-not import SwiftUI or depend on AppModel. Connections coalesces metric sorting
-while scrolling; Logs owns token-bound follow scheduling and preserves the
+not import SwiftUI or depend on AppModel. All four models retain only the latest
+complete pending snapshot while scrolling; Logs owns token-bound follow scheduling and preserves the
 user's accessibility page across background snapshots. Inspectors resolve the
 current model row rather than retaining a stale selected value.
+
+Nonvisual leaf views observe live catalog revisions and deliver explicit inputs
+to the page models. A deferred publication must not also invalidate the parent
+Table, command bar, or accessibility payload. Selected rule navigation observes
+policy changes within its own path view. Connection rule-navigation indexes
+change only with reported identity, type, payload, or source order, not counters.
+Controller capability consumers observe the narrow type/capability projection;
+traffic and snapshot timestamps do not invalidate command availability.
+Source projections retain only distinct parsed timestamps in the current catalog
+and resolve localization once per projection. They retain dates or reported raw
+text, never localized display strings, so language and time-zone formatting stays
+current. Deactivated catalog observers cannot restore a model on a late callback;
+only page activation can resume it.
+
+Policy directory and member scrolling have independent registrations. The
+aggregate interaction remains active until every region ends. Session changes
+and page teardown discard both registrations and pending presentation atomically,
+without publishing the previous session's data.
 
 `WorkbenchDataTableViewport` keeps SwiftUI Table rendering and uses a narrow
 `WorkbenchNativeTableLifecycle` adapter for actual row positioning and native

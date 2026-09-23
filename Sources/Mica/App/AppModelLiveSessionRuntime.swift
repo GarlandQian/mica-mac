@@ -52,6 +52,7 @@ extension AppModel {
         lastRuntimePublicationRevisions.removeAll(keepingCapacity: true)
         lastRuntimeConnectionRevisions = LiveSessionConnectionRevisions()
         lastRuntimeLogSequence = 0
+        lastPresentedRuntimeLogSequence = 0
     }
 
     func cancelLiveSessionRuntime() {
@@ -68,6 +69,7 @@ extension AppModel {
         lastRuntimePublicationRevisions.removeAll(keepingCapacity: true)
         lastRuntimeConnectionRevisions = LiveSessionConnectionRevisions()
         lastRuntimeLogSequence = 0
+        lastPresentedRuntimeLogSequence = 0
         if let runtime {
             Task { @concurrent in
                 await runtime.invalidate()
@@ -170,6 +172,9 @@ extension AppModel {
             generation: identity.generation,
             force: true
         )
+        if domain == .logs {
+            lastPresentedRuntimeLogSequence = lastRuntimeLogSequence
+        }
     }
 
     private func nextLiveSessionPresentationDemand(
@@ -247,7 +252,10 @@ extension AppModel {
                         routerID: identity.controllerID,
                         generation: identity.generation
                       ) else {
-                    runtimePublicationTasks[domain] = nil
+                    if liveSessionRuntime === runtime,
+                       liveSessionRuntimeIdentity == identity {
+                        runtimePublicationTasks[domain] = nil
+                    }
                     await runtime.cancelScheduledPublication(domain)
                     return
                 }
@@ -265,7 +273,8 @@ extension AppModel {
 
     func applyLiveSessionRuntimePublication(
         _ publication: LiveSessionRuntimePublication,
-        runtime: LiveSessionRuntime
+        runtime: LiveSessionRuntime,
+        recoveringLogs: Bool = false
     ) {
         let identity = publication.identity
         guard liveSessionRuntime === runtime,
@@ -279,7 +288,14 @@ extension AppModel {
             return
         }
         let lastRevision = lastRuntimePublicationRevisions[publication.domain] ?? 0
-        guard publication.revision > lastRevision else { return }
+        let acceptsSameRevisionRecovery: Bool
+        if recoveringLogs, case .logs(let logs) = publication.payload {
+            acceptsSameRevisionRecovery = logs.fullSnapshot != nil
+                && publication.revision == lastRevision
+        } else {
+            acceptsSameRevisionRecovery = false
+        }
+        guard publication.revision > lastRevision || acceptsSameRevisionRecovery else { return }
         lastRuntimePublicationRevisions[publication.domain] = publication.revision
 
         controllerSession.liveObservation.record(
@@ -289,10 +305,25 @@ extension AppModel {
         var runtimeStructureChanged = false
         var runtimeMetricsChanged = false
         var runtimeTrafficChanged = false
+        var runtimeLogsAreComplete = true
 
         switch publication.payload {
         case .logs(let logs):
-            stageRuntimeLogs(logs)
+            if logs.fullSnapshot != nil || logs.previousSequence == lastRuntimeLogSequence {
+                stageRuntimeLogs(logs)
+            } else {
+                // A newer actor delivery can overtake an earlier extracted
+                // delta. The staged buffer is not authoritative in that case.
+                runtimeLogsAreComplete = false
+                Task { @concurrent [weak self] in
+                    guard let recovered = await runtime.recoverLogsPublication() else { return }
+                    await self?.applyLiveSessionRuntimePublication(
+                        recovered,
+                        runtime: runtime,
+                        recoveringLogs: true
+                    )
+                }
+            }
 
         case .traffic(let traffic):
             controllerSession.trafficTimeline = traffic.timeline
@@ -336,22 +367,37 @@ extension AppModel {
 
         switch publication.payload {
         case .logs(let logs):
-            guard !dashboardSessionControls.logsPresentationPaused else {
+            guard runtimeLogsAreComplete,
+                  !dashboardSessionControls.logsPresentationPaused else {
                 return
             }
+            // Reception can advance while a page is hidden or paused. Only
+            // apply a delta when the visible catalog has its exact base.
+            let visibleLogs: LiveSessionLogsPublication
+            if logs.fullSnapshot != nil || logs.previousSequence == lastPresentedRuntimeLogSequence {
+                visibleLogs = logs
+            } else {
+                visibleLogs = LiveSessionLogsPublication(
+                    sequence: logs.sequence,
+                    fullSnapshot: controllerSession.logBuffer.entries,
+                    droppedEntryIDs: [],
+                    appendedEntries: []
+                )
+            }
             MicaPerformanceObservation.recordDebug(
-                logs.fullSnapshot == nil
+                visibleLogs.fullSnapshot == nil
                     ? .incrementalPresentationProjection
                     : .fullPresentationProjection,
                 metadata: MicaPerformanceMetadata(
                     count: UInt64(
-                        logs.fullSnapshot?.count
-                            ?? (logs.droppedEntryIDs.count + logs.appendedEntries.count)
+                        visibleLogs.fullSnapshot?.count
+                            ?? (visibleLogs.droppedEntryIDs.count + visibleLogs.appendedEntries.count)
                     ),
                     revision: logs.sequence
                 )
             )
-            logsCatalog = logsCatalog.applying(logs)
+            logsCatalog = logsCatalog.applying(visibleLogs)
+            lastPresentedRuntimeLogSequence = logs.sequence
 
         case .traffic(let traffic):
             trafficTimeline = traffic.timeline

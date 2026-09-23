@@ -160,4 +160,206 @@ struct WorkbenchLogsModelTests {
         #expect(changes.withLock { $0 } == 1)
         #expect(model.row(id: "same")?.payloadText == "after")
     }
+
+    @Test func scrollingCoalescesDeltasWithoutFormattingRowsOrLosingRetainedEntries() {
+        let (model, scope) = makeModel()
+        publish([entry("one"), entry("two")], revision: 1, to: model, scope: scope)
+        model.select("one")
+        model.interaction.apply(.began)
+        let formatted = model.formattedRowCount
+        let changes = Mutex(0)
+        withObservationTracking {
+            _ = model.rows
+        } onChange: {
+            changes.withLock { $0 += 1 }
+        }
+        model.update(
+            catalog: LogsCatalogSnapshot(
+                entries: [entry("one"), entry("two"), entry("three")],
+                entriesRevision: 2,
+                lastChange: .delta(droppedEntryIDs: [], appendedEntries: [entry("three")])
+            ),
+            request: .init(scope: scope, revision: 2, query: "", language: .english)
+        )
+        model.update(
+            catalog: LogsCatalogSnapshot(
+                entries: [entry("two"), entry("three"), entry("four")],
+                entriesRevision: 3,
+                lastChange: .delta(droppedEntryIDs: ["one"], appendedEntries: [entry("four")])
+            ),
+            request: .init(scope: scope, revision: 3, query: "", language: .english)
+        )
+        model.finishDeferredPresentation(scope: scope)
+        #expect(model.rows.map(\.id) == ["one", "two"])
+        #expect(model.formattedRowCount == formatted)
+        #expect(changes.withLock { $0 } == 0)
+
+        model.interaction.apply(.ended)
+        model.finishDeferredPresentation(scope: scope)
+        #expect(model.rows.map(\.id) == ["two", "three", "four"])
+        #expect(model.sourceCount == 3)
+        #expect(model.selectedRowID == nil)
+        #expect(!model.followsNewest)
+        #expect(model.followRequest == nil)
+        #expect(changes.withLock { $0 } == 1)
+    }
+
+    @Test func filteringAndJumpToNewestApplyPendingSnapshotImmediately() {
+        let (model, scope) = makeModel()
+        publish([entry("one")], revision: 1, to: model, scope: scope)
+        model.interaction.apply(.began)
+        model.setFollowing(false)
+        let entries = [entry("one"), entry("warning", level: "warn")]
+        publish(entries, revision: 2, to: model, scope: scope)
+        #expect(model.rows.map(\.id) == ["one"])
+        model.setLevel(.warning)
+        #expect(model.rows.map(\.id) == ["warning"])
+        #expect(model.sourceCount == 2)
+
+        let newest = entries + [entry("latest warning", level: "warn")]
+        publish(newest, revision: 3, to: model, scope: scope)
+        #expect(model.rows.map(\.id) == ["warning"])
+        model.jumpToNewest()
+        #expect(model.rows.map(\.id) == ["warning", "latest warning"])
+        #expect(model.scrollRequest?.id == "latest warning")
+        #expect(model.followsNewest)
+
+        publish(newest, revision: 3, to: model, scope: scope, query: "latest")
+        #expect(model.rows.map(\.id) == ["latest warning"])
+        model.interaction.apply(.ended)
+        model.finishDeferredPresentation(scope: scope)
+        #expect(model.rows.map(\.id) == ["latest warning"])
+    }
+
+    @Test func authoritativeEmptyClearCannotBeOverwrittenByDeferredRows() {
+        let (model, scope) = makeModel()
+        publish([entry("one")], revision: 1, to: model, scope: scope)
+        model.interaction.apply(.began)
+        model.setFollowing(false)
+        publish([entry("one"), entry("two")], revision: 2, to: model, scope: scope)
+        model.update(
+            catalog: LogsCatalogSnapshot(entries: [], entriesRevision: 3),
+            request: .init(scope: scope, revision: 3, query: "", language: .english)
+        )
+        #expect(model.rows.isEmpty)
+        #expect(model.sourceCount == 0)
+        model.interaction.apply(.ended)
+        model.finishDeferredPresentation(scope: scope)
+        publish([entry("obsolete")], revision: 2, to: model, scope: scope)
+        #expect(model.rows.isEmpty)
+    }
+
+    @Test func asynchronousRuntimeClearPublishesResetBeforeScrollEndsEvenWhenNewLogsArrive() async throws {
+        let (model, scope) = makeModel()
+        let runtime = LiveSessionRuntime(
+            controllerKind: .mihomoCompatible,
+            initialPresentationDemand: LiveSessionPresentationDemand(
+                identity: .init(controllerID: try #require(scope.controllerID), generation: scope.generation),
+                revision: 1,
+                observedDomains: [.logs],
+                presentationPaused: false,
+                logsPresentationPaused: false,
+                baselinePublicationRequired: false
+            )
+        )
+        let receivedAt = Date(timeIntervalSince1970: 1_000)
+        _ = await runtime.ingestLog(
+            .init(type: "info", payload: "before"), source: .mihomoWebSocket,
+            receivedAt: receivedAt, id: "before"
+        )
+        let initial = try #require(await runtime.publication(for: .logs))
+        guard case .logs(let initialLogs) = initial.payload else {
+            Issue.record("Expected initial runtime log publication")
+            return
+        }
+        var catalog = LogsCatalogSnapshot.empty.applying(initialLogs)
+        model.update(catalog: catalog, request: .init(scope: scope, revision: catalog.entriesRevision, query: "", language: .english))
+        model.interaction.apply(.began)
+        model.setFollowing(false)
+
+        _ = await runtime.ingestLog(
+            .init(type: "info", payload: "pending"), source: .mihomoWebSocket,
+            receivedAt: receivedAt.addingTimeInterval(1), id: "pending"
+        )
+        let appended = try #require(await runtime.publication(for: .logs))
+        guard case .logs(let pendingLogs) = appended.payload else {
+            Issue.record("Expected appended runtime log publication")
+            return
+        }
+        catalog = catalog.applying(pendingLogs)
+        let obsoleteCatalog = catalog
+        model.update(catalog: catalog, request: .init(scope: scope, revision: catalog.entriesRevision, query: "", language: .english))
+        #expect(model.rows.map(\.id) == ["before"])
+
+        let clearing = Task {
+            _ = await runtime.clearLogs(receivedAt: receivedAt.addingTimeInterval(2))
+            // A stream event may arrive after the clear but before the scheduled
+            // publication. The clear's complete snapshot is then non-empty.
+            _ = await runtime.ingestLog(
+                .init(type: "info", payload: "after clear"), source: .mihomoWebSocket,
+                receivedAt: receivedAt.addingTimeInterval(3), id: "after-clear"
+            )
+            return await runtime.publication(for: .logs)
+        }
+        // This is all the button can observe before its asynchronous operation
+        // finishes: it must neither clear optimistically nor flush pending rows.
+        model.update(catalog: catalog, request: .init(scope: scope, revision: catalog.entriesRevision, query: "", language: .english))
+        #expect(model.rows.map(\.id) == ["before"])
+        let cleared = try #require(await clearing.value)
+        guard case .logs(let resetLogs) = cleared.payload else {
+            Issue.record("Expected runtime clear publication")
+            return
+        }
+        #expect(resetLogs.fullSnapshot?.map(\.id) == ["after-clear"])
+        catalog = catalog.applying(resetLogs)
+        model.update(catalog: catalog, request: .init(scope: scope, revision: catalog.entriesRevision, query: "", language: .english))
+        #expect(model.interaction.isUserScrolling)
+        #expect(model.rows.map(\.id) == ["after-clear"])
+        model.update(catalog: obsoleteCatalog, request: .init(scope: scope, revision: obsoleteCatalog.entriesRevision, query: "", language: .english))
+        #expect(model.rows.map(\.id) == ["after-clear"])
+
+        _ = await runtime.ingestLog(
+            .init(type: "info", payload: "later"), source: .mihomoWebSocket,
+            receivedAt: receivedAt.addingTimeInterval(4), id: "later"
+        )
+        let latest = try #require(await runtime.publication(for: .logs))
+        guard case .logs(let latestLogs) = latest.payload else {
+            Issue.record("Expected ordinary post-clear append")
+            return
+        }
+        #expect(latestLogs.fullSnapshot == nil)
+        catalog = catalog.applying(latestLogs)
+        model.update(catalog: catalog, request: .init(scope: scope, revision: catalog.entriesRevision, query: "", language: .english))
+        #expect(model.rows.map(\.id) == ["after-clear"])
+        model.interaction.apply(.ended)
+        model.finishDeferredPresentation(scope: scope)
+        #expect(model.rows.map(\.id) == ["after-clear", "later"])
+    }
+
+    @Test func pendingRowsAndOldScrollCallbackCannotCrossSessionOrDeactivation() {
+        let (model, scope) = makeModel()
+        publish([entry("old")], revision: 1, to: model, scope: scope)
+        model.interaction.apply(.began)
+        model.setFollowing(false)
+        publish([entry("old"), entry("old deferred")], revision: 2, to: model, scope: scope)
+
+        let next = WorkbenchSessionIdentity(controllerID: scope.controllerID, generation: UUID())
+        model.activate(scope: next, workspace: .init(), scrollAnchorID: nil, defaultLevel: .all, availableLevels: LogSessionLevel.allCases)
+        #expect(!model.interaction.isUserScrolling)
+        publish([entry("current")], revision: 1, to: model, scope: next)
+        model.interaction.apply(.began)
+        model.setFollowing(false)
+        publish([entry("current"), entry("new deferred")], revision: 2, to: model, scope: next)
+        model.interaction.apply(.ended)
+        model.finishDeferredPresentation(scope: scope)
+        #expect(model.rows.map(\.id) == ["current"])
+        model.finishDeferredPresentation(scope: next)
+        #expect(model.rows.map(\.id) == ["current", "new deferred"])
+
+        model.interaction.apply(.began)
+        publish([entry("current"), entry("new deferred"), entry("hidden")], revision: 3, to: model, scope: next)
+        model.deactivate()
+        model.finishDeferredPresentation(scope: next)
+        #expect(model.rows.map(\.id) == ["current", "new deferred"])
+    }
 }

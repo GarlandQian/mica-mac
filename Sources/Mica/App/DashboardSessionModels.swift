@@ -757,11 +757,22 @@ struct DashboardSnapshot: Equatable {
         existingUsageRanks: [String: [String: PolicyGroupUsageRank]] = [:],
         smartWeights: SmartWeightsResponse? = nil
     ) -> [ProxyGroupViewState] {
-        mihomoPolicyGroupsInConfigurationOrder(response.policyGroups).map { proxy in
+        // A node may appear in many groups. Its reported metadata and search
+        // text only need projecting once for this response. Keep the cache
+        // local so a later history/configuration update cannot retain old data.
+        var sharedOptionDetails: [String: ProxyNodeViewState] = [:]
+        return mihomoPolicyGroupsInConfigurationOrder(response.policyGroups).map { proxy in
             var optionDetails: [String: ProxyNodeViewState] = [:]
+            optionDetails.reserveCapacity(proxy.all.count)
             for option in proxy.all where optionDetails[option] == nil {
+                if let existing = sharedOptionDetails[option] {
+                    optionDetails[option] = existing
+                    continue
+                }
                 guard let snapshot = response.proxies[option] else { continue }
-                optionDetails[option] = ProxyNodeViewState(snapshot: snapshot)
+                let detail = ProxyNodeViewState(snapshot: snapshot)
+                sharedOptionDetails[option] = detail
+                optionDetails[option] = detail
             }
 
             let optionUsageRanks: [String: PolicyGroupUsageRank]

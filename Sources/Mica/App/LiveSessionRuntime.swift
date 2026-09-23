@@ -49,6 +49,9 @@ struct LiveSessionLogsPublication: Equatable, Sendable {
     let fullSnapshot: [ControllerLogEntry]?
     let droppedEntryIDs: [String]
     let appendedEntries: [ControllerLogEntry]
+    /// The actor sequence from which this delta was extracted. It cannot be
+    /// inferred from appendedEntries: retention may discard an oversized entry.
+    var previousSequence: UInt64 = 0
 }
 
 struct LiveSessionTrafficPublication: Equatable, Sendable {
@@ -109,6 +112,7 @@ actor LiveSessionRuntime {
 
     private var logBuffer = BoundedLogBuffer()
     private var logNeedsFullSnapshot = true
+    private var lastPublishedLogSequence: UInt64 = 0
     private var pendingLogDroppedEntryIDs: [String] = []
     private var pendingLogAppendedEntries: [ControllerLogEntry] = []
 
@@ -399,6 +403,39 @@ actor LiveSessionRuntime {
             return nil
         }
 
+        return takePublication(
+            for: domain,
+            revision: revision,
+            receivedAt: receivedAt,
+            payload: payload
+        )
+    }
+
+    /// Repairs a missed MainActor delivery, including while presentation is
+    /// hidden or paused. The receiver still owns the visibility decision.
+    func recoverLogsPublication() -> LiveSessionRuntimePublication? {
+        guard isActive,
+              let revision = rawRevisions[.logs],
+              let receivedAt = receivedAtByDomain[.logs] else {
+            return nil
+        }
+        logNeedsFullSnapshot = true
+        guard let payload = makePayload(for: .logs) else { return nil }
+        scheduledDomains.remove(.logs)
+        return takePublication(
+            for: .logs,
+            revision: revision,
+            receivedAt: receivedAt,
+            payload: payload
+        )
+    }
+
+    private func takePublication(
+        for domain: LiveSessionPublicationDomain,
+        revision: UInt64,
+        receivedAt: Date,
+        payload: LiveSessionRuntimePublicationPayload
+    ) -> LiveSessionRuntimePublication {
         publishedRevisions[domain] = revision
         let observation = observationsByDomain.removeValue(forKey: domain)
             ?? LiveSessionObservationDelta()
@@ -441,6 +478,7 @@ actor LiveSessionRuntime {
         receivedAtByDomain.removeAll()
         observationsByDomain.removeAll()
         _ = logBuffer.removeAll()
+        lastPublishedLogSequence = 0
         pendingLogDroppedEntryIDs.removeAll()
         pendingLogAppendedEntries.removeAll()
         trafficTimeline.reset()
@@ -519,16 +557,19 @@ actor LiveSessionRuntime {
                     sequence: logBuffer.rawRevision,
                     fullSnapshot: logBuffer.entries,
                     droppedEntryIDs: [],
-                    appendedEntries: []
+                    appendedEntries: [],
+                    previousSequence: lastPublishedLogSequence
                 )
             } else {
                 publication = LiveSessionLogsPublication(
                     sequence: logBuffer.rawRevision,
                     fullSnapshot: nil,
                     droppedEntryIDs: pendingLogDroppedEntryIDs,
-                    appendedEntries: pendingLogAppendedEntries
+                    appendedEntries: pendingLogAppendedEntries,
+                    previousSequence: lastPublishedLogSequence
                 )
             }
+            lastPublishedLogSequence = publication.sequence
             logNeedsFullSnapshot = false
             pendingLogDroppedEntryIDs.removeAll(keepingCapacity: true)
             pendingLogAppendedEntries.removeAll(keepingCapacity: true)
@@ -587,8 +628,12 @@ actor LiveSessionRuntime {
         guard !logNeedsFullSnapshot else { return }
         pendingLogDroppedEntryIDs.append(contentsOf: mutation.droppedEntryIDs)
         pendingLogAppendedEntries.append(contentsOf: mutation.appendedEntries)
-        if pendingLogDroppedEntryIDs.count + pendingLogAppendedEntries.count
-            > BoundedLogBuffer.maximumEntryCount * 2 {
+        // FIFO retention can evict entries appended earlier in this same
+        // publication. A drop-then-append delta would resurrect those entries.
+        if (!mutation.droppedEntryIDs.isEmpty && mutation.appendedEntries.isEmpty)
+            || pendingLogAppendedEntries.count > logBuffer.count
+            || pendingLogDroppedEntryIDs.count + pendingLogAppendedEntries.count
+                > BoundedLogBuffer.maximumEntryCount * 2 {
             logNeedsFullSnapshot = true
             pendingLogDroppedEntryIDs.removeAll(keepingCapacity: true)
             pendingLogAppendedEntries.removeAll(keepingCapacity: true)

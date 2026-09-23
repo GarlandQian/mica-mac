@@ -627,6 +627,9 @@ struct ProxyPolicyNodeTile: View {
                 onHoverChanged?(false)
             }
         }
+        .anchorPreference(key: ProxyNodePreviewAnchorKey.self, value: .bounds) {
+            isHovered ? [member.id: $0] : [:]
+        }
         .animation(
             reduceMotion || scrollInteractionTracker.isScrolling
                 ? nil

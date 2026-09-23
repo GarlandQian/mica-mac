@@ -29,6 +29,24 @@ final class OverviewTelemetryRuntime {
         isPaused.toggle()
     }
 
+    /// Check the frozen presentation before touching observable source arrays.
+    /// A new generation must resolve its own data even if this runtime is paused.
+    func resolveProjection(observing appModel: AppModel) -> OverviewTimelineProjectionSnapshot {
+        let generation = appModel.controllerSessionPresentation.generation
+        if isPaused,
+           let frozen = projectionCache.frozenSnapshot(generation: generation, window: timelineWindow) {
+            return frozen
+        }
+        return projectionCache.resolve(
+            generation: generation,
+            window: timelineWindow,
+            traffic: appModel.trafficTimeline.samples,
+            memory: appModel.memoryTimeline.samples,
+            connections: appModel.connectionCountTimeline.samples,
+            pinnedDate: interaction.pinnedDate
+        )
+    }
+
     func returnToLive() {
         isPaused = false
         interaction.reset()
@@ -49,6 +67,25 @@ final class OverviewTopologyRuntime {
     @ObservationIgnored let policyInspectionCache = OverviewPolicyInspectionCache()
     @ObservationIgnored private var nodeStatusCache:
         (policyRevision: UInt64, topologyRevision: UInt64, map: [String: MicaTheme.Status])?
+
+    func presentationState(
+        generation: UUID,
+        liveConnectionCount: Int,
+        liveRevision: UInt64
+    ) -> OverviewTopologyPresentationState {
+        let freezesPresentation = isPaused || interaction.snapshot.isHovering
+            || focusedPaths?.structure.generation == generation
+        let captured = freezesPresentation ? presentation.flatMap { presentation in
+            presentation.request.generation == generation
+                && presentation.topology.connectionCount > 0
+                ? presentation : nil
+        } : nil
+        return OverviewTopologyPresentationState(
+            showsEmptyState: liveConnectionCount == 0 && captured == nil,
+            showsControls: liveConnectionCount > 0 || captured != nil,
+            revision: captured?.request.revision ?? liveRevision
+        )
+    }
 
     func togglePause() {
         isPaused.toggle()
@@ -113,6 +150,12 @@ final class OverviewTopologyRuntime {
         nodeStatusCache = (policyRevision, topologyRevision, statuses)
         return statuses
     }
+}
+
+struct OverviewTopologyPresentationState: Equatable {
+    let showsEmptyState: Bool
+    let showsControls: Bool
+    let revision: UInt64
 }
 
 struct OverviewTopologyPathFocus {

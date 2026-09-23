@@ -37,13 +37,26 @@ struct OverviewTimelineProjectionSnapshot: Equatable {
     let memorySamples: [MemoryTimeline.Sample]
     let connectionSamples: [ConnectionCountTimeline.Sample]
     let dates: [Date]
+    let selectionWindow: OverviewTimelineSelectionWindow?
 
     static let empty = OverviewTimelineProjectionSnapshot(
         trafficSamples: [],
         memorySamples: [],
         connectionSamples: [],
-        dates: []
+        dates: [],
+        selectionWindow: nil
     )
+}
+
+/// Selection lifetime follows retained source time, independently of which
+/// samples happen to fit the plot's point budget on a particular update.
+struct OverviewTimelineSelectionWindow: Equatable {
+    let generation: UUID
+    let ranges: [ClosedRange<Date>]
+
+    func contains(_ date: Date) -> Bool {
+        ranges.contains { $0.contains(date) }
+    }
 }
 
 struct OverviewTimelineChartScale: Equatable, Sendable {
@@ -141,22 +154,21 @@ struct OverviewTimelineInteractionSnapshot: Equatable, Sendable {
 @MainActor
 @Observable
 final class OverviewTimelineInteractionState {
-    private(set) var snapshot = OverviewTimelineInteractionSnapshot.empty
+    private(set) var hoveredDate: Date?
+    private(set) var pinnedDate: Date?
+
+    var snapshot: OverviewTimelineInteractionSnapshot {
+        OverviewTimelineInteractionSnapshot(hoveredDate: hoveredDate, pinnedDate: pinnedDate)
+    }
 
     func setHoveredDate(_ date: Date?) {
-        guard snapshot.hoveredDate != date else { return }
-        snapshot = OverviewTimelineInteractionSnapshot(
-            hoveredDate: date,
-            pinnedDate: snapshot.pinnedDate
-        )
+        guard hoveredDate != date else { return }
+        hoveredDate = date
     }
 
     func setPinnedDate(_ date: Date?) {
-        guard snapshot.pinnedDate != date else { return }
-        snapshot = OverviewTimelineInteractionSnapshot(
-            hoveredDate: snapshot.hoveredDate,
-            pinnedDate: date
-        )
+        guard pinnedDate != date else { return }
+        pinnedDate = date
     }
 
     func togglePinnedDate(_ date: Date) {
@@ -169,12 +181,19 @@ final class OverviewTimelineInteractionState {
 
     func reset() {
         guard snapshot != .empty else { return }
-        snapshot = .empty
+        hoveredDate = nil
+        pinnedDate = nil
     }
 
-    func retainPinnedDate(in dates: [Date]) {
+    @ObservationIgnored private var selectionGeneration: UUID?
+
+    func retainPinnedDate(in window: OverviewTimelineSelectionWindow?) {
+        if let selectionGeneration, selectionGeneration != window?.generation {
+            reset()
+        }
+        selectionGeneration = window?.generation
         guard let pinnedDate = snapshot.pinnedDate,
-              !dates.contains(pinnedDate) else {
+              window?.contains(pinnedDate) != true else {
             return
         }
         clearPinnedDate()
@@ -191,10 +210,8 @@ final class OverviewTimelineInteractionState {
             max(index + offset, dates.startIndex),
             dates.index(before: dates.endIndex)
         )
-        snapshot = OverviewTimelineInteractionSnapshot(
-            hoveredDate: nil,
-            pinnedDate: dates[nextIndex]
-        )
+        hoveredDate = nil
+        pinnedDate = dates[nextIndex]
     }
 
     private func selectionIndex(in dates: [Date]) -> Int? {
@@ -226,18 +243,21 @@ final class OverviewTimelineProjectionCache {
         let generation: UUID
         let window: OverviewTimelineWindow
         let signature: SourceSignature
+        let pinnedDate: Date?
     }
 
     private struct MemoryKey: Equatable {
         let generation: UUID
         let window: OverviewTimelineWindow
         let signature: SourceSignature
+        let pinnedDate: Date?
     }
 
     private struct ConnectionKey: Equatable {
         let generation: UUID
         let window: OverviewTimelineWindow
         let signature: SourceSignature
+        let pinnedDate: Date?
     }
 
     private var trafficKey: TrafficKey?
@@ -254,16 +274,34 @@ final class OverviewTimelineProjectionCache {
 
     private(set) var statistics = OverviewTimelineProjectionStatistics()
 
+    func frozenSnapshot(generation: UUID, window: OverviewTimelineWindow) -> OverviewTimelineProjectionSnapshot? {
+        guard trafficKey?.generation == generation, trafficKey?.window == window else { return nil }
+        return latestSnapshot
+    }
+
     func resolve(
         generation: UUID,
         window: OverviewTimelineWindow,
         traffic sourceTraffic: [TrafficTimeline.Sample],
         memory sourceMemory: [MemoryTimeline.Sample],
         connections sourceConnections: [ConnectionCountTimeline.Sample],
-        isPaused: Bool = false
+        isPaused: Bool = false,
+        pinnedDate: Date? = nil
     ) -> OverviewTimelineProjectionSnapshot {
-        if isPaused, trafficKey?.generation == generation, latestSnapshot != .empty {
-            return latestSnapshot
+        if isPaused, let frozen = frozenSnapshot(generation: generation, window: window) {
+            return frozen
+        }
+
+        let selectionWindow = OverviewTimelineSelectionWindow(
+            generation: generation,
+            ranges: [
+                OverviewTimelineProjection.retainedRange(sourceTraffic, window: window, date: \.receivedAt),
+                OverviewTimelineProjection.retainedRange(sourceMemory, window: window, date: \.receivedAt),
+                OverviewTimelineProjection.retainedRange(sourceConnections, window: window, date: \.receivedAt),
+            ].compactMap { $0 }
+        )
+        let retainedPin = pinnedDate.flatMap { date in
+            trafficKey?.generation == generation && selectionWindow.contains(date) ? date : nil
         }
 
         let nextTrafficKey = TrafficKey(
@@ -275,7 +313,8 @@ final class OverviewTimelineProjectionCache {
                 lastID: sourceTraffic.last?.id,
                 firstReceivedAt: sourceTraffic.first?.receivedAt,
                 lastReceivedAt: sourceTraffic.last?.receivedAt
-            )
+            ),
+            pinnedDate: retainedPin
         )
         let nextMemoryKey = MemoryKey(
             generation: generation,
@@ -286,7 +325,8 @@ final class OverviewTimelineProjectionCache {
                 lastID: sourceMemory.last?.id,
                 firstReceivedAt: sourceMemory.first?.receivedAt,
                 lastReceivedAt: sourceMemory.last?.receivedAt
-            )
+            ),
+            pinnedDate: retainedPin
         )
         let nextConnectionKey = ConnectionKey(
             generation: generation,
@@ -297,13 +337,16 @@ final class OverviewTimelineProjectionCache {
                 lastID: sourceConnections.last?.id,
                 firstReceivedAt: sourceConnections.first?.receivedAt,
                 lastReceivedAt: sourceConnections.last?.receivedAt
-            )
+            ),
+            pinnedDate: retainedPin
         )
 
         if trafficKey != nextTrafficKey {
             trafficSamples = OverviewTimelineProjection.downsample(
                 OverviewTimelineProjection.trafficSamples(sourceTraffic, window: window),
-                maximumCount: 120
+                maximumCount: 120,
+                retaining: retainedPin,
+                date: \.receivedAt
             )
             trafficKey = nextTrafficKey
             statistics.trafficProjectionCount += 1
@@ -312,7 +355,9 @@ final class OverviewTimelineProjectionCache {
         if memoryKey != nextMemoryKey {
             memorySamples = OverviewTimelineProjection.downsample(
                 OverviewTimelineProjection.memorySamples(sourceMemory, window: window),
-                maximumCount: 120
+                maximumCount: 120,
+                retaining: retainedPin,
+                date: \.receivedAt
             )
             memoryKey = nextMemoryKey
             statistics.memoryProjectionCount += 1
@@ -324,7 +369,9 @@ final class OverviewTimelineProjectionCache {
                     sourceConnections,
                     window: window
                 ),
-                maximumCount: 120
+                maximumCount: 120,
+                retaining: retainedPin,
+                date: \.receivedAt
             )
             connectionKey = nextConnectionKey
             statistics.connectionProjectionCount += 1
@@ -348,7 +395,8 @@ final class OverviewTimelineProjectionCache {
             trafficSamples: trafficSamples,
             memorySamples: memorySamples,
             connectionSamples: connectionSamples,
-            dates: dates
+            dates: dates,
+            selectionWindow: selectionWindow
         )
         latestSnapshot = snapshot
         return snapshot
@@ -356,6 +404,16 @@ final class OverviewTimelineProjectionCache {
 }
 
 enum OverviewTimelineProjection {
+    static func retainedRange<Sample>(
+        _ samples: [Sample],
+        window: OverviewTimelineWindow,
+        date: KeyPath<Sample, Date>
+    ) -> ClosedRange<Date>? {
+        guard let first = samples.first?[keyPath: date],
+              let last = samples.last?[keyPath: date] else { return nil }
+        return max(first, last.addingTimeInterval(-window.duration))...last
+    }
+
     static func dateDomain(
         endingAt latestDate: Date,
         window: OverviewTimelineWindow
@@ -467,6 +525,32 @@ enum OverviewTimelineProjection {
         return (0..<limit).map { offset in
             samples[min(Int((Double(offset) * step).rounded()), samples.count - 1)]
         }
+    }
+
+    static func downsample<Sample>(
+        _ samples: [Sample],
+        maximumCount: Int,
+        retaining pinnedDate: Date?,
+        date: KeyPath<Sample, Date>
+    ) -> [Sample] {
+        var projected = downsample(samples, maximumCount: maximumCount)
+        guard projected.count > 2,
+              let pinnedDate,
+              let retained = nearest(to: pinnedDate, in: samples, date: date),
+              !projected.contains(where: { $0[keyPath: date] == retained[keyPath: date] }) else {
+            return projected
+        }
+        // Replace the closest interior point: retain the exact selected sample,
+        // both endpoints and the existing fixed point budget.
+        let replacement = (1..<(projected.count - 1)).min {
+            abs(projected[$0][keyPath: date].timeIntervalSince(retained[keyPath: date]))
+                < abs(projected[$1][keyPath: date].timeIntervalSince(retained[keyPath: date]))
+        }!
+        projected.remove(at: replacement)
+        let insertion = projected.firstIndex { $0[keyPath: date] > retained[keyPath: date] }
+            ?? projected.endIndex
+        projected.insert(retained, at: insertion)
+        return projected
     }
 
     private static func bounded<Sample>(

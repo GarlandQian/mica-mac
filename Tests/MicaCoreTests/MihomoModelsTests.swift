@@ -119,7 +119,7 @@ final class MihomoModelsTests: XCTestCase {
         XCTAssertEqual(endpoint.pathDescription, "/proxies/Auto / Fallback")
         XCTAssertEqual(
             try endpoint.url(relativeTo: baseURL).absoluteString,
-            "http://controller.example:9090/proxies/Auto%20/%20Fallback"
+            "http://controller.example:9090/proxies/Auto%20%2F%20Fallback"
         )
     }
 
@@ -137,7 +137,7 @@ final class MihomoModelsTests: XCTestCase {
         XCTAssertEqual(legacy.pathDescription, "/group/Smart / Select/weights")
         XCTAssertEqual(
             try legacy.url(relativeTo: baseURL).absoluteString,
-            "http://controller.example:9090/group/Smart%20/%20Select/weights"
+            "http://controller.example:9090/group/Smart%20%2F%20Select/weights"
         )
     }
 

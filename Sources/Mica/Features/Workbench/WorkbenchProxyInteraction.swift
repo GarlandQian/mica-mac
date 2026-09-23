@@ -262,6 +262,7 @@ final class ProxyCatalogPresentationCoordinator {
 @Observable
 final class ProxyScrollInteractionTracker {
     private(set) var isScrolling = false
+    @ObservationIgnored private var scrollingRegions: Set<ProxyInteractionRegion> = []
 
     func update(
         _ phase: ScrollPhase,
@@ -277,8 +278,28 @@ final class ProxyScrollInteractionTracker {
             nextIsScrolling = false
         }
 
-        guard nextIsScrolling != isScrolling else { return }
-        isScrolling = nextIsScrolling
+        setScrolling(nextIsScrolling, in: region, coordinator: coordinator, at: now)
+    }
+
+    private func setScrolling(
+        _ nextIsScrolling: Bool,
+        in region: ProxyInteractionRegion,
+        coordinator: ProxyCatalogPresentationCoordinator,
+        at now: Date
+    ) {
+        // The directory and member list own independent scroll sessions.
+        // Ending one must not flush a catalog while the other is still moving.
+        let changed: Bool
+        if nextIsScrolling {
+            changed = scrollingRegions.insert(region).inserted
+        } else {
+            changed = scrollingRegions.remove(region) != nil
+        }
+        guard changed else { return }
+        let anyRegionIsScrolling = !scrollingRegions.isEmpty
+        if isScrolling != anyRegionIsScrolling {
+            isScrolling = anyRegionIsScrolling
+        }
         MicaPerformanceObservation.recordDebug(
             .scrollPhase,
             metadata: MicaPerformanceMetadata(
@@ -298,13 +319,16 @@ final class ProxyScrollInteractionTracker {
         coordinator: ProxyCatalogPresentationCoordinator,
         at now: Date = Date()
     ) {
-        guard isScrolling else { return }
-        isScrolling = false
-        MicaPerformanceObservation.recordDebug(
-            .scrollPhase,
-            metadata: MicaPerformanceMetadata(count: 1, revision: 2)
-        )
-        coordinator.updateScrolling(false, in: region, at: now)
+        setScrolling(false, in: region, coordinator: coordinator, at: now)
+    }
+
+    func reset(coordinator: ProxyCatalogPresentationCoordinator) {
+        // Session/page teardown discards pending data; ending each region would
+        // instead publish the old session's final update. Reset both owners so
+        // the same region can begin again without being treated as a duplicate.
+        coordinator.reset()
+        scrollingRegions.removeAll(keepingCapacity: true)
+        if isScrolling { isScrolling = false }
     }
 }
 

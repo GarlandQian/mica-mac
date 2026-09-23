@@ -73,6 +73,28 @@ struct WorkbenchConnectionsView: View {
         ) {
             pageContent
         }
+        .background {
+            WorkbenchConnectionsCatalogObserver(
+                scope: model.scope,
+                onActiveConnections: {
+                    model.update(presentationInput)
+                    consumeConnectionNavigation()
+                },
+                onClosedConnections: {
+                    model.update(presentationInput)
+                }
+            )
+            WorkbenchConnectionRuleCatalogObserver { rules in
+                model.updateRuleNavigation(rules: rules, identity: sessionIdentity)
+            }
+            WorkbenchConnectionPolicyCatalogObserver { catalog, visibility in
+                model.updatePolicyNavigation(
+                    catalog: catalog,
+                    visibility: visibility,
+                    identity: sessionIdentity
+                )
+            }
+        }
         .onAppear {
             let pageModel = model
             workspaceStore.connectionRowResolver = { pageModel.row(id: $0) }
@@ -90,24 +112,6 @@ struct WorkbenchConnectionsView: View {
             model.update(presentationInput)
             updateNavigationDirectory()
             consumeConnectionNavigation()
-        }
-        .onChange(of: appModel.connectionsMetricsRevision) {
-            guard model.scope == .active else { return }
-            model.update(presentationInput)
-            consumeConnectionNavigation()
-        }
-        .onChange(of: appModel.rulesCatalog.rules) {
-            updateNavigationDirectory()
-        }
-        .onChange(of: appModel.policyGroupCatalogRevision) {
-            updateNavigationDirectory()
-        }
-        .onChange(of: preferences.globalGroupVisibility) {
-            updateNavigationDirectory()
-        }
-        .onChange(of: appModel.dashboardSessionControls.closedConnectionsRevision) {
-            guard model.scope == .closed else { return }
-            model.update(presentationInput)
         }
         .onChange(of: model.scope) {
             persistScope()
@@ -190,6 +194,7 @@ struct WorkbenchConnectionsView: View {
                 ) {
                     appModel.clearClosedConnections()
                     model.selectedRowID = nil
+                    model.update(presentationInput, forcePresentation: true)
                 }
             }
         }
@@ -273,7 +278,7 @@ struct WorkbenchConnectionsView: View {
             rowIndex: model.visibleIndex(id:),
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onInteractionEnded: {
-                model.finishDeferredMetricSort(
+                model.finishDeferredPresentation(
                     identity: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation)
                 )
             },
@@ -465,18 +470,6 @@ struct WorkbenchConnectionsView: View {
                     .equatable()
                 }
             }
-        }
-        .task(id: model.metricSortDeadline) {
-            let identity = sessionIdentity
-            guard let deadline = model.metricSortDeadline else { return }
-            let remainingMilliseconds = Int64(
-                ceil(max(0, deadline.timeIntervalSinceNow * 1_000))
-            )
-            if remainingMilliseconds > 0 {
-                try? await Task.sleep(for: .milliseconds(remainingMilliseconds))
-            }
-            guard !Task.isCancelled else { return }
-            model.commitScheduledMetricSort(identity: identity, deadline: deadline)
         }
     }
 
@@ -694,7 +687,12 @@ struct WorkbenchConnectionsView: View {
     }
 
     private var canConfirmClose: Bool {
-        guard let intent = currentCloseIntent else { return false }
+        guard let intent = currentCloseIntent,
+              let targets = model.closeTargets(
+                for: intent.target,
+                currentConnections: appModel.connectionsCatalog.connections,
+                identity: sessionIdentity
+              ), !targets.isEmpty else { return false }
         switch intent.target {
         case .connection(let id):
             return canCloseOne && model.allRows.contains {
@@ -713,20 +711,24 @@ struct WorkbenchConnectionsView: View {
         guard intent.isCurrent(
             routerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
+        ), let targets = model.closeTargets(
+            for: intent.target,
+            currentConnections: appModel.connectionsCatalog.connections,
+            identity: sessionIdentity
         ) else {
             return
         }
 
         switch intent.target {
-        case .connection(let id):
-            guard let row = model.row(id: id) else { return }
-            appModel.closeConnection(row.connection)
+        case .connection:
+            guard let connection = targets.first else { return }
+            appModel.closeConnection(connection)
         case .group(let id):
             guard let pendingCloseGroup = model.closeGroups.first(where: { $0.id == id }) else {
                 return
             }
             appModel.closeConnectionGroup(
-                pendingCloseGroup.connections,
+                targets,
                 groupID: pendingCloseGroup.id,
                 groupLabel: closeGroupLabel(pendingCloseGroup)
             )
@@ -900,4 +902,72 @@ struct WorkbenchConnectionsView: View {
     }
 
 
+}
+
+/// Catalog intake must remain outside the Table's observation scope: while
+/// scrolling the model accepts snapshots without publishing visible rows.
+private struct WorkbenchConnectionsCatalogObserver: View {
+    @Environment(AppModel.self) private var appModel
+
+    let scope: ConnectionSessionTab
+    let onActiveConnections: () -> Void
+    let onClosedConnections: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: revision) {
+                if scope == .active {
+                    onActiveConnections()
+                } else {
+                    onClosedConnections()
+                }
+            }
+    }
+
+    private var revision: UInt64 {
+        if scope == .active {
+            appModel.connectionsMetricsRevision
+        } else {
+            appModel.dashboardSessionControls.closedConnectionsRevision
+        }
+    }
+}
+
+private struct WorkbenchConnectionRuleCatalogObserver: View {
+    @Environment(AppModel.self) private var appModel
+
+    let onRules: ([RuleViewState]) -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: appModel.rulesCatalog.rules) { _, rules in
+                onRules(rules)
+            }
+    }
+}
+
+private struct WorkbenchConnectionPolicyCatalogObserver: View {
+    @Environment(AppModel.self) private var appModel
+    @EnvironmentObject private var preferences: AppPreferencesStore
+
+    let onPolicyGroups: (PolicyGroupCatalogSnapshot, GlobalGroupVisibility) -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: appModel.policyGroupCatalogRevision) {
+                onPolicyGroups(appModel.policyGroupCatalog, preferences.globalGroupVisibility)
+            }
+            .onChange(of: preferences.globalGroupVisibility) {
+                onPolicyGroups(appModel.policyGroupCatalog, preferences.globalGroupVisibility)
+            }
+    }
 }

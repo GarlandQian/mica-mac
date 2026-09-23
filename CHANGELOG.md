@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.32.0 - 2026-09-23
+
+### Reliability and controller data
+
+- Improved persisted profile and credential recovery, live-session task ownership, and runtime log publication.
+- Added bounded backpressure for sing-box event streams and more reliable Mihomo endpoint encoding and policy projections.
+- Reduced redundant Surge and Mihomo projection work while preserving controller order and reported values.
+
+### Workbench
+
+- Improved live catalog observation, table scroll continuity, connection navigation, and timeline selection behavior.
+- Refined source timestamp handling and deferred presentation updates while users interact with tables.
+
+### Verification
+
+- Added regression and performance coverage for credential storage, controller streaming, profile lifecycle, scrolling, navigation, and projection behavior.
+- GitHub Actions validates the macOS 27 toolchain, source contracts, tests, and release build.
+
 ## 0.31.0 - 2026-09-23
 
 ### Workbench
