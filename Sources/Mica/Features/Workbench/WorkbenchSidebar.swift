@@ -11,54 +11,54 @@ struct WorkbenchSidebarView: View {
     let onAddController: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        List(selection: selection) {
+            ForEach(WorkbenchDestination.Group.allCases) { group in
+                Section {
+                    ForEach(group.destinations) { item in
+                        Label {
+                            Text(
+                                MicaStrings.localizedKey(
+                                    item.titleKey,
+                                    language: language
+                                )
+                            )
+                            .micaThemeFont(.body)
+                            .lineLimit(1)
+                        } icon: {
+                            Image(systemName: item.symbolName)
+                                .symbolRenderingMode(.monochrome)
+                        }
+                        .padding(.vertical, 2)
+                        .tag(item)
+                        .help(
+                            MicaStrings.localizedKey(
+                                item.titleKey,
+                                language: language
+                            )
+                        )
+                    }
+                } header: {
+                    Text(
+                        MicaStrings.localizedKey(
+                            group.titleKey,
+                            language: language
+                        )
+                    )
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        // The controller switcher stays pinned while navigation scrolls
+        // beneath it with the native Liquid Glass scroll-edge effect.
+        .safeAreaBar(edge: .top, spacing: 0) {
             WorkbenchSidebarControllerSwitcher(
                 isEnabled: isControllerSwitchingEnabled,
                 onSelectController: onSelectController,
                 onAddController: onAddController,
                 onManageControllers: { destination = .controllers }
             )
-            .padding(.horizontal, MicaTheme.Spacing.space3)
-            .padding(.vertical, MicaTheme.Spacing.space2)
-
-            List(selection: selection) {
-                ForEach(WorkbenchDestination.Group.allCases) { group in
-                    Section {
-                        ForEach(group.destinations) { item in
-                            Label {
-                                Text(
-                                    MicaStrings.localizedKey(
-                                        item.titleKey,
-                                        language: language
-                                    )
-                                )
-                                .micaThemeFont(.body)
-                                .lineLimit(1)
-                            } icon: {
-                                Image(systemName: item.symbolName)
-                                    .symbolRenderingMode(.monochrome)
-                            }
-                            .padding(.vertical, 2)
-                            .tag(item)
-                            .help(
-                                MicaStrings.localizedKey(
-                                    item.titleKey,
-                                    language: language
-                                )
-                            )
-                        }
-                    } header: {
-                        Text(
-                            MicaStrings.localizedKey(
-                                group.titleKey,
-                                language: language
-                            )
-                        )
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
+            .padding(.horizontal, MicaTheme.Spacing.space2)
+            .padding(.bottom, MicaTheme.Spacing.space1)
         }
         .tint(MicaTheme.accent)
         .navigationTitle("Mica")

@@ -114,10 +114,13 @@ struct RouterEditorView: View {
 
     private var editorCommandBar: some View {
         WorkbenchCommandBar {
-            WorkbenchManagementHeader(
-                systemImage: draft.controllerKind.editorSymbol,
-                titleKey: title,
-                detail: editorHeaderDetail
+            // The window already says Add/Edit; the bar names the controller
+            // being edited and follows the name field as it changes.
+            WorkbenchControllerContextHeader(
+                symbolName: draft.controllerKind.editorSymbol,
+                name: draft.displayName,
+                detail: editorHeaderDetail,
+                fallbackKey: title
             )
         } commands: {
             HStack(spacing: MicaTheme.Spacing.space1) {

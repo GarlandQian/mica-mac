@@ -25,20 +25,47 @@ extension AppModel {
         hasSelectedLiveSession
     }
 
+    /// Windows and the menu bar item each hold the live session; it runs
+    /// while any holder exists and ends with the last one.
+    var hasLiveSessionHolder: Bool {
+        mainWindowCount > 0 || menuBarHoldsLiveSession
+    }
+
     func mainWindowDidAppear() {
+        let hadHolder = hasLiveSessionHolder
         mainWindowCount += 1
-        guard mainWindowCount == 1,
-              didLoadPersistedState,
-              !sessionSuspendedForSleep,
-              controllerSession.controllerID == nil,
-              let router = selectedRouter else { return }
-        enterLiveSession(for: router)
+        guard !hadHolder else { return }
+        enterLiveSessionForNewHolder()
     }
 
     func mainWindowDidDisappear() {
         mainWindowCount = max(mainWindowCount - 1, 0)
-        guard mainWindowCount == 0 else { return }
+        guard !hasLiveSessionHolder else { return }
         leaveLiveSession(reason: .sessionEnd)
+    }
+
+    func menuBarExtraDidAppear() {
+        guard !menuBarHoldsLiveSession else { return }
+        let hadHolder = hasLiveSessionHolder
+        menuBarHoldsLiveSession = true
+        loadPersistedState()
+        guard !hadHolder else { return }
+        enterLiveSessionForNewHolder()
+    }
+
+    func menuBarExtraDidDisappear() {
+        guard menuBarHoldsLiveSession else { return }
+        menuBarHoldsLiveSession = false
+        guard !hasLiveSessionHolder else { return }
+        leaveLiveSession(reason: .sessionEnd)
+    }
+
+    private func enterLiveSessionForNewHolder() {
+        guard didLoadPersistedState,
+              !sessionSuspendedForSleep,
+              controllerSession.controllerID == nil,
+              let router = selectedRouter else { return }
+        enterLiveSession(for: router)
     }
 
     func systemWillSleep() {
@@ -50,7 +77,7 @@ extension AppModel {
     func systemDidWake() {
         guard sessionSuspendedForSleep else { return }
         sessionSuspendedForSleep = false
-        guard mainWindowCount > 0, let router = selectedRouter else { return }
+        guard hasLiveSessionHolder, let router = selectedRouter else { return }
         enterLiveSession(for: router)
     }
 

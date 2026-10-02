@@ -1220,7 +1220,8 @@ enum OverviewTopologyLayoutBuilder {
                         hitRect: hitRect,
                         drawingPath: Path(
                             roundedRect: rect,
-                            cornerRadius: 8
+                            cornerRadius: MicaTheme.Shape.rowRadius,
+                            style: .continuous
                         )
                     )
                 )

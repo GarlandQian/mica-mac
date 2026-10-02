@@ -35,7 +35,7 @@ struct XCStringsResolverTests {
             )
         }
 
-        #expect(english.localizedKey("dashboard.col_status") == "STATUS")
+        #expect(english.localizedKey("dashboard.col_status") == "Status")
         #expect(simplifiedChinese.localizedKey("dashboard.col_status") == "状态")
         #expect(
             english.localized(

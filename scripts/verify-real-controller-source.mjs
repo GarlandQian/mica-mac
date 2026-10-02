@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { normalizedCatalogText } from "./normalize-localizations.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -484,6 +485,11 @@ const executableSource = listFiles("Sources/Mica")
   .map(read)
   .join("\n");
 const stringCatalog = JSON.parse(read("Sources/Mica/Resources/Localizable.xcstrings"));
+assert(
+  read("Sources/Mica/Resources/Localizable.xcstrings")
+    === normalizedCatalogText(read("Sources/Mica/Resources/Localizable.xcstrings")),
+  "Localizable.xcstrings must stay canonical; run node scripts/normalize-localizations.mjs",
+);
 const strings = stringCatalog.strings ?? {};
 
 assertLocalizationFormatSignatures(strings);
@@ -837,7 +843,7 @@ for (const privacyEraCopy of ["redacted", "masked", "safe summary", "privacy bou
 for (const token of [
   "static let canvas",
   "static let surface",
-  "static let surfaceRaised",
+  "static let surfaceHover",
   "static let separator",
   "static let accent",
   "static let statusOK",
@@ -846,6 +852,14 @@ for (const token of [
 ]) {
   assertIncludes(designSystem, token, `The shared theme must define semantic token ${token}`);
 }
+assertIncludes(designSystem, "static let canvas = Color(nsColor: .windowBackgroundColor)", "The page fill must be the macOS 27 system window background");
+assertIncludes(designSystem, "static let separator = Color(nsColor: .separatorColor)", "Hairlines must follow the system separator and Increase Contrast");
+assertIncludes(designSystem, "func micaCard(", "Grouped content must share one borderless concentric card treatment");
+assertIncludes(designSystem, ".containerShape(shape)", "Cards must expose their shape for nested concentric corners");
+assertIncludes(designSystem, "func micaFloatingGlass(", "Mica's floating control layer must share one Liquid Glass wrapper");
+assert(count(designSystem, "glassEffect(") === 1, "Liquid Glass is applied only inside the shared floating-glass wrapper");
+assert(count(workbenchCode, ".micaFloatingGlass(") === 1, "Liquid Glass content is limited to the transient proxy node preview");
+assertExcludes(overviewSource, ".micaFloatingGlass(", "Overview business surfaces must not use Liquid Glass");
 assertIncludes(designSystem, "enum TextRole", "Mica Ops typography must expose semantic text roles");
 assertIncludes(designSystem, "struct MicaThemeFontModifier", "Mica Ops typography must visibly apply the selected font scale");
 assertIncludes(designSystem, "scale.pointSize(for: role.basePointSize)", "Mica Ops typography must calculate an explicit macOS point size");
@@ -1096,11 +1110,11 @@ assertExcludes(overviewRoot, "WorkbenchCommandBar", "Overview must not repeat co
 assertIncludes(dashboard, 'guard value > 0 else { return "0 B" }', "Overview zero-byte formatting must be locale independent");
 assertIncludes(dashboard, "struct OverviewNetworkFactsSection", "Overview must keep complete network information");
 assertIncludes(dashboard, "OverviewProjection.networkFactGroups(", "Network information must use grouped definition lists");
-assertIncludes(dashboard, "GridItem(.adaptive(minimum: 320)", "Network groups must adapt without becoming a full-width field wall");
+assertIncludes(dashboard, ".adaptive(minimum: 320)", "Network groups must adapt without becoming a full-width field wall");
+assertIncludes(dashboard, "alignment: .topLeading\n                        ),", "Network groups must align to the top so their rows line up across columns");
 assertIncludes(dashboard, "OverviewOptionalModuleID.allCases.filter(", "Optional modules must stay in one fixed declaration order");
 assertIncludes(overviewPreferences, "struct OverviewPreferences", "Overview must expose one compact global preference value");
 assertIncludes(overviewPreferences, "final class OverviewPreferencesStore", "Overview must expose one app-owned preference authority");
-assertIncludes(overviewPreferences, 'static let schema = "mica.overview.fixed-core.v1"', "Overview persistence must reject superseded layout payloads by schema");
 assertIncludes(overviewPreferences, 'static let defaultPersistenceKey = "overview.dashboard.layout.v1"', "Overview must reset the old v1 payload in place");
 assertIncludes(overviewPreferences, "guard normalized != preferences else { return }", "Overview preference writes must be deduplicated");
 assertExcludes(overviewPreferences, "controllerID", "Overview preferences must be global rather than controller-specific");
@@ -1136,7 +1150,9 @@ assertIncludes(overviewTelemetry, "state.label(language: language)", "Telemetry 
 for (const preferenceRegression of [
   "fixedPreferencesDefaultAndNormalizationAreMinimal",
   "globalPreferencesRoundTripResetAndDeduplicateWrites",
-  "supersededLayoutAndWrongSchemaResetWithoutMigration",
+  "supersededLayoutAndUnknownSchemaResetToDefault",
+  "v1PreferencesKeepSavedChoicesAndGainV2DefaultModulesOnce",
+  "currentSchemaRestoresWithoutRewriting",
   "oneStoreIsSharedWhileEachWindowKeepsStableRuntimeIdentity",
   "policyInspectionResolvesOnlyUniqueExactNames",
   "policyInspectionCacheAndInspectionProjectionExposesCompleteFields",
@@ -1280,7 +1296,8 @@ assertIncludes(overviewTopologyViewport, "withAnimation(MicaTheme.Motion.reveal)
 assertIncludes(overviewTopologyViewport, ".frame(maxWidth: .infinity, alignment: .center)", "Complete topology must center its width-fitted canvas");
 assertIncludes(overviewTopologyViewport, ".help(hoverTooltip", "Topology hover must revert to a standard tooltip carrying the truthful route label");
 assertExcludes(overviewTopologyViewport, "OverviewTopologyHUDOverlay(", "The node-anchored floating HUD overlay must stay deleted");
-assertIncludes(overviewTopologyViewport, "MicaTheme.surface", "Topology must use the flat Mica Ops panel surface");
+assertIncludes(overviewTopologyViewport, ".micaCard(MicaTheme.Topology.panelSurface)", "Topology must sit in a borderless grouped card whose opaque fill matches its Canvas");
+assertExcludes(overviewTopologyViewport, ".strokeBorder(", "The topology card must not restore a hairline border");
 assertIncludes(overviewTopologyViewport, ".focusable()", "Topology must expose one native keyboard focus surface");
 assertIncludes(overviewTopologyViewport, ".onMoveCommand(perform: movePathSelection)", "Topology must support keyboard path stepping");
 assertIncludes(overviewTopologyViewport, ".onExitCommand", "Topology must clear local selection with the native exit command");
@@ -1756,13 +1773,10 @@ for (const cadence of [
 ]) {
   assertIncludes(liveSessionRefreshModels, cadence, `Live publication must retain cadence ${cadence}`);
 }
-for (const visibility of [
-  "case (.overview, .traffic), (.overview, .connections), (.overview, .memory):",
-  "case (.connections, .connections), (.logs, .logs):",
-  "scheduledTokens[domain] == nil",
-]) {
-  assertIncludes(liveSessionRefreshModels, visibility, `Live publication must retain visibility contract ${visibility}`);
-}
+// The destination-to-domain visibility table is covered behaviorally by
+// LiveSessionRuntimeTests.visibleDestinationsObserveOnlyTheDomainsTheyDraw.
+assertIncludes(liveSessionRuntimeTests, "visibleDestinationsObserveOnlyTheDomainsTheyDraw", "Live publication visibility needs behavioral coverage");
+assertIncludes(liveSessionRefreshModels, "scheduledTokens[domain] == nil", "Live publication must coalesce scheduled domain flushes");
 assertIncludes(liveSession, "func leaveLiveSession(reason: LiveSessionEndReason = .sessionEnd)", "Session ending must record an explicit reason");
 assertIncludes(liveSession, "clearOperationalSessionPresentation(endedControllerID:", "Explicit session end must clear all operational presentation");
 assertIncludes(operationSessionModels, "state = .staleReconnecting(message)", "Reconnect must retain the committed snapshot as read-only stale data");
@@ -1893,6 +1907,23 @@ assertIncludes(proxyDirectory, "ForEach(model.groupProjection.visibleDirectoryIt
 assertIncludes(proxyRootContent, "ProxyPolicyActiveGroupHeader(", "The active group must retain identity and capability-gated commands");
 assert(count(proxyNodeList, "LazyVStack(") === 1, "Active members must share one virtualized list");
 assertIncludes(proxyNodeList, "ForEach(presentation.members)", "Active members must retain their filtered controller order");
+// Behavior-first contracts: these rules are verified by the named tests
+// rather than by matching implementation text.
+for (const [testFile, testName] of [
+  ["Tests/MicaTests/WorkbenchTimelineAndProxyTests.swift", "overviewNetworkFactsKeepCompleteReportedValuesAndOmitMissingFields"],
+  ["Tests/MicaTests/WorkbenchPageModelsTests.swift", "ruleFacetsNarrowControllerOrderAndRevealLiftsThem"],
+  ["Tests/MicaTests/WorkbenchLogsModelTests.swift", "severityCountsCoverEveryReceivedEntryAndRevealTheNewestVisibleMatch"],
+  ["Tests/MicaTests/WorkbenchProxyWorkspaceTests.swift", "latencyOrderSortsOnlyTheDisplayedCopy"],
+  ["Tests/MicaTests/WorkbenchProxyWorkspaceTests.swift", "changingMemberOrderRebuildsMembersWithoutTouchingTheCatalog"],
+  ["Tests/MicaTests/WorkbenchScrollInteractionStateTests.swift", "explicitGestureIgnoresWheelIdleAndEndsOnlyWithItsEnd"],
+  ["Tests/MicaTests/WorkbenchScrollInteractionStateTests.swift", "wheelBurstEndsOnlyAfterItsLatestTickIsIdle"],
+  ["Tests/MicaTests/AppModelProfileLifecycleTests.swift", "menuBarHoldsTheLiveSessionAfterTheLastWindowCloses"],
+  ["Tests/MicaTests/MicaMenuBarTests.swift", "policyMenuListsOnlySwitchableGroupsInWorkbenchOrder"],
+]) {
+  assertIncludes(read(testFile), `func ${testName}(`, `Behavior coverage is required: ${testName}`);
+}
+assertIncludes(proxyPresentation, "enum ProxyMemberOrder", "User-initiated node sorting must be an explicit display order");
+assertIncludes(proxyRoot, "@State private var memberOrder: ProxyMemberOrder = .controller", "Node lists must default to controller-reported order");
 assertIncludes(proxyRootContent, "ProxyPolicyNodeTile(", "Each active member must retain its independent inspection and mutation controls");
 assertExcludes(proxyRootContent, "LazyVGrid", "Policy browsing must not recreate expanded multi-group grids");
 assertExcludes(proxyRootContent, "ScrollView(.horizontal)", "Policy browsing must not force a horizontal canvas");
@@ -1963,13 +1994,20 @@ assertExcludes(proxyMemberInspection, "select(target.memberName", "Inspecting a 
 const proxyAccessibleMember = sourceSection(proxyPanels, "private func memberRow", "private var commandScope");
 assertOrdered(proxyAccessibleMember, ["return Button {", "onInspectMember(", ".accessibilityActions", "onSelectMember("],
   "VoiceOver default activation must inspect; switching must be a separately named action");
-assertIncludes(proxyRootContent, "ProxyInlineNodeDetails(snapshot:", "Inspected node parameters must render inline using the complete detail projection");
+assertIncludes(proxyRootContent, "ProxyInlineNodeDetails(", "Inspected node parameters must render inline");
+assertIncludes(proxyRootContent, "snapshot: ProxyNodeInspectionProjection.snapshot(", "Inline node details must use the complete detail projection");
+assertIncludes(proxyRootContent, ".modifier(ProxyInspectedNodeFrame(isInspected: isInspected))", "An opened node and its detail must read as one framed card");
+assertIncludes(proxyNodeDetails, 'static let groupContextFieldIDs: Set<String> = ["group", "group-type"]', "Inline details may omit only the group identity owned by the active group header");
 assertIncludes(proxyRootContent, ".id(ProxyNodeDetailIdentity(", "Inline sensitive-field state must be bound to controller, generation, group, and member identity");
 assertIncludes(proxyRootContent, "ProxyNodeHoverOverlay(", "Node hover must isolate preview observation from the policy page");
 assertIncludes(sourceSection(proxyNodeDetails, "struct ProxyNodeHoverOverlay", "struct ProxyNodePreviewLayout"), "ProxyNodeHoverPreview(snapshot:", "Node hover must provide a lightweight reported-field preview");
-assertIncludes(proxyNodeDetails, "ForEach(snapshot.sections)", "Inline details must include every projected field section");
-assertIncludes(proxyNodeDetails, "ForEach(section.fields)", "Inline details must include every reported field within each section");
-assertIncludes(proxyNodeDetails, "WorkbenchPolicyInspectionFieldRow(field: field, layout: .compact)", "Inline detail must retain the shared sensitive-value renderer in a compact key-value layout");
+for (const composed of ["ForEach(composition.summary)", "ForEach(composition.capabilities)", "ForEach(composition.sections)", "ForEach(section.fields)"]) {
+  assertIncludes(proxyNodeDetails, composed, `Inline details must render every composed field group: ${composed}`);
+}
+assertIncludes(proxyNodeDetails, "for section in snapshot.sections {", "The detail composition must regroup every projected section");
+assertIncludes(proxyNodeDetails, "PolicyInspectionFieldValue(", "Inline detail values must use the shared sensitive-value renderer");
+assertIncludes(proxyNodeDetails, "PolicyInspectionRevealButton(", "Inline sensitive values must stay individually revealable");
+assertIncludes(proxyNodeDetails, "isRevealed = false", "Changing a reported value must hide a revealed secret again");
 assertIncludes(sourceSection(proxyNodeDetails, "struct ProxyNodeHoverPreview"), "field.displayValue()", "Hover preview must use the default masked value even when inline details reveal a secret");
 assertIncludes(sourceSection(proxyNodeDetails, "struct ProxyNodeHoverPreview"), ".allowsHitTesting(false)", "Hover preview must not capture node actions or pointer focus");
 assertIncludes(proxyPanels, "@State private var isHovered", "Node cells must provide a restrained pointer-hover treatment");
@@ -2532,11 +2570,14 @@ assertExcludes(management, "struct WorkbenchSettingsView", "Settings must only e
 assertExcludes(management, "struct MicaSettingsSceneView", "Native Settings must remain isolated from Workbench management pages");
 assertIncludes(settings, "struct MicaSettingsSceneView", "The dedicated Settings source must expose the native Settings scene");
 const controllersSource = controllersRoot;
-assertIncludes(controllersSource, "List(filteredProfiles, selection: managementSelectionBinding)", "Controllers must use a native virtualized selectable list");
+assertIncludes(controllersSource, "List(selection: managementSelectionBinding) {\n            ForEach(filteredProfiles)", "Controllers must use a native virtualized selectable list");
+assertIncludes(controllersSource, ".onMove(perform: reorderAction)", "Controllers must support native drag reordering");
+assertIncludes(controllersSource, "guard searchText.managementNonEmpty == nil else { return nil }", "Drag reordering must be offered only for the complete persisted order");
 assertIncludes(controllersSource, "selectInspector(.controller(id: id))", "Controller selection must route detail to the workspace inspector (task 08-17 Phase 6A)");
 assertIncludes(controllersSource, "struct WorkbenchControllerInspector", "Controller detail must render in the shared workspace inspector");
 const controllerRowSource = sourceSection(controllersSource, "private func controllerRow", "private var filteredProfiles");
 assertIncludes(controllerRowSource, ".contentShape(Rectangle())", "Controller list rows must expose a full-row selection target");
+assertIncludes(controllerRowSource, "WorkbenchControllerUseButton(profile: profile, compact: true)", "Inactive controller rows must offer the one explicit Use command");
 for (const detailOnlyAction of [
   "appModel.selectRouter(profile)",
   "onEditController(profile)",
@@ -2551,7 +2592,7 @@ const controllerActionsSource = sourceSection(
   "private func lastSuccess(_ profile: RouterProfile) -> some View {",
 );
 for (const detailAction of [
-  "appModel.selectRouter(profile)",
+  "WorkbenchControllerUseButton(profile: profile)",
   "onEditController(profile)",
   "moveSelection(.up)",
   "moveSelection(.down)",
@@ -2724,18 +2765,26 @@ assertExcludes(management, "LabeledContent", "Management fields must not restore
 assertExcludes(management, "formControlMax, alignment: .trailing", "Management form controls must not be pushed to the trailing edge");
 assertExcludes(management, "@Environment(\\.dynamicTypeSize)", "Font preference must not select management page layout variants");
 const formRowSource = sourceSection(management, "struct WorkbenchFormRow", "struct WorkbenchFormValue");
-assertExcludes(formRowSource, "controlAlignment", "The canonical management field row must always lead-align controls");
+assertExcludes(formRowSource, "controlAlignment", "The canonical management field row must not take per-call control alignment");
 assertExcludes(formRowSource, "dynamicTypeSize", "Font preference must not rearrange management form rows");
 assertIncludes(formRowSource, "widthMode == .compact", "Management form rows must stack only from measured width");
-assertIncludes(formRowSource, "alignment: .leading", "The canonical management field row must lead-align its control column");
+assertIncludes(formRowSource, "alignment: usesStackedLayout ? .leading : .trailing", "Management field rows must place controls at the trailing edge like System Settings, leading only when stacked");
 assertIncludes(formRowSource, "var detailKey: String?", "Management fields must support concise visible descriptions");
 assertIncludes(appPreferencesStore, "appearance.applyToApplication()", "Appearance preference must repaint immediately");
 assertIncludes(micaApp, "Settings {", "Mica must expose the standard native Settings scene");
 assertIncludes(micaApp, "MicaSettingsSceneView()", "The native Settings scene must host Mica preferences");
 assert(count(micaApp, ".micaWindowChrome()") >= 2, "Main and native Settings windows must share window chrome styling");
-assertIncludes(micaApp, "containerBackground(MicaTheme.canvas, for: .window)", "Window containers must use the shared page fill (Mica Ops canvas, task 08-17 Phase 7)");
-assertIncludes(micaApp, ".toolbarBackground(MicaTheme.canvas, for: .windowToolbar)", "Native toolbars must use the shared page fill (Mica Ops canvas, task 08-17 Phase 7)");
-assertIncludes(micaApp, ".toolbarBackgroundVisibility(.visible, for: .windowToolbar)", "Native toolbar fill must remain visible in every appearance");
+assertIncludes(micaApp, "containerBackground(MicaTheme.canvas, for: .window)", "Window containers must name the system page fill beneath the glass chrome");
+assertIncludes(micaApp, ".windowToolbarStyle(.unified)", "The main window must use the macOS 27 unified Liquid Glass toolbar");
+for (const paintedChrome of [".toolbarBackground(", ".toolbarBackgroundVisibility("]) {
+  assertExcludes(micaApp, paintedChrome, `The system owns the Liquid Glass toolbar; Mica must not restore ${paintedChrome}`);
+  assertExcludes(workbenchCode, paintedChrome, `Workbench views must not paint the Liquid Glass toolbar with ${paintedChrome}`);
+}
+const workbenchToolbar = sourceSection(chrome, "struct WorkbenchToolbar: ToolbarContent", "private struct WorkbenchRootLifecycleObserver");
+assertIncludes(chrome, "WorkbenchToolbar(", "The workbench root must use the shared toolbar composition");
+assertIncludes(workbenchToolbar, "ToolbarSpacer(.fixed, placement: .primaryAction)", "The inspector toggle must stand in its own glass group");
+assertIncludes(workbenchToolbar, ".visibilityPriority(.low)", "Optional toolbar controls must overflow before session commands");
+assertIncludes(workbenchToolbar, ".visibilityPriority(.high)", "Session and inspector commands must stay visible as the window narrows");
 assertIncludes(micaApp, 'CommandMenu(menuLocalized("controller.command_menu"))', "The custom top-level menu must follow the macOS menu language");
 assertIncludes(appLanguage, "static var menuBarLanguage: AppLanguage", "Custom menu commands must resolve from the same bundle language as AppKit menus");
 assertIncludes(pageScaffold, ".background(MicaTheme.canvas)", "The page scaffold must paint the shared page fill");
@@ -2783,7 +2832,7 @@ for (const testContract of [
   "nodeDetailSeparatesKnownFieldsFromAdditionalControllerFields",
   "latencyScaleUsesOnlyPositiveReportedValuesWithoutReordering",
   "closingInlineDetailsDoesNotReopenWhenActivatingSameGroup",
-  "actionsLayoutUsesCompactSingleColumnOnlyForSparseCommands",
+  "actionsLayoutFitsReadableCardColumnsWithoutExceedingCommands",
   "diagnosticsActionsUseSharedLiveCommandAvailability",
   "activeGroupIndexBuildsOnlyTheActiveMembersAndFiltersCachedRows",
   "activatingDifferentGroupClearsLocalFilterAndInspectedMember",

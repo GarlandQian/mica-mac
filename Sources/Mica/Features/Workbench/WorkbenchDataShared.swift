@@ -6,7 +6,9 @@ import SwiftUI
 
 extension View {
     func micaWorkbenchTable(accessibilityLabel: String) -> some View {
-        tableStyle(.bordered)
+        // Inset rows with continuous selection capsules, as in macOS 27
+        // content lists; the page fill stays continuous beneath the rows.
+        tableStyle(.inset)
             .alternatingRowBackgrounds(.disabled)
             .scrollContentBackground(.hidden)
             .background(MicaTheme.canvas)
@@ -251,29 +253,39 @@ struct WorkbenchDataBrowserScaffold<Commands: View, Supplementary: View, Content
 }
 
 struct WorkbenchDataPrimaryCell: View {
+    @Environment(\.micaAppLanguage) private var language
+
     let title: String
     var detail: String?
-    let systemImage: String
+    let systemImage: String?
     var tint: Color = .secondary
     var titleIsMonospaced = false
     var detailIsMonospaced = true
 
     var body: some View {
         HStack(alignment: .center, spacing: MicaTheme.Spacing.space2) {
-            Image(systemName: systemImage)
-                .micaThemeFont(.caption, weight: .semibold)
-                .foregroundStyle(tint)
-                .frame(width: 16)
-                .accessibilityHidden(true)
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(tint)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
+            }
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: title)
+                let isUnreported = title == MicaStrings.localizedKey(
+                    "overview.config_not_reported",
+                    language: language
+                )
+                Text(verbatim: isUnreported ? "—" : title)
                     .micaThemeFont(
                         titleIsMonospaced ? .dataLabel : .label,
                         weight: .semibold
                     )
+                    .foregroundStyle(isUnreported ? .tertiary : .primary)
                     .lineLimit(1)
                     .textSelection(.enabled)
+                    .accessibilityLabel(Text(verbatim: title))
 
                 if let detail = detail?.dataNonEmpty {
                     Text(verbatim: detail)
@@ -296,6 +308,8 @@ struct WorkbenchDataPrimaryCell: View {
 }
 
 struct WorkbenchDataText: View {
+    @Environment(\.micaAppLanguage) private var language
+
     let value: String
     var role: MicaTheme.TextRole = .label
     var weight: Font.Weight?
@@ -304,13 +318,23 @@ struct WorkbenchDataText: View {
     var maximumLineCount = 1
 
     var body: some View {
-        Text(verbatim: value)
+        // A scan table repeats the not-reported wording in every row; a quiet
+        // dash keeps real values legible while help and VoiceOver still read
+        // the complete localized state.
+        let isUnreported = value == MicaStrings.localizedKey(
+            "overview.config_not_reported",
+            language: language
+        )
+
+        Text(verbatim: isUnreported ? "—" : value)
             .micaThemeFont(role, weight: weight)
-            .foregroundStyle(tone)
+            .foregroundStyle(isUnreported ? .tertiary : tone)
             .lineLimit(maximumLineCount)
             .truncationMode(.tail)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: alignment)
+            .help(isUnreported ? value : "")
+            .accessibilityLabel(Text(verbatim: value))
     }
 }
 
@@ -448,7 +472,6 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .micaObserveScrollPerformance()
-        .background(MicaTheme.surfaceRaised)
     }
 }
 
@@ -466,9 +489,9 @@ struct WorkbenchDataInspectorSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             Text(MicaStrings.localizedKey(titleKey, language: language))
-                .micaThemeFont(.caption, weight: .semibold)
-                .foregroundStyle(.secondary)
-            Divider()
+                .micaThemeFont(.label, weight: .semibold)
+                .foregroundStyle(.primary)
+                .accessibilityAddTraits(.isHeader)
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -503,16 +526,41 @@ struct WorkbenchDataInspectorField: View {
     }
 }
 
+/// Reported values keep their rows; every field the controller left
+/// unreported collapses into one quiet line that still names each field, so
+/// real values are not buried under repeated placeholders.
 struct WorkbenchDataInspectorValueList: View {
+    @Environment(\.micaAppLanguage) private var language
+
     let values: [WorkbenchDataInspectorValue]
 
     var body: some View {
-        ForEach(values) { item in
+        let notReported = MicaStrings.localizedKey("overview.config_not_reported", language: language)
+        let isReported: (WorkbenchDataInspectorValue) -> Bool = { item in
+            guard let value = item.value?.dataNonEmpty else { return false }
+            return value != notReported
+        }
+        let reported = values.filter(isReported)
+        let unreported = values.filter { !isReported($0) }
+
+        ForEach(reported) { item in
             WorkbenchDataInspectorField(
                 titleKey: item.titleKey,
                 value: item.value,
                 monospaced: item.monospaced
             )
+        }
+
+        if !unreported.isEmpty {
+            let names = unreported
+                .map { MicaStrings.localizedKey($0.titleKey, language: language) }
+                .joined(separator: " · ")
+            (Text(verbatim: notReported + "  ").fontWeight(.medium) + Text(verbatim: names))
+                .micaThemeFont(.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(Text(verbatim: "\(notReported): \(names)"))
         }
     }
 }

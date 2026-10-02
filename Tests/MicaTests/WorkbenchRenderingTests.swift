@@ -39,6 +39,118 @@ final class WorkbenchRenderingTests: XCTestCase {
         }
     }
 
+    /// Opt-in capture of the native Settings window content in both
+    /// appearances and languages; it mounts no controller session.
+    func testOfflineSettingsWindow() async throws {
+        guard ProcessInfo.processInfo.environment["MICA_RENDER_SETTINGS"] == "1" else {
+            throw XCTSkip("Set MICA_RENDER_SETTINGS=1 to render the Settings window.")
+        }
+        let output = try renderingOutputDirectory()
+        NSApplication.shared.finishLaunching()
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            for scheme in [ColorScheme.light, .dark] {
+                let suiteName = "Mica.SettingsRendering.\(UUID().uuidString)"
+                let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+                defer { defaults.removePersistentDomain(forName: suiteName) }
+                defaults.set(language.rawValue, forKey: AppPreferencesStore.languageKey)
+                let preferences = AppPreferencesStore(defaults: defaults)
+                let size = CGSize(width: 880, height: 560)
+                let appearance = try XCTUnwrap(NSAppearance(named: scheme == .dark ? .darkAqua : .aqua))
+                let root = MicaSettingsSceneView()
+                    .environmentObject(preferences)
+                    .micaAppPreferences(language: language, appearance: scheme == .dark ? .dark : .light, fontScale: .comfortable)
+                    .environment(\.colorScheme, scheme)
+                    .micaWindowChrome()
+                    .frame(width: size.width, height: size.height)
+                let host = NSHostingView(rootView: root)
+                host.appearance = appearance
+                let window = NSWindow(
+                    contentRect: CGRect(origin: .zero, size: size),
+                    styleMask: [.titled, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.isReleasedWhenClosed = false
+                window.appearance = appearance
+                window.contentView = host
+                window.makeKeyAndOrderFront(nil)
+                defer {
+                    window.orderOut(nil)
+                    window.contentView = nil
+                    window.close()
+                }
+                for _ in 0..<20 {
+                    host.layoutSubtreeIfNeeded()
+                    window.displayIfNeeded()
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                let bitmap = try captureOwnedWindow(window)
+                let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let name = "settings-\(language.rawValue)-\(scheme == .dark ? "dark" : "light").png"
+                try png.write(to: output.appendingPathComponent(name), options: .atomic)
+            }
+        }
+    }
+
+    /// Opt-in capture of the controller editor for an existing profile.
+    func testOfflineControllerEditor() async throws {
+        guard ProcessInfo.processInfo.environment["MICA_RENDER_EDITOR"] == "1" else {
+            throw XCTSkip("Set MICA_RENDER_EDITOR=1 to render the controller editor.")
+        }
+        let output = try renderingOutputDirectory()
+        NSApplication.shared.finishLaunching()
+        for size in [CGSize(width: 820, height: 580), CGSize(width: 1240, height: 780)] {
+            for scheme in [ColorScheme.light, .dark] {
+                let language = AppLanguage.simplifiedChinese
+                let suiteName = "Mica.EditorRendering.\(UUID().uuidString)"
+                let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+                defer { defaults.removePersistentDomain(forName: suiteName) }
+                let model = makeFixture(defaults: defaults, language: language, topologyDensity: .sparse,
+                                        destination: .controllers)
+                let router = try XCTUnwrap(model.selectedRouter)
+                let appearance = try XCTUnwrap(NSAppearance(named: scheme == .dark ? .darkAqua : .aqua))
+                let root = RouterEditorView(
+                    draft: model.draft(for: router),
+                    title: "editor.edit_router",
+                    onClose: {},
+                    onDiscardConfirmed: {},
+                    onDiscardCancelled: {}
+                )
+                .environment(model)
+                .micaAppPreferences(language: language, appearance: scheme == .dark ? .dark : .light, fontScale: .comfortable)
+                .environment(\.colorScheme, scheme)
+                .micaWindowChrome()
+                .frame(width: size.width, height: size.height)
+                let host = NSHostingView(rootView: root)
+                host.appearance = appearance
+                let window = NSWindow(
+                    contentRect: CGRect(origin: .zero, size: size),
+                    styleMask: [.titled, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.isReleasedWhenClosed = false
+                window.appearance = appearance
+                window.contentView = host
+                window.makeKeyAndOrderFront(nil)
+                defer {
+                    window.orderOut(nil)
+                    window.contentView = nil
+                    window.close()
+                }
+                for _ in 0..<20 {
+                    host.layoutSubtreeIfNeeded()
+                    window.displayIfNeeded()
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                let bitmap = try captureOwnedWindow(window)
+                let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let name = "editor-\(scheme == .dark ? "dark" : "light")-\(Int(size.width))x\(Int(size.height)).png"
+                try png.write(to: output.appendingPathComponent(name), options: .atomic)
+            }
+        }
+    }
+
     private func renderingOutputDirectory() throws -> URL {
         guard let path = ProcessInfo.processInfo.environment["MICA_RENDER_OUTPUT_DIR"], !path.isEmpty else {
             throw XCTSkip("Set MICA_RENDER_OUTPUT_DIR under tmp/codex to render offline Workbench screenshots.")
@@ -124,6 +236,11 @@ final class WorkbenchRenderingTests: XCTestCase {
         }
         let appPreferences = AppPreferencesStore(defaults: defaults)
         let preferences = OverviewPreferencesStore(defaults: defaults)
+        if ProcessInfo.processInfo.environment["MICA_RENDER_OVERVIEW_MODULES"] == "all" {
+            for module in OverviewOptionalModuleID.allCases {
+                preferences.setOptionalModule(module, isVisible: true)
+            }
+        }
         let runtime = OverviewWindowRuntime()
         let root = RenderingRoot(surface: surface, destination: destination, showsInspector: showsInspector)
             .environment(model)
@@ -155,7 +272,7 @@ final class WorkbenchRenderingTests: XCTestCase {
         )
         window.isReleasedWhenClosed = false
         window.title = "Mica"
-        window.toolbarStyle = .unifiedCompact
+        window.toolbarStyle = .unified
         window.appearance = appearance
         window.contentView = host
         window.setContentSize(size)
@@ -217,6 +334,37 @@ final class WorkbenchRenderingTests: XCTestCase {
         window.displayIfNeeded()
         CATransaction.flush()
         try await Task.sleep(for: .milliseconds(350))
+        if let settle = ProcessInfo.processInfo.environment["MICA_RENDER_SETTLE_MS"].flatMap(Int.init) {
+            // Rows created during the first layout pass can stay undrawn in an
+            // offscreen window; recreate them so captures show table content.
+            // Tables already scrolled by the page (Follow Newest) redraw on
+            // their own; reloading them would discard that position.
+            for table in nativeTables(in: host) where table.numberOfRows > 0
+                && (table.enclosingScrollView?.contentView.bounds.minY ?? 0) <= 1 {
+                table.reloadData()
+            }
+            for _ in 0..<max(1, settle / 50) {
+                host.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                CATransaction.flush()
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        if ProcessInfo.processInfo.environment["MICA_RENDER_SCROLL"] == "end",
+           let page = verticalScrollViews(in: host).max(by: {
+               ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0)
+           }), let document = page.documentView {
+            // Reveals modules below the fold of the page's own scroll view.
+            let maximumY = max(0, document.frame.height - page.contentView.bounds.height)
+            page.contentView.scroll(to: NSPoint(x: 0, y: document.isFlipped ? maximumY : 0))
+            page.reflectScrolledClipView(page.contentView)
+            for _ in 0..<6 {
+                host.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                CATransaction.flush()
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
         if surface == .topology, let current = runtime.registry.existingTopologyRuntime(
             controllerID: try XCTUnwrap(model.selectedRouterID), generation: model.controllerSession.generation
         ), let presentation = current.presentation {
@@ -411,6 +559,11 @@ final class WorkbenchRenderingTests: XCTestCase {
                 "Native sidebar row \(row) has no readable foreground; the capture cannot verify its appearance."
             )
         }
+    }
+
+    private func verticalScrollViews(in view: NSView) -> [NSScrollView] {
+        let own = (view as? NSScrollView).map { [$0] } ?? []
+        return own + view.subviews.flatMap { self.verticalScrollViews(in: $0) }
     }
 
     private func nativeTables(in view: NSView) -> [NSTableView] {
@@ -783,10 +936,7 @@ private struct RenderingWorkbench: View {
         } detail: {
             VStack(spacing: 0) {
                 WorkbenchWorkspaceView(destination: $destination, onAddController: {}, onEditController: { _ in })
-                    .inspector(isPresented: Binding(
-                        get: { showsInspector && destination.supportsInspector && workspaceStore.isInspectorPresented },
-                        set: { workspaceStore.isInspectorPresented = $0 }
-                    )) {
+                    .inspector(isPresented: inspectorPresentation) {
                         WorkbenchInspectorContainer(destination: $destination, onEditController: { _ in })
                             .background(RenderingInspectorMarker())
                             .inspectorColumnWidth(min: MicaTheme.Metrics.inspectorMin,
@@ -799,22 +949,18 @@ private struct RenderingWorkbench: View {
             .navigationTitle(MicaStrings.localizedKey(destination.titleKey, language: language))
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if destination == .overview {
-                        OverviewPreferencesToolbarControl()
-                    }
-                    if destination.requiresController {
-                        WorkbenchSessionControlButton(kind: .refresh)
-                        WorkbenchSessionControlButton(kind: .pause)
-                    }
-                }
+                WorkbenchToolbar(destination: destination, isInspectorPresented: inspectorPresentation)
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .background(MicaTheme.canvas)
-        .containerBackground(MicaTheme.canvas, for: .window)
-        .toolbarBackground(MicaTheme.canvas, for: .windowToolbar)
-        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .micaWindowChrome()
+    }
+
+    private var inspectorPresentation: Binding<Bool> {
+        Binding(
+            get: { showsInspector && destination.supportsInspector && workspaceStore.isInspectorPresented },
+            set: { workspaceStore.isInspectorPresented = $0 }
+        )
     }
 }
 

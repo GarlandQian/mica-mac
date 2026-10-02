@@ -718,7 +718,8 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(!content.contains("LazyVGrid"))
         #expect(content.contains("accessibilityCatalog(index: model.directoryAccessibilityIndex)"))
         #expect(content.contains("accessibilityCatalog(index: model.accessibilityIndex)"))
-        #expect(content.contains("if presentation.inspectedMemberID == member.id"))
+        #expect(content.contains("let isInspected = presentation.inspectedMemberID == member.id"))
+        #expect(content.contains("if isInspected {"))
         #expect(!activeHeader.contains("LazyVGrid"))
         #expect(!activeHeader.contains("ProxyPolicyNodeTile("))
         #expect(!visualRoot.contains("appModel.policyGroupCatalog"))
@@ -1187,6 +1188,91 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(!index.records.contains { $0.row.name.hasPrefix("Other") })
         #expect(filtered.members.map(\.name) == [indexedNode])
         #expect(index.records.count == 798)
+    }
+
+    @Test func latencyOrderSortsOnlyTheDisplayedCopy() throws {
+        let options = ["Slow", "Untested", "Fast", "Dead", "Timeout", "Tie A", "Tie B"]
+        let arranged = ProxyProjection.arrangedGroups(
+            [
+                ProxyGroupViewState(
+                    id: "Auto",
+                    type: "URLTest",
+                    selected: "Slow",
+                    options: options,
+                    optionDetails: [
+                        "Dead": ProxyNodeViewState(
+                            snapshot: ProxySnapshot(name: "Dead", type: "VLESS", alive: false)
+                        ),
+                    ],
+                    delays: [
+                        "Slow": 300, "Fast": 40, "Dead": 20,
+                        "Timeout": 0, "Tie A": 120, "Tie B": 120,
+                    ]
+                ),
+            ],
+            mode: "Rule",
+            visibility: .alwaysShow
+        )
+        let group = try #require(arranged.first)
+        let index = ProxyProjection.activeGroupIndex(in: arranged, groupID: group.id)
+
+        let controllerOrder = ProxyActiveGroupProjection(index: index, query: "")
+        #expect(controllerOrder.members.map(\.name) == options)
+
+        let latencyOrder = ProxyActiveGroupProjection(index: index, query: "", order: .latency)
+        #expect(latencyOrder.members.map(\.name) == [
+            "Fast", "Tie A", "Tie B", "Slow", "Dead", "Timeout", "Untested",
+        ])
+        #expect(index.rows.map(\.name) == options)
+
+        let filtered = ProxyActiveGroupProjection(index: index, query: "t", order: .latency)
+        #expect(filtered.members.map(\.name) == [
+            "Fast", "Tie A", "Tie B", "Timeout", "Untested",
+        ])
+    }
+
+    @MainActor
+    @Test func changingMemberOrderRebuildsMembersWithoutTouchingTheCatalog() throws {
+        let controllerID = UUID()
+        let generation = UUID()
+        let model = ProxyWorkspaceModel()
+        let catalog = PolicyGroupCatalogSnapshot(
+            mode: "Rule",
+            groups: [
+                ProxyGroupViewState(
+                    id: "Auto",
+                    type: "URLTest",
+                    selected: "Slow",
+                    options: ["Slow", "Fast"],
+                    delays: ["Slow": 300, "Fast": 40]
+                ),
+            ]
+        )
+        var input = Self.workspaceInput(controllerID: controllerID, generation: generation)
+        input.visibility = .alwaysShow
+        let workspace = try #require(model.accept(
+            ProxyCatalogUpdate(
+                revision: ProxyCatalogRevision(
+                    controllerID: controllerID, generation: generation, value: 1
+                ),
+                catalog: catalog
+            ),
+            selectedControllerID: controllerID,
+            sessionControllerID: controllerID,
+            generation: generation,
+            input: input
+        ))
+        input.workspace = workspace
+        model.updatePresentation(input)
+        #expect(model.activeProjection.members.map(\.name) == ["Slow", "Fast"])
+
+        let builds = model.memberProjectionBuildCount
+        input.memberOrder = .latency
+        model.updatePresentation(input)
+        #expect(model.activeProjection.members.map(\.name) == ["Fast", "Slow"])
+        #expect(model.activeGroup?.members.map(\.name) == ["Fast", "Slow"])
+        #expect(model.memberProjectionBuildCount == builds + 1)
+        #expect(model.catalog.groups.first?.options == ["Slow", "Fast"])
     }
 
     @Test func activatingDifferentGroupClearsLocalFilterAndInspectedMember() throws {

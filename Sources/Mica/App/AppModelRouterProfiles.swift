@@ -286,7 +286,7 @@ extension AppModel {
             // another profile while a retry was waiting for the secret store.
             if didLoadPersistedState,
                controllerSession.controllerID == nil,
-               mainWindowCount > 0,
+               hasLiveSessionHolder,
                !sessionSuspendedForSleep,
                let router = selectedRouter {
                 enterLiveSession(for: router)

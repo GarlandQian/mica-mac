@@ -4,6 +4,20 @@ import Testing
 @testable import Mica
 
 struct LiveSessionRuntimeTests {
+    @Test func visibleDestinationsObserveOnlyTheDomainsTheyDraw() {
+        let table = Dictionary(uniqueKeysWithValues: [
+            LiveSessionVisibleDestination.overview, .connections, .logs, .menuBar, .other,
+        ].map { ($0.debugName, Set($0.observedDomains)) })
+
+        #expect(table == [
+            "overview": [.traffic, .connections, .memory],
+            "connections": [.connections],
+            "logs": [.logs],
+            "menuBar": [.traffic],
+            "other": [],
+        ])
+    }
+
     @Test func hiddenLogBurstPublishesOneBoundedSnapshotOnActivation() async throws {
         let identity = makeIdentity()
         let runtime = makeRuntime(identity: identity, observedDomains: [])
@@ -672,5 +686,17 @@ struct LiveSessionRuntimeTests {
             logsPresentationPaused: logsPresentationPaused,
             baselinePublicationRequired: baselinePublicationRequired
         )
+    }
+}
+
+private extension LiveSessionVisibleDestination {
+    var debugName: String {
+        switch self {
+        case .overview: "overview"
+        case .connections: "connections"
+        case .logs: "logs"
+        case .menuBar: "menuBar"
+        case .other: "other"
+        }
     }
 }

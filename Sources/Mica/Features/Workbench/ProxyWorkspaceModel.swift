@@ -9,6 +9,7 @@ struct ProxyWorkspacePresentationInput: Equatable {
     var query: String
     var visibility: GlobalGroupVisibility
     var healthFilter: ProxyHealthFilter
+    var memberOrder: ProxyMemberOrder = .controller
     var activity: ProxyOperationActivity
     var canClearFixedSelection: Bool
 }
@@ -105,13 +106,15 @@ final class ProxyWorkspaceModel {
 
         let activeChanged = cache.updateActiveGroup(groupID: next.workspace.activeGroupID)
         let filtersChanged = previous?.healthFilter != next.healthFilter
+            || previous?.memberOrder != next.memberOrder
             || previous?.workspace.proxyMemberQuery != next.workspace.proxyMemberQuery
         let membersChanged = catalogChanged || activeChanged || filtersChanged
         if membersChanged {
             activeProjection = ProxyActiveGroupProjection(
                 index: cache.activeGroupIndex,
                 query: next.workspace.proxyMemberQuery,
-                healthFilter: next.healthFilter
+                healthFilter: next.healthFilter,
+                order: next.memberOrder
             )
             memberProjectionBuildCount += 1
             let occurrence = cache.activeGroupIndex.occurrence

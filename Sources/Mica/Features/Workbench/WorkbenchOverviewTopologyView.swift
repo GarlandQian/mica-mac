@@ -665,29 +665,13 @@ private struct OverviewTopologyViewport: View {
         }
         .frame(height: viewportHeight)
         .frame(maxWidth: .infinity, alignment: .center)
-        .background(
-            MicaTheme.surface,
-            in: RoundedRectangle(
-                cornerRadius: MicaTheme.Shape.panelRadius,
-                style: .continuous
-            )
-        )
+        .micaCard(MicaTheme.Topology.panelSurface)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: MicaTheme.Shape.panelRadius,
                 style: .continuous
             )
         )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: MicaTheme.Shape.panelRadius,
-                style: .continuous
-            )
-            .strokeBorder(
-                MicaTheme.separator,
-                lineWidth: MicaTheme.Shape.hairline
-            )
-        }
         .help(hoverTooltip ?? "")
         .focusable()
         .onMoveCommand(perform: movePathSelection)
@@ -1193,10 +1177,10 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                 )
             )
             // Panel base fill keeps the opaque canvas indistinguishable from
-            // the surrounding surface panel.
+            // the surrounding card.
             context.fill(
                 Path(CGRect(origin: .zero, size: size)),
-                with: .color(MicaTheme.surface)
+                with: .color(MicaTheme.Topology.panelSurface)
             )
             context.translateBy(x: 0, y: -band.bounds.minY)
 

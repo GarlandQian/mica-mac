@@ -114,6 +114,53 @@ enum WorkbenchDataScrollTransition: Equatable {
     case ended
 }
 
+/// The native table's user-scroll rules, kept free of AppKit and real time
+/// so they can be verified with explicit instants. An explicit gesture
+/// (trackpad begin/end, which also brackets momentum) ends only with its end
+/// notification. Scroll ticks outside a gesture form a wheel burst that ends
+/// once no tick arrives for `wheelIdleDelay`.
+struct WorkbenchScrollInteractionState: Equatable {
+    enum Phase: Equatable { case idle, gesture, wheel }
+
+    static let wheelIdleDelay = Duration.milliseconds(150)
+
+    private(set) var phase = Phase.idle
+    private(set) var wheelIdleDeadline: ContinuousClock.Instant?
+
+    mutating func beginGesture() -> WorkbenchDataScrollTransition? {
+        wheelIdleDeadline = nil
+        let wasIdle = phase == .idle
+        phase = .gesture
+        return wasIdle ? .began : nil
+    }
+
+    /// Starts or extends a wheel burst; ticks inside a gesture are ignored.
+    mutating func didScroll(at now: ContinuousClock.Instant) -> WorkbenchDataScrollTransition? {
+        guard phase != .gesture else { return nil }
+        let wasIdle = phase == .idle
+        phase = .wheel
+        wheelIdleDeadline = now.advanced(by: Self.wheelIdleDelay)
+        return wasIdle ? .began : nil
+    }
+
+    /// Ends the wheel burst once its latest deadline has passed.
+    mutating func wheelIdleElapsed(at now: ContinuousClock.Instant) -> WorkbenchDataScrollTransition? {
+        guard phase == .wheel, let deadline = wheelIdleDeadline, deadline <= now else {
+            return nil
+        }
+        phase = .idle
+        wheelIdleDeadline = nil
+        return .ended
+    }
+
+    mutating func finish() -> WorkbenchDataScrollTransition? {
+        wheelIdleDeadline = nil
+        guard phase != .idle else { return nil }
+        phase = .idle
+        return .ended
+    }
+}
+
 struct WorkbenchDataScrollPhaseState: Equatable {
     private(set) var isUserScrolling = false
 

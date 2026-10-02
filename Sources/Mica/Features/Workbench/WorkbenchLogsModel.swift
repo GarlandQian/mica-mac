@@ -27,6 +27,8 @@ final class WorkbenchLogsModel {
     private(set) var restoredScrollAnchorID: String?
     private(set) var scrollRequest: WorkbenchDataScrollRequest?
     private(set) var followRequest: WorkbenchLogsFollowRequest?
+    private(set) var severityCounts = WorkbenchLogSeverityCounts()
+    private(set) var newestRowIDsBySeverity: [WorkbenchLogSeverity: String] = [:]
     private var accessibilityCursor = WorkbenchAccessibilityWindowCursor()
     private var rowRevision: UInt64 = 0
 
@@ -38,6 +40,7 @@ final class WorkbenchLogsModel {
     @ObservationIgnored private(set) var isActive = false
     @ObservationIgnored private var needsInitialFollow = false
     @ObservationIgnored private var hasDeferredPresentation = false
+    @ObservationIgnored private var countedSourceRevision: UInt64?
 
     var accessibilityWindow: WorkbenchAccessibilityWindow {
         WorkbenchAccessibilityWindow.resolve(
@@ -64,6 +67,9 @@ final class WorkbenchLogsModel {
             latestRequest = nil
             accessibilityCursor.reset()
             scrollRequest = nil
+            severityCounts = WorkbenchLogSeverityCounts()
+            newestRowIDsBySeverity = [:]
+            countedSourceRevision = nil
             rowRevision &+= 1
         }
         self.scope = scope
@@ -164,6 +170,14 @@ final class WorkbenchLogsModel {
         reconcileAccessibilityWindow()
     }
 
+    /// Selects and scrolls to the newest visible entry of one severity;
+    /// selecting stops Follow Newest like any other row selection.
+    func revealNewest(_ severity: WorkbenchLogSeverity) {
+        guard let id = newestRowIDsBySeverity[severity] else { return }
+        select(id)
+        scrollRequest = WorkbenchDataScrollRequest(id: id)
+    }
+
     func row(id: String) -> WorkbenchLogRow? {
         _ = rowRevision
         return cache.row(id: id)
@@ -215,6 +229,11 @@ final class WorkbenchLogsModel {
             sourceCount = cache.allRows.count
             rows = cache.visibleRows
             rowRevision &+= 1
+            newestRowIDsBySeverity = WorkbenchLogSeverityCounts.newestRowIDs(in: rows)
+        }
+        if countedSourceRevision != catalog.entriesRevision {
+            countedSourceRevision = catalog.entriesRevision
+            severityCounts = WorkbenchLogSeverityCounts(rows: cache.allRows)
         }
         selectedRowID = cache.reconciledSelection(selectedRowID, previousRows: previousRows)
         switch cache.accessibilityOrderChange {

@@ -1,7 +1,1 @@
 [mcp_servers]
-
-[mcp_servers.apple-docs-mcp]
-type = "stdio"
-command = "npx"
-args = ["-y", "@kimsungwhee/apple-docs-mcp@latest"]
-startup_timeout_sec = 60

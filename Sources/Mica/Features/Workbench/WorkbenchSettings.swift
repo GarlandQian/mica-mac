@@ -230,6 +230,17 @@ private struct WorkbenchPreferenceForm: View {
         ) {
             fontScalePicker
         }
+        nativePreferenceRow(
+            "settings.menu_bar_extra",
+            detailKey: "settings.help_menu_bar_extra"
+        ) {
+            Toggle(isOn: $preferences.showsMenuBarExtra) {
+                Text(localized("settings.menu_bar_extra"))
+            }
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .help(localized("settings.help_menu_bar_extra"))
+        }
     }
 
     @ViewBuilder
@@ -263,25 +274,33 @@ private struct WorkbenchPreferenceForm: View {
         .help(localized("settings.help_language"))
     }
 
+    /// Appearance and text size preview their result, as System Settings
+    /// does, instead of naming it in a menu.
     private var appearancePicker: some View {
-        WorkbenchPreferenceMenu(
+        WorkbenchPreferenceTiles(
             labelKey: "settings.appearance",
             selection: appearanceBinding,
             options: AppAppearance.allCases,
-            optionTitleKey: \.titleKey,
-            optionSystemImage: appearanceSystemImage
-        )
+            optionTitleKey: \.titleKey
+        ) { option in
+            WorkbenchAppearancePreview(appearance: option)
+        }
         .help(localized("settings.help_appearance"))
     }
 
     private var fontScalePicker: some View {
-        WorkbenchPreferenceMenu(
+        WorkbenchPreferenceTiles(
             labelKey: "settings.font_scale",
             selection: fontScaleBinding,
             options: AppFontScale.allCases,
-            optionTitleKey: \.titleKey,
-            optionSystemImage: fontScaleSystemImage
-        )
+            optionTitleKey: \.titleKey
+        ) { option in
+            Text(verbatim: "Aa")
+                .font(MicaTheme.font(for: .title3, scale: option, weight: .medium))
+                .foregroundStyle(MicaTheme.textPrimary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MicaTheme.surface)
+        }
         .help(localized("settings.help_font_scale"))
     }
 
@@ -304,28 +323,6 @@ private struct WorkbenchPreferenceForm: View {
             "textformat.abc"
         case .simplifiedChinese:
             "character.book.closed"
-        }
-    }
-
-    private func appearanceSystemImage(_ option: AppAppearance) -> String {
-        switch option {
-        case .system:
-            "circle.lefthalf.filled"
-        case .light:
-            "sun.max"
-        case .dark:
-            "moon"
-        }
-    }
-
-    private func fontScaleSystemImage(_ option: AppFontScale) -> String {
-        switch option {
-        case .standard:
-            "textformat.size.smaller"
-        case .comfortable:
-            "textformat"
-        case .large, .extraLarge:
-            "textformat.size.larger"
         }
     }
 
@@ -370,5 +367,100 @@ private struct WorkbenchPreferenceForm: View {
 
     private func localized(_ key: String) -> String {
         MicaStrings.localizedKey(key, language: preferences.language)
+    }
+}
+
+/// A row of labeled preview tiles for a small, visual choice. The selected
+/// tile carries an accent ring and the native selected trait.
+private struct WorkbenchPreferenceTiles<Option: Hashable & Identifiable, Preview: View>: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let labelKey: String
+    @Binding var selection: Option
+    let options: [Option]
+    let optionTitleKey: (Option) -> String
+    @ViewBuilder let preview: (Option) -> Preview
+
+    var body: some View {
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+            ForEach(options) { option in
+                let isSelected = option == selection
+                let title = MicaStrings.localizedKey(optionTitleKey(option), language: language)
+                let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+
+                Button {
+                    selection = option
+                } label: {
+                    VStack(spacing: MicaTheme.Spacing.space1 + 2) {
+                        preview(option)
+                            .frame(width: 64, height: 42)
+                            .clipShape(shape)
+                            .overlay {
+                                shape.strokeBorder(
+                                    isSelected ? MicaTheme.accent : MicaTheme.separator,
+                                    lineWidth: isSelected ? 2 : 1
+                                )
+                            }
+                            .padding(isSelected ? 0 : 1)
+                        Text(verbatim: title)
+                            .micaThemeFont(.caption, weight: isSelected ? .semibold : .regular)
+                            .foregroundStyle(isSelected ? MicaTheme.textPrimary : MicaTheme.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: title))
+                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+            }
+        }
+        .fixedSize()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(MicaStrings.localizedKey(labelKey, language: language))
+    }
+}
+
+/// A miniature window in the appearance it represents; Follow System shows
+/// both halves.
+private struct WorkbenchAppearancePreview: View {
+    let appearance: AppAppearance
+
+    var body: some View {
+        switch appearance {
+        case .light:
+            miniature(dark: false)
+        case .dark:
+            miniature(dark: true)
+        case .system:
+            miniature(dark: false)
+                .overlay {
+                    miniature(dark: true)
+                        .mask(alignment: .trailing) {
+                            Rectangle().frame(width: 32)
+                        }
+                }
+        }
+    }
+
+    private func miniature(dark: Bool) -> some View {
+        let window = dark ? MicaTheme.AppearancePreview.darkWindow : MicaTheme.AppearancePreview.lightWindow
+        let sidebar = dark ? MicaTheme.AppearancePreview.darkSidebar : MicaTheme.AppearancePreview.lightSidebar
+        let line = dark ? MicaTheme.AppearancePreview.darkLine : MicaTheme.AppearancePreview.lightLine
+
+        return HStack(spacing: 3) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(sidebar)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 4) {
+                Capsule().fill(MicaTheme.accent).frame(width: 18, height: 3)
+                Capsule().fill(line).frame(width: 30, height: 3)
+                Capsule().fill(line).frame(width: 22, height: 3)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(window)
     }
 }

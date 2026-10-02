@@ -5,14 +5,18 @@ enum LiveSessionVisibleDestination: Equatable, Sendable {
     case overview
     case connections
     case logs
+    /// The menu bar item shows only the current transfer rates.
+    case menuBar
     case other
 
     func observes(_ domain: LiveSessionPublicationDomain) -> Bool {
         switch (self, domain) {
         case (.overview, .traffic), (.overview, .connections), (.overview, .memory):
             true
-        case (.connections, .connections), (.logs, .logs):
+        case (.connections, .connections), (.logs, .logs), (.menuBar, .traffic):
             true
+        case (.menuBar, .logs), (.menuBar, .connections), (.menuBar, .memory):
+            false
         case (.overview, .logs), (.connections, .logs), (.connections, .traffic),
              (.connections, .memory), (.logs, .traffic), (.logs, .connections),
              (.logs, .memory), (.other, _):

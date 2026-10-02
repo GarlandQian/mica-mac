@@ -1,12 +1,3 @@
 {
-  "mcpServers": {
-    "apple-docs-mcp": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@kimsungwhee/apple-docs-mcp@latest"
-      ]
-    }
-  }
+  "mcpServers": {}
 }

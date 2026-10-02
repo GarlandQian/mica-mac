@@ -86,6 +86,7 @@ struct WorkbenchPolicyGroupsView: View {
     @State private var presentationCoordinator = ProxyCatalogPresentationCoordinator()
     @State private var scrollInteractionTracker = ProxyScrollInteractionTracker()
     @State private var healthFilter: ProxyHealthFilter = .all
+    @State private var memberOrder: ProxyMemberOrder = .controller
     @State private var hoverPreview = ProxyNodeHoverState()
     @State private var reveal: WorkbenchProxyNavigationReveal?
     @State private var lastScrolledRevealToken: UUID?
@@ -155,13 +156,6 @@ struct WorkbenchPolicyGroupsView: View {
             WorkbenchStatusBadge(
                 text: modeBadgeText,
                 tint: MicaTheme.textSecondary
-            )
-        } commands: {
-            WorkbenchIconCommand(
-                titleKey: "routing.locate_current_node",
-                systemImage: "scope",
-                isEnabled: canLocateCurrentNode,
-                action: { locateCurrentNode() }
             )
         }
     }
@@ -278,21 +272,23 @@ struct WorkbenchPolicyGroupsView: View {
                     )
                 )
                 .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140)
+                .layoutPriority(1)
                 .accessibilityLabel(MicaStrings.localizedKey("routing.search_active_nodes", language: language))
                 healthFilterPicker
-            }
-            .padding(.horizontal, MicaTheme.Spacing.space3)
-            .padding(.bottom, MicaTheme.Spacing.space2)
-            HStack {
-                Text(MicaStrings.localizedKey("routing.source_order", language: language))
-                Spacer()
-                Text(MicaStrings.localized(
+                memberOrderPicker
+                // The count says how much of the group the current filters
+                // show; sorting only rearranges that copy. Narrow windows
+                // keep the numbers and drop the words.
+                ViewThatFits(in: .horizontal) {
+                    memberCount(presentation, compact: false)
+                    memberCount(presentation, compact: true)
+                }
+                .help(MicaStrings.localized(
                     "routing.member_window \(presentation.members.count) \(presentation.item.memberCount)",
                     language: language
                 ))
             }
-            .micaThemeFont(.caption)
-            .foregroundStyle(MicaTheme.textTertiary)
             .padding(.horizontal, MicaTheme.Spacing.space3)
             .padding(.bottom, MicaTheme.Spacing.space2)
             MicaHairlineSeparator()
@@ -304,7 +300,7 @@ struct WorkbenchPolicyGroupsView: View {
     private func nodeList(_ presentation: ProxyActiveGroupPresentation) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 1) {
+                LazyVStack(spacing: MicaTheme.Spacing.space1 / 2) {
                     if presentation.members.isEmpty {
                         WorkbenchStateView(
                             kind: .filterEmpty,
@@ -314,12 +310,15 @@ struct WorkbenchPolicyGroupsView: View {
                         )
                     }
                     ForEach(presentation.members) { member in
+                        let isInspected = presentation.inspectedMemberID == member.id
                         VStack(spacing: 0) {
                             nodeRow(member, in: presentation)
-                            if presentation.inspectedMemberID == member.id {
+                            if isInspected {
+                                MicaHairlineSeparator()
                                 inlineDetails(member, in: presentation)
                             }
                         }
+                        .modifier(ProxyInspectedNodeFrame(isInspected: isInspected))
                         .id(ProxyProjection.revealTargetID(
                             groupID: presentation.id, memberID: member.id
                         ))
@@ -410,9 +409,14 @@ struct WorkbenchPolicyGroupsView: View {
         _ member: ProxyNodeRowProjection,
         in presentation: ProxyActiveGroupPresentation
     ) -> some View {
-        ProxyInlineNodeDetails(snapshot: ProxyNodeInspectionProjection.snapshot(
-            member: member, in: presentation.occurrence, language: language
-        ))
+        ProxyInlineNodeDetails(
+            snapshot: ProxyNodeInspectionProjection.snapshot(
+                member: member, in: presentation.occurrence, language: language
+            ),
+            history: ProxyNodeInspectionProjection.history(
+                member: member, in: presentation.occurrence
+            )
+        )
         .id(ProxyNodeDetailIdentity(
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation,
@@ -567,6 +571,54 @@ struct WorkbenchPolicyGroupsView: View {
         .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 
+    private func memberCount(_ presentation: ProxyActiveGroupPresentation, compact: Bool) -> some View {
+        Text(
+            compact
+                ? "\(presentation.members.count)/\(presentation.item.memberCount)"
+                : MicaStrings.localized(
+                    "routing.member_window \(presentation.members.count) \(presentation.item.memberCount)",
+                    language: language
+                )
+        )
+        .micaThemeFont(.caption)
+        .monospacedDigit()
+        .foregroundStyle(MicaTheme.textTertiary)
+        .fixedSize()
+    }
+
+    /// Latency sorting is a view of the filtered members; selection, tests,
+    /// and the controller catalog keep the reported order. The icon shows the
+    /// active order so the control stays narrow.
+    private var memberOrderPicker: some View {
+        let title = MicaStrings.localizedKey("routing.member_order", language: language)
+        let current = MicaStrings.localizedKey(memberOrder.titleKey, language: language)
+
+        return Menu {
+            Picker(title, selection: $memberOrder) {
+                ForEach(ProxyMemberOrder.allCases, id: \.rawValue) { order in
+                    Label(
+                        MicaStrings.localizedKey(order.titleKey, language: language),
+                        systemImage: order.systemImage
+                    )
+                    .tag(order)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Label(title, systemImage: memberOrder.systemImage)
+                .labelStyle(.iconOnly)
+        }
+        .menuStyle(.button)
+        .menuIndicator(.visible)
+        .tint(memberOrder == .controller ? nil : MicaTheme.accent)
+        .fixedSize()
+        .help(MicaStrings.localized("format.label_value \(title) \(current)", language: language))
+        .accessibilityLabel(title)
+        .accessibilityValue(current)
+        .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+    }
+
     private var workspace: WorkbenchDestinationWorkspace {
         workspaceStore.workspace(
             controllerID: appModel.selectedRouterID,
@@ -582,6 +634,7 @@ struct WorkbenchPolicyGroupsView: View {
             query: searchText,
             visibility: preferences.globalGroupVisibility,
             healthFilter: healthFilter,
+            memberOrder: memberOrder,
             activity: proxyOperationActivity,
             canClearFixedSelection: appModel.supportsUnifiedAction(.clearFixedSelection)
         )
@@ -935,10 +988,6 @@ struct WorkbenchPolicyGroupsView: View {
         } else {
             appModel.measureDelay(in: groupID, scope: scope)
         }
-    }
-
-    private var canLocateCurrentNode: Bool {
-        currentNavigationSelection != nil && hasCurrentCatalogProjection
     }
 
     private var currentNavigationSelection: WorkbenchProxyNavigationSelection? {

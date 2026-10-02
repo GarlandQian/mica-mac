@@ -77,6 +77,49 @@ enum WorkbenchLogSeverity: String, CaseIterable, Equatable, Sendable {
     }
 }
 
+/// Received-entry counts for the severities worth noticing at a glance.
+/// They cover every retained entry, independent of the level and search
+/// filters, so a filtered view still reports what arrived.
+struct WorkbenchLogSeverityCounts: Equatable, Sendable {
+    static let highlighted: [WorkbenchLogSeverity] = [.error, .warning]
+
+    private(set) var error = 0
+    private(set) var warning = 0
+
+    init() {}
+
+    init(rows: [WorkbenchLogRow]) {
+        for row in rows {
+            switch row.severity {
+            case .error: error += 1
+            case .warning: warning += 1
+            case .info, .debug, .trace: break
+            }
+        }
+    }
+
+    func count(for severity: WorkbenchLogSeverity) -> Int {
+        switch severity {
+        case .error: error
+        case .warning: warning
+        case .info, .debug, .trace: 0
+        }
+    }
+
+    /// The newest visible row of each highlighted severity, scanning from the
+    /// end so a recent match stops the walk early.
+    static func newestRowIDs(in rows: [WorkbenchLogRow]) -> [WorkbenchLogSeverity: String] {
+        var result: [WorkbenchLogSeverity: String] = [:]
+        for row in rows.reversed() where highlighted.contains(row.severity) {
+            if result[row.severity] == nil {
+                result[row.severity] = row.id
+                if result.count == highlighted.count { break }
+            }
+        }
+        return result
+    }
+}
+
 enum WorkbenchLogProjection {
     static func rows(
         from entries: [ControllerLogEntry],

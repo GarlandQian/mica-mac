@@ -9,13 +9,19 @@ struct ProxyNodeDetailIdentity: Hashable {
     let memberID: String
 }
 
+/// Proxies-page composition of the shared node inspection. The active group
+/// header directly above the member list owns group identity, so the node
+/// detail omits only the group name and group type; every other reported
+/// field remains.
 enum ProxyNodeInspectionProjection {
+    static let groupContextFieldIDs: Set<String> = ["group", "group-type"]
+
     static func snapshot(
         member: ProxyNodeRowProjection,
         in occurrence: ProxyGroupOccurrence,
         language: AppLanguage
     ) -> OverviewPolicyInspectionSnapshot {
-        OverviewPolicyInspectionProjection.memberSnapshot(
+        let complete = OverviewPolicyInspectionProjection.memberSnapshot(
             member: OverviewPolicyMemberInspection(
                 name: member.name,
                 groupName: occurrence.group.id,
@@ -28,102 +34,414 @@ enum ProxyNodeInspectionProjection {
             ),
             language: language
         )
+        return OverviewPolicyInspectionSnapshot(
+            kind: complete.kind,
+            title: complete.title,
+            subtitle: complete.subtitle,
+            sections: complete.sections.compactMap { section in
+                let fields = section.fields.filter { !groupContextFieldIDs.contains($0.id) }
+                return fields.isEmpty ? nil : OverviewPolicyInspectionSection(
+                    id: section.id,
+                    titleKey: section.titleKey,
+                    fields: fields
+                )
+            }
+        )
+    }
+
+    static func history(
+        member: ProxyNodeRowProjection,
+        in occurrence: ProxyGroupOccurrence
+    ) -> [ProxyDelayHistorySnapshot] {
+        occurrence.group.detail(for: member.name)?.history ?? []
+    }
+}
+
+/// Arranges one node's inspection into a glanceable summary, capability
+/// tags, and titled cards. It only regroups projected fields: every field in
+/// the snapshot appears exactly once.
+struct ProxyNodeDetailComposition: Equatable {
+    /// Short facts that read best as labeled tags, in presentation order.
+    static let summaryFieldIDs = ["availability", "latency", "type", "provider", "rank"]
+    /// Cards lead with configuration, then runtime, testing, and the rest.
+    static let sectionOrder = ["protocol", "overview", "testing", "reported-fields"]
+
+    let summary: [OverviewPolicyInspectionField]
+    let capabilities: [OverviewPolicyInspectionField]
+    let sections: [OverviewPolicyInspectionSection]
+
+    init(snapshot: OverviewPolicyInspectionSnapshot) {
+        let fields = snapshot.fields
+        summary = Self.summaryFieldIDs.compactMap { id in
+            fields.first { $0.id == id }
+        }
+        let summaryIDs = Set(summary.map(\.id))
+        var capabilities: [OverviewPolicyInspectionField] = []
+        var sections: [OverviewPolicyInspectionSection] = []
+        for section in snapshot.sections {
+            var remaining: [OverviewPolicyInspectionField] = []
+            for field in section.fields where !summaryIDs.contains(field.id) {
+                if section.id == "transport", field.booleanValue != nil {
+                    capabilities.append(field)
+                } else {
+                    remaining.append(field)
+                }
+            }
+            if !remaining.isEmpty {
+                sections.append(OverviewPolicyInspectionSection(
+                    id: section.id,
+                    titleKey: section.titleKey,
+                    fields: remaining
+                ))
+            }
+        }
+        self.capabilities = capabilities
+        self.sections = sections.enumerated().sorted { left, right in
+            let leftRank = Self.sectionOrder.firstIndex(of: left.element.id) ?? Self.sectionOrder.count
+            let rightRank = Self.sectionOrder.firstIndex(of: right.element.id) ?? Self.sectionOrder.count
+            return leftRank == rightRank ? left.offset < right.offset : leftRank < rightRank
+        }.map(\.element)
+    }
+
+    var isEmpty: Bool {
+        summary.isEmpty && capabilities.isEmpty && sections.isEmpty
     }
 }
 
 /// Only the opened row owns parameter views and secret reveal state.
 /// The containing identity changes across member/controller/session boundaries.
 struct ProxyInlineNodeDetails: View {
-    @Environment(\.micaAppLanguage) private var language
     let snapshot: OverviewPolicyInspectionSnapshot
+    var history: [ProxyDelayHistorySnapshot] = []
 
     var body: some View {
+        let composition = ProxyNodeDetailComposition(snapshot: snapshot)
+
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
-            Text(verbatim: snapshot.title)
-                .micaThemeFont(.label, weight: .semibold)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(snapshot.sections) { section in
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                    Text(MicaStrings.localizedKey(section.titleKey, language: language))
-                        .micaThemeFont(.caption, weight: .semibold)
-                        .foregroundStyle(MicaTheme.textSecondary)
-                        .accessibilityAddTraits(.isHeader)
-                    ProxyInlineFieldLayout {
-                        ForEach(section.fields) { field in
-                            WorkbenchPolicyInspectionFieldRow(field: field, layout: .compact)
-                        }
+            if composition.isEmpty {
+                ProxyNodeNoDetails()
+            }
+
+            if !composition.summary.isEmpty || !composition.capabilities.isEmpty {
+                MicaTagFlow(spacing: MicaTheme.Spacing.space1 + 2) {
+                    ForEach(composition.summary) { field in
+                        ProxyNodeSummaryTag(field: field)
                     }
+                    ForEach(composition.capabilities) { field in
+                        ProxyNodeCapabilityTag(field: field)
+                    }
+                }
+            }
+
+            ProxyNodeSectionColumns(spacing: MicaTheme.Spacing.space2) {
+                ForEach(composition.sections) { section in
+                    ProxyNodeDetailCard(
+                        section: section,
+                        history: section.id == "testing" ? history : []
+                    )
                 }
             }
         }
         .padding(MicaTheme.Spacing.space3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaTheme.surfaceRaised.opacity(0.55))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("proxy-inline-details")
     }
 }
 
-/// Two columns only when complete labels and values fit each half. A section
-/// containing long IDs or metadata paths receives the full available width.
-private struct ProxyInlineFieldLayout: Layout {
-    private let columnSpacing: CGFloat = 28
-    private let rowSpacing: CGFloat = MicaTheme.Spacing.space2
+private struct ProxyNodeNoDetails: View {
+    @Environment(\.micaAppLanguage) private var language
 
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
-        let columns = columnCount(width: width, subviews: subviews)
-        let columnWidth = max(0, (width - CGFloat(columns - 1) * columnSpacing) / CGFloat(columns))
-        let heights = rowHeights(columnWidth: columnWidth, columns: columns, subviews: subviews)
-        return CGSize(
-            width: width,
-            height: heights.reduce(0, +) + CGFloat(max(0, heights.count - 1)) * rowSpacing
+    var body: some View {
+        Label {
+            Text(MicaStrings.localizedKey("routing.node_no_details", language: language))
+        } icon: {
+            Image(systemName: "info.circle")
+        }
+        .micaThemeFont(.caption)
+        .foregroundStyle(MicaTheme.textSecondary)
+    }
+}
+
+private struct ProxyNodeSummaryTag: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let field: OverviewPolicyInspectionField
+
+    var body: some View {
+        let label = field.label.resolved(language: language)
+
+        HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space1) {
+            if field.id == "availability" {
+                Circle()
+                    .fill(field.tone.tint)
+                    .frame(width: 6, height: 6)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                    .accessibilityHidden(true)
+            } else {
+                Text(verbatim: label)
+                    .foregroundStyle(MicaTheme.textSecondary)
+            }
+            Text(verbatim: field.value)
+                .micaThemeFont(field.monospaced ? .dataCaption : .caption, weight: .semibold)
+                .foregroundStyle(field.tone == .neutral ? MicaTheme.textPrimary : field.tone.tint)
+                .textSelection(.enabled)
+        }
+        .micaThemeFont(.caption)
+        .lineLimit(1)
+        .padding(.horizontal, MicaTheme.Spacing.space2)
+        .padding(.vertical, 3)
+        .background(MicaTheme.surface, in: Capsule())
+        .help(label)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(label): \(field.value)"))
+    }
+}
+
+/// Reported capabilities read as a checklist: the symbol carries the state,
+/// never color alone, and the localized value stays in help and VoiceOver.
+private struct ProxyNodeCapabilityTag: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let field: OverviewPolicyInspectionField
+
+    var body: some View {
+        let isEnabled = field.booleanValue ?? false
+        let label = field.label.resolved(language: language)
+
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            Image(systemName: isEnabled ? "checkmark" : "xmark")
+                .micaThemeFont(.caption, weight: .bold)
+                .foregroundStyle(isEnabled ? MicaTheme.statusOK : MicaTheme.textTertiary)
+                .accessibilityHidden(true)
+            Text(verbatim: label)
+                .micaThemeFont(.caption, weight: .medium)
+                .foregroundStyle(isEnabled ? MicaTheme.textPrimary : MicaTheme.textSecondary)
+                .strikethrough(!isEnabled, color: MicaTheme.textTertiary)
+        }
+        .lineLimit(1)
+        .padding(.horizontal, MicaTheme.Spacing.space2)
+        .padding(.vertical, 3)
+        .overlay {
+            Capsule().strokeBorder(MicaTheme.separator, lineWidth: MicaTheme.Shape.hairline)
+        }
+        .help("\(label): \(field.value)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(label): \(field.value)"))
+    }
+}
+
+private struct ProxyNodeDetailCard: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let section: OverviewPolicyInspectionSection
+    var history: [ProxyDelayHistorySnapshot] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            Label {
+                Text(MicaStrings.localizedKey(section.titleKey, language: language))
+                    .micaThemeFont(.label, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textPrimary)
+            } icon: {
+                Image(systemName: symbolName)
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.accent)
+            }
+            .accessibilityAddTraits(.isHeader)
+
+            Grid(
+                alignment: .leadingFirstTextBaseline,
+                horizontalSpacing: MicaTheme.Spacing.space3,
+                verticalSpacing: MicaTheme.Spacing.space1 + 2
+            ) {
+                ForEach(section.fields) { field in
+                    ProxyNodeFieldRow(field: field)
+                }
+            }
+
+            if !history.isEmpty {
+                ProxyNodeLatencyHistory(history: history)
+            }
+        }
+        .padding(MicaTheme.Spacing.space3)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .micaCard(cornerRadius: MicaTheme.Metrics.moduleRadius)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var symbolName: String {
+        switch section.id {
+        case "protocol": "network"
+        case "overview": "gauge.with.dots.needle.33percent"
+        case "testing": "stopwatch"
+        case "transport": "checklist"
+        default: "curlybraces"
+        }
+    }
+}
+
+/// One aligned key-value row. Labels share a bounded leading column so values
+/// start at the same edge; long reported keys wrap instead of pushing values.
+private struct ProxyNodeFieldRow: View {
+    @Environment(\.micaAppLanguage) private var language
+    @Environment(\.locale) private var locale
+    @State private var isRevealed = false
+
+    let field: OverviewPolicyInspectionField
+
+    var body: some View {
+        let label = field.label.resolved(language: language)
+        let formattedTime = ProxyNodeTimeFormat.display(field: field, locale: locale)
+
+        GridRow {
+            Text(verbatim: label)
+                .micaThemeFont(.caption)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 124, alignment: .leading)
+                .help(field.reportedKey ?? label)
+
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space1) {
+                PolicyInspectionFieldValue(
+                    field: field,
+                    isRevealed: isRevealed,
+                    displayValue: formattedTime
+                )
+                .help(formattedTime == nil ? "" : field.value)
+                if field.isSensitive {
+                    PolicyInspectionRevealButton(
+                        field: field,
+                        isRevealed: $isRevealed,
+                        showsTitle: false
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onChange(of: field.value) { _, _ in
+            isRevealed = false
+        }
+    }
+}
+
+/// Test timestamps are reported as RFC 3339 text. Present the same instant in
+/// the reader's locale; the reported text stays available as help.
+enum ProxyNodeTimeFormat {
+    static let timeFieldIDs: Set<String> = ["test-time"]
+
+    static func display(field: OverviewPolicyInspectionField, locale: Locale) -> String? {
+        guard timeFieldIDs.contains(field.id), let date = date(from: field.value) else { return nil }
+        return date.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .standard).locale(locale)
         )
     }
 
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        let columns = columnCount(width: bounds.width, subviews: subviews)
-        let columnWidth = max(0, (bounds.width - CGFloat(columns - 1) * columnSpacing) / CGFloat(columns))
-        let heights = rowHeights(columnWidth: columnWidth, columns: columns, subviews: subviews)
-        var y = bounds.minY
-        for (index, subview) in subviews.enumerated() {
-            let column = index % columns
-            let row = index / columns
-            subview.place(
-                at: CGPoint(x: bounds.minX + CGFloat(column) * (columnWidth + columnSpacing), y: y),
-                anchor: .topLeading,
-                proposal: ProposedViewSize(width: columnWidth, height: heights[row])
-            )
-            if column == columns - 1 { y += heights[row] + rowSpacing }
+    static func date(from value: String) -> Date? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let date = try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(trimmed) {
+            return date
         }
+        if let date = try? Date.ISO8601FormatStyle().parse(trimmed) {
+            return date
+        }
+        // Go's RFC 3339 nanosecond form carries more fractional digits than
+        // the ISO 8601 parser accepts; the instant to the second is unchanged.
+        guard let range = trimmed.range(of: #"\.\d+"#, options: .regularExpression) else { return nil }
+        return try? Date.ISO8601FormatStyle().parse(trimmed.replacingCharacters(in: range, with: ""))
+    }
+}
+
+/// The controller's own delay history, oldest to newest. A zero delay is a
+/// reported failure and draws as a short red marker rather than a latency.
+private struct ProxyNodeLatencyHistory: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let history: [ProxyDelayHistorySnapshot]
+
+    private var delays: [Int] {
+        history.compactMap(\.delay)
     }
 
-    private func columnCount(width: CGFloat, subviews: Subviews) -> Int {
-        guard subviews.count > 1 else { return 1 }
-        let halfWidth = (width - columnSpacing) / 2
-        return subviews.allSatisfy { $0.sizeThatFits(.unspecified).width <= halfWidth } ? 2 : 1
-    }
-
-    private func rowHeights(columnWidth: CGFloat, columns: Int, subviews: Subviews) -> [CGFloat] {
-        var heights: [CGFloat] = []
-        for (index, subview) in subviews.enumerated() {
-            let height = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height
-            if index % columns == 0 {
-                heights.append(height)
-            } else {
-                heights[heights.count - 1] = max(heights[heights.count - 1], height)
+    var body: some View {
+        let delays = delays
+        if delays.count >= 2 {
+            let peak = max(delays.max() ?? 1, 1)
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                Text(MicaStrings.localizedKey("routing.delay_history", language: language))
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(Array(delays.enumerated()), id: \.offset) { _, delay in
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(delay > 0 ? OverviewFormat.latencyTint(delay) : MicaTheme.statusError)
+                            .frame(
+                                maxWidth: 14,
+                                minHeight: 3,
+                                maxHeight: delay > 0 ? max(3, 32 * CGFloat(delay) / CGFloat(peak)) : 3
+                            )
+                            .help(delay > 0 ? OverviewFormat.latency(delay) : timeoutLabel)
+                    }
+                }
+                .frame(height: 32, alignment: .bottom)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(MicaStrings.localizedKey("routing.delay_history", language: language))
+            .accessibilityValue(
+                delays.map { $0 > 0 ? OverviewFormat.latency($0) : timeoutLabel }
+                    .joined(separator: ", ")
+            )
         }
-        return heights
+    }
+
+    private var timeoutLabel: String {
+        LatencyHealthGrade.timeout.label(language: language)
+    }
+}
+
+/// Balanced columns for detail cards: two columns once each card can keep a
+/// readable key-value width, otherwise one. Each card joins the shorter
+/// column, preserving section order within a column.
+private struct ProxyNodeSectionColumns: Layout {
+    var spacing: CGFloat
+    var minimumColumnWidth: CGFloat = 300
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? minimumColumnWidth
+        let placement = arrange(width: width, subviews: subviews)
+        return CGSize(width: width, height: placement.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let placement = arrange(width: bounds.width, subviews: subviews)
+        for (index, frame) in placement.frames.enumerated() {
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: frame.width, height: frame.height)
+            )
+        }
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> (frames: [CGRect], height: CGFloat) {
+        let columns = subviews.count > 1 && width >= minimumColumnWidth * 2 + spacing ? 2 : 1
+        let columnWidth = max(0, (width - CGFloat(columns - 1) * spacing) / CGFloat(columns))
+        var heights = Array(repeating: CGFloat(0), count: columns)
+        var frames: [CGRect] = []
+        for subview in subviews {
+            let height = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height
+            let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+            let y = heights[column] == 0 ? 0 : heights[column] + spacing
+            frames.append(CGRect(
+                x: CGFloat(column) * (columnWidth + spacing),
+                y: y,
+                width: columnWidth,
+                height: height
+            ))
+            heights[column] = y + height
+        }
+        return (frames, heights.max() ?? 0)
     }
 }
 
@@ -256,11 +574,11 @@ struct ProxyNodeHoverPreview: View {
     let snapshot: OverviewPolicyInspectionSnapshot
     let size: CGSize
 
+    /// Reported configuration first: it is what the row itself cannot show.
     private var fields: [OverviewPolicyInspectionField] {
         let parameters = snapshot.sections.first { $0.id == "protocol" }?.fields ?? []
         let other = snapshot.fields.filter { field in
-            field.id != "group" && field.id != "group-type"
-                && !parameters.contains(where: { $0.id == field.id })
+            !parameters.contains(where: { $0.id == field.id })
         }
         return Array((parameters + other).prefix(6))
     }
@@ -277,13 +595,8 @@ struct ProxyNodeHoverPreview: View {
         .padding(MicaTheme.Spacing.space3)
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .clipped()
-        .background(MicaTheme.surfaceRaised)
-        .clipShape(RoundedRectangle(cornerRadius: MicaTheme.Metrics.badgeRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: MicaTheme.Metrics.badgeRadius)
-                .stroke(MicaTheme.separator, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.16), radius: 14, y: 5)
+        // A transient layer floating above the member list: glass, not a card.
+        .micaFloatingGlass()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -298,10 +611,13 @@ struct ProxyNodeHoverPreview: View {
                     Text(verbatim: field.label.resolved(language: language))
                         .foregroundStyle(MicaTheme.textSecondary)
                         .lineLimit(1)
-                        .frame(width: 100, alignment: .leading)
+                        .frame(width: 96, alignment: .leading)
                     Text(verbatim: field.displayValue())
+                        .micaThemeFont(field.monospaced ? .dataCaption : .caption, weight: .medium)
+                        .foregroundStyle(field.tone.tint)
                         .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .micaThemeFont(.caption)
             }
@@ -311,5 +627,26 @@ struct ProxyNodeHoverPreview: View {
                 .lineLimit(2)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// An opened node reads as one card: its row is the tinted header and the
+/// detail is the body, framed together instead of floating as a second block.
+struct ProxyInspectedNodeFrame: ViewModifier {
+    let isInspected: Bool
+
+    func body(content: Content) -> some View {
+        if isInspected {
+            let shape = RoundedRectangle(cornerRadius: MicaTheme.Shape.rowRadius, style: .continuous)
+            content
+                .background(MicaTheme.canvas, in: shape)
+                .clipShape(shape)
+                .overlay {
+                    shape.strokeBorder(MicaTheme.accent.opacity(0.45), lineWidth: MicaTheme.Shape.hairline)
+                }
+                .padding(.vertical, MicaTheme.Spacing.space1)
+        } else {
+            content
+        }
     }
 }

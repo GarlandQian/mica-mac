@@ -809,7 +809,7 @@ enum OverviewProjection {
                 id: "port",
                 group: .controllerIdentity,
                 titleKey: "overview.network_port",
-                value: router.port.formatted()
+                value: String(router.port)
             ))
         }
         if metadata.versionLabel != "-" {
@@ -844,10 +844,10 @@ enum OverviewProjection {
         append(value: config.ipv6.map { boolText($0, language: language) }, id: "ipv6", titleKey: "overview.config_ipv6", to: &facts, group: .runtimeAndFeatures, monospaced: false)
         append(value: config.tcpConcurrent.map { boolText($0, language: language) }, id: "tcp-concurrent", titleKey: "overview.config_tcp_concurrent", to: &facts, group: .runtimeAndFeatures, monospaced: false)
         append(value: config.tunEnabled.map { boolText($0, language: language) }, id: "tun", titleKey: "overview.config_tun", to: &facts, group: .runtimeAndFeatures, monospaced: false)
-        append(value: config.port.map { $0.formatted() }, id: "http-port", titleKey: "overview.config_http_port", to: &facts, group: .listenerPorts)
-        append(value: config.socksPort.map { $0.formatted() }, id: "socks-port", titleKey: "overview.config_socks_port", to: &facts, group: .listenerPorts)
-        append(value: config.redirPort.map { $0.formatted() }, id: "redir-port", titleKey: "overview.config_redir_port", to: &facts, group: .listenerPorts)
-        append(value: config.mixedPort.map { $0.formatted() }, id: "mixed-port", titleKey: "overview.config_mixed_port", to: &facts, group: .listenerPorts)
+        append(value: config.port.map { String($0) }, id: "http-port", titleKey: "overview.config_http_port", to: &facts, group: .listenerPorts)
+        append(value: config.socksPort.map { String($0) }, id: "socks-port", titleKey: "overview.config_socks_port", to: &facts, group: .listenerPorts)
+        append(value: config.redirPort.map { String($0) }, id: "redir-port", titleKey: "overview.config_redir_port", to: &facts, group: .listenerPorts)
+        append(value: config.mixedPort.map { String($0) }, id: "mixed-port", titleKey: "overview.config_mixed_port", to: &facts, group: .listenerPorts)
         return facts
     }
 

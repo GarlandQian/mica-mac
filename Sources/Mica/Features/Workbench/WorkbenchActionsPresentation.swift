@@ -197,24 +197,28 @@ struct WorkbenchActionsSnapshot: Equatable {
     }
 }
 
+/// Commands render as cards in up to three columns. A column needs room for a
+/// readable card, there are never more columns than commands, and each card
+/// stays within a comfortable reading width instead of stretching.
 struct WorkbenchActionsLayoutDecision: Equatable, Sendable {
-    static let compactMaximumWidth: CGFloat = 780
-    static let denseMaximumWidth: CGFloat = 1_080
-    static let twoColumnThreshold: CGFloat = 900
+    static let cardMinimumWidth: CGFloat = 260
+    static let cardMaximumWidth: CGFloat = 380
+    static let spacing: CGFloat = 12
+    static let maximumColumns = 3
 
+    let columns: Int
     let maximumContentWidth: CGFloat
-    let usesTwoColumns: Bool
 
     static func resolve(
         commandCount: Int,
         availableWidth: CGFloat
     ) -> WorkbenchActionsLayoutDecision {
-        let isSparse = commandCount <= 4
+        let fitting = Int((availableWidth + spacing) / (cardMinimumWidth + spacing))
+        let columns = max(1, min(fitting, maximumColumns, max(commandCount, 1)))
         return WorkbenchActionsLayoutDecision(
-            maximumContentWidth: isSparse
-                ? compactMaximumWidth
-                : denseMaximumWidth,
-            usesTwoColumns: !isSparse && availableWidth >= twoColumnThreshold
+            columns: columns,
+            maximumContentWidth: CGFloat(columns) * cardMaximumWidth
+                + CGFloat(columns - 1) * spacing
         )
     }
 }

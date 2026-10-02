@@ -205,26 +205,10 @@ struct WorkbenchRootView: View {
             )
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
-                if destination == .overview {
-                    ToolbarItem(placement: .primaryAction) {
-                        OverviewPreferencesToolbarControl()
-                    }
-                }
-
-                if destination.requiresController {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        WorkbenchSessionControlButton(kind: .refresh)
-                        WorkbenchSessionControlButton(kind: .pause)
-                    }
-                }
-
-                if destination.supportsInspector {
-                    ToolbarItem(placement: .primaryAction) {
-                        WorkbenchInspectorToggleButton(
-                            isPresented: inspectorPresentation
-                        )
-                    }
-                }
+                WorkbenchToolbar(
+                    destination: destination,
+                    isInspectorPresented: inspectorPresentation
+                )
             }
             .focusedValue(\.micaFocusedWorkbenchDestination, $destination)
             .background {
@@ -237,6 +221,43 @@ struct WorkbenchRootView: View {
             get: { destination.supportsInspector && workspaceStore.isInspectorPresented },
             set: { workspaceStore.isInspectorPresented = $0 && destination.supportsInspector }
         )
+    }
+}
+
+/// macOS 27 toolbar composition. Refresh and Pause share one Liquid Glass
+/// group, the inspector toggle stands apart after a fixed spacer, and the
+/// optional Overview preferences control is the first to move into the
+/// overflow menu when the window narrows.
+struct WorkbenchToolbar: ToolbarContent {
+    let destination: WorkbenchDestination
+    @Binding var isInspectorPresented: Bool
+
+    var body: some ToolbarContent {
+        if destination == .overview {
+            ToolbarItem(placement: .primaryAction) {
+                OverviewPreferencesToolbarControl()
+            }
+            .visibilityPriority(.low)
+
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+        }
+
+        if destination.requiresController {
+            ToolbarItemGroup(placement: .primaryAction) {
+                WorkbenchSessionControlButton(kind: .refresh)
+                WorkbenchSessionControlButton(kind: .pause)
+            }
+            .visibilityPriority(.high)
+        }
+
+        if destination.supportsInspector {
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+
+            ToolbarItem(placement: .primaryAction) {
+                WorkbenchInspectorToggleButton(isPresented: $isInspectorPresented)
+            }
+            .visibilityPriority(.high)
+        }
     }
 }
 

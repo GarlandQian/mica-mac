@@ -53,12 +53,10 @@ struct OverviewTopologyFocusedPathsView: View {
             }
         }
         .padding(.top, MicaTheme.Spacing.space2)
-        .background(MicaTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: MicaTheme.Shape.panelRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: MicaTheme.Shape.panelRadius)
-                .strokeBorder(MicaTheme.separator, lineWidth: MicaTheme.Shape.hairline)
-        }
+        .micaCard()
+        .clipShape(
+            RoundedRectangle(cornerRadius: MicaTheme.Shape.panelRadius, style: .continuous)
+        )
         .onExitCommand(perform: onReturn)
         .onAppear { selectedPathID = focus.paths.first?.id }
     }

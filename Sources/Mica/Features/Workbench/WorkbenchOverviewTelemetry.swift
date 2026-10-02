@@ -240,8 +240,7 @@ struct OverviewTelemetrySection: View {
                 }
             }
         }
-        .background(MicaTheme.surface.opacity(0.5),
-                    in: RoundedRectangle(cornerRadius: MicaTheme.Metrics.moduleRadius))
+        .micaCard(cornerRadius: MicaTheme.Metrics.moduleRadius)
     }
 
     private func metricReadout(
@@ -289,8 +288,13 @@ struct OverviewTelemetrySection: View {
             }
             .padding(MicaTheme.Spacing.space2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? MicaTheme.surface : .clear,
-                        in: RoundedRectangle(cornerRadius: MicaTheme.Metrics.badgeRadius))
+            .background(
+                isSelected ? MicaTheme.surface : .clear,
+                in: RoundedRectangle(
+                    cornerRadius: MicaTheme.Metrics.moduleRadius,
+                    style: .continuous
+                )
+            )
             .overlay(alignment: .bottom) {
                 if isSelected {
                     Capsule().fill(tint).frame(height: 2)

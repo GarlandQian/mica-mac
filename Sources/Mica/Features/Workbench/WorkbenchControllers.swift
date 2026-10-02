@@ -150,8 +150,7 @@ struct WorkbenchControllersView: View {
         WorkbenchCommandBar {
             WorkbenchManagementHeader(
                 systemImage: "server.rack",
-                titleKey: "sidebar.controllers",
-                detail: MicaStrings.localizedKey("controllers.subtitle", language: language)
+                titleKey: "sidebar.controllers"
             )
         } controls: {
             WorkbenchStatusBadge(
@@ -183,9 +182,14 @@ struct WorkbenchControllersView: View {
     }
 
     private var controllerList: some View {
-        List(filteredProfiles, selection: managementSelectionBinding) { profile in
-            controllerRow(profile)
-                .tag(profile.id)
+        List(selection: managementSelectionBinding) {
+            ForEach(filteredProfiles) { profile in
+                controllerRow(profile)
+                    .tag(profile.id)
+            }
+            // Drag to reorder follows the persisted order, so it is offered
+            // only while the complete, unfiltered list is visible.
+            .onMove(perform: reorderAction)
         }
         .listStyle(.inset)
         .alternatingRowBackgrounds(.disabled)
@@ -197,52 +201,104 @@ struct WorkbenchControllersView: View {
         )
     }
 
+    /// Identity leads; type and live state align in a trailing column, and
+    /// every inactive controller offers the one explicit Use command.
     private func controllerRow(_ profile: RouterProfile) -> some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-            WorkbenchSymbol(
-                systemName: profile.controllerKind.editorSymbol,
-                tint: appModel.selectedRouterID == profile.id
-                    ? MicaTheme.accent : MicaTheme.textSecondary,
-                size: .focus
-            )
-                .padding(.top, 2)
+        let isActive = appModel.selectedRouterID == profile.id
 
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
-                HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space2) {
-                    Text(verbatim: profile.displayName)
-                        .micaThemeFont(.label, weight: .semibold)
-                        .fixedSize(horizontal: false, vertical: true)
+        return HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
+            Image(systemName: profile.controllerKind.editorSymbol)
+                .symbolRenderingMode(.monochrome)
+                .micaThemeFont(.title3, weight: .medium)
+                .foregroundStyle(isActive ? MicaTheme.accent : MicaTheme.textSecondary)
+                .frame(width: 36, height: 36)
+                .background(
+                    isActive ? MicaTheme.accent.opacity(0.14) : MicaTheme.surface,
+                    in: RoundedRectangle(cornerRadius: MicaTheme.Metrics.moduleRadius, style: .continuous)
+                )
+                .accessibilityHidden(true)
 
-                    Spacer(minLength: MicaTheme.Spacing.space2)
-
-                    if appModel.selectedRouterID == profile.id {
-                        activeIndicator(profile)
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
+                    controllerIdentity(profile, isActive: isActive)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    controllerFacts(profile)
+                        .frame(width: 200, alignment: .leading)
                 }
-
-                Text(verbatim: profile.endpointURL)
-                    .micaThemeFont(.dataCaption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-
-                ViewThatFits(in: .horizontal) {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                    controllerIdentity(profile, isActive: isActive)
                     HStack(spacing: MicaTheme.Spacing.space2) {
-                        controllerKindLabel(profile)
-                        Spacer(minLength: MicaTheme.Spacing.space2)
-                        WorkbenchControllerStatusView(profile: profile)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        controllerKindLabel(profile)
-                        WorkbenchControllerStatusView(profile: profile)
+                        controllerFacts(profile)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isActive {
+                WorkbenchStatusBadge(
+                    text: MicaStrings.localizedKey("controllers.active", language: language),
+                    tint: MicaTheme.accent
+                )
+                .fixedSize()
+            } else {
+                WorkbenchControllerUseButton(profile: profile, compact: true)
+            }
         }
         .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
+    }
+
+    private func controllerIdentity(_ profile: RouterProfile, isActive: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: profile.displayName)
+                .micaThemeFont(.body, weight: .semibold)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(verbatim: profile.endpointURL)
+                .micaThemeFont(.dataCaption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(
+            isActive ? MicaStrings.localizedKey("controllers.active", language: language) : ""
+        )
+    }
+
+    private func controllerFacts(_ profile: RouterProfile) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            controllerKindLabel(profile)
+            WorkbenchControllerStatusView(profile: profile)
+        }
+    }
+
+    private var reorderAction: ((IndexSet, Int) -> Void)? {
+        guard searchText.managementNonEmpty == nil else { return nil }
+        return { source, destination in
+            moveProfiles(from: source, to: destination)
+        }
+    }
+
+    private func moveProfiles(from source: IndexSet, to destination: Int) {
+        guard let from = source.first,
+              filteredProfiles.indices.contains(from) else { return }
+        let profile = filteredProfiles[from]
+        let target = destination > from ? destination - 1 : destination
+        guard target != from else { return }
+        Task {
+            do {
+                try await appModel.moveRouter(profile.id, to: target)
+            } catch {
+                appModel.operationState = .error(
+                    AppModel.routerTrialFailureMessage(for: error, language: language),
+                    action: MicaStrings.localizedKey("controllers.reorder", language: language),
+                    target: profile.displayName,
+                    nextStep: MicaStrings.localizedKey("action.retry", language: language)
+                )
+            }
+        }
     }
 
     private func controllerKindLabel(_ profile: RouterProfile) -> some View {
@@ -301,18 +357,6 @@ struct WorkbenchControllersView: View {
             profile.controllerKind.micaLabel(language: language)
         }
         setManagementSelection(next)
-    }
-
-    private func activeIndicator(_ profile: RouterProfile) -> some View {
-        let active = appModel.selectedRouterID == profile.id
-        return Image(systemName: active ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(active ? MicaTheme.accent : .secondary)
-            .accessibilityLabel(
-                MicaStrings.localizedKey(
-                    active ? "controllers.active" : "controllers.inactive",
-                    language: language
-                )
-            )
     }
 }
 
@@ -458,19 +502,7 @@ struct WorkbenchControllerInspector: View {
                 tint: MicaTheme.statusOK
             )
         } else {
-            Button {
-                appModel.selectRouter(profile)
-            } label: {
-                Label(
-                    MicaStrings.localizedKey("controllers.use", language: language),
-                    systemImage: "play.fill"
-                )
-                .labelStyle(.titleAndIcon)
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(MicaTheme.accent)
+            WorkbenchControllerUseButton(profile: profile)
         }
 
         Button {
@@ -841,5 +873,35 @@ private struct WorkbenchConnectionTestStepRow: View {
 
     private var stepValue: some View {
         WorkbenchFormValue(value: value, monospaced: monospaced)
+    }
+}
+
+/// The only command that switches the live controller, shared by list rows
+/// and the inspector so both honor the same explicit-intent path.
+struct WorkbenchControllerUseButton: View {
+    @Environment(AppModel.self) private var appModel
+    @Environment(\.micaAppLanguage) private var language
+
+    let profile: RouterProfile
+    var compact = false
+
+    var body: some View {
+        let title = MicaStrings.localizedKey("controllers.use", language: language)
+
+        Button {
+            appModel.selectRouter(profile)
+        } label: {
+            Label(title, systemImage: "play.fill")
+                .labelStyle(.titleAndIcon)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minHeight: compact ? nil : MicaTheme.Metrics.controlMinHeight)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(compact ? .small : .regular)
+        .tint(MicaTheme.accent)
+        .help(MicaStrings.localized("controllers.use_named \(profile.displayName)", language: language))
+        .accessibilityLabel(
+            MicaStrings.localized("controllers.use_named \(profile.displayName)", language: language)
+        )
     }
 }

@@ -229,6 +229,57 @@ enum ProxyHealthFilter: String, CaseIterable, Equatable, Hashable, Sendable {
     }
 }
 
+/// Display-only member order. Sorting arranges a copy of the filtered rows;
+/// the controller-reported order stays the source of truth and the default.
+enum ProxyMemberOrder: String, CaseIterable, Equatable, Hashable, Sendable {
+    case controller
+    case latency
+
+    var titleKey: String {
+        switch self {
+        case .controller: "routing.source_order"
+        case .latency: "routing.order_latency"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .controller: "list.number"
+        case .latency: "gauge.with.dots.needle.33percent"
+        }
+    }
+
+    func arranged(_ rows: [ProxyNodeRowProjection]) -> [ProxyNodeRowProjection] {
+        guard self == .latency, rows.count > 1 else { return rows }
+        return rows.enumerated()
+            .sorted { lhs, rhs in
+                let left = Self.latencyKey(lhs.element)
+                let right = Self.latencyKey(rhs.element)
+                return left != right ? left < right : lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    /// Measured delays come first from fastest to slowest, then failed or
+    /// timed-out rows, then rows the controller has not tested. Equal keys
+    /// keep the controller order.
+    private static func latencyKey(_ row: ProxyNodeRowProjection) -> LatencyKey {
+        if row.alive != false, let delay = row.delay, delay > 0 {
+            return LatencyKey(bucket: 0, delay: delay)
+        }
+        return LatencyKey(bucket: row.health == .unavailable ? 1 : 2, delay: 0)
+    }
+
+    private struct LatencyKey: Comparable {
+        let bucket: Int
+        let delay: Int
+
+        static func < (lhs: Self, rhs: Self) -> Bool {
+            (lhs.bucket, lhs.delay) < (rhs.bucket, rhs.delay)
+        }
+    }
+}
+
 struct ProxyGroupHealthSummary: Equatable {
     enum Status: String, CaseIterable, Equatable, Hashable, Sendable {
         case healthy
@@ -551,20 +602,23 @@ struct ProxyActiveGroupProjection: Equatable {
     init(
         index: ProxyActiveGroupIndex,
         query: String,
-        healthFilter: ProxyHealthFilter = .all
+        healthFilter: ProxyHealthFilter = .all,
+        order: ProxyMemberOrder = .controller
     ) {
         let needle = ProxySearchText.normalize(query)
         occurrence = index.occurrence
+        let filtered: [ProxyNodeRowProjection]
         if needle.isEmpty, healthFilter == .all {
-            members = index.rows
+            filtered = index.rows
         } else {
-            members = index.records
+            filtered = index.records
                 .filter { record in
                     (needle.isEmpty || record.searchableText.contains(needle))
                         && healthFilter.includes(record.row)
                 }
                 .map(\.row)
         }
+        members = order.arranged(filtered)
     }
 
     private init(

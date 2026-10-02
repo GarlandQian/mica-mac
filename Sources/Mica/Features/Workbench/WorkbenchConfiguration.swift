@@ -18,24 +18,14 @@ struct WorkbenchConfigurationView: View {
 
     private var commandBar: some View {
         WorkbenchCommandBar {
-            WorkbenchManagementHeader(
-                systemImage: "slider.horizontal.3",
-                titleKey: "workbench.configuration",
+            WorkbenchControllerContextHeader(
+                symbolName: appModel.selectedRouter?.controllerKind.editorSymbol ?? "server.rack",
+                name: appModel.selectedRouter?.displayName,
                 detail: appModel.selectedRouter?.endpointURL
-                    ?? MicaStrings.localizedKey(
-                        "configuration.no_controller_detail",
-                        language: language
-                    )
-            )
-        } controls: {
-            WorkbenchStatusBadge(
-                text: MicaStrings.localized(
-                    "overview.config_fields \(visibleConfigurationFieldCount)",
-                    language: language
-                ),
-                tint: configStatus.workbenchTint
             )
         } commands: {
+            // A field count says nothing a reader can act on; failures surface
+            // as the stale notice above the form instead.
             WorkbenchIconCommand(
                 titleKey: "action.refresh",
                 systemImage: "arrow.clockwise",
@@ -137,8 +127,9 @@ struct WorkbenchConfigurationView: View {
                                 .tag(mode)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
+                    // A few modes read best side by side; longer lists stay a menu.
+                    .modifier(WorkbenchChoicePickerStyle(isCompact: modeOptions.count <= 4))
+                    .fixedSize()
                     .disabled(configWriteDisabled)
                 } else {
                     configurationValue(
@@ -267,7 +258,7 @@ struct WorkbenchConfigurationView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
+            .fixedSize()
             .disabled(configWriteDisabled)
         }
     }
@@ -405,34 +396,6 @@ struct WorkbenchConfigurationView: View {
                 && appModel.supportsUnifiedAction(.setTCPConcurrent)
             || appModel.controllerMetadata.config.tunEnabled != nil
                 && appModel.supportsUnifiedAction(.setTUN)
-    }
-
-    private var visibleConfigurationFieldCount: Int {
-        var count = 0
-        if hasModePresentation {
-            count += reportedMode == nil ? 0 : 1
-        }
-        if appModel.controllerMetadata.config.logLevel != nil,
-           appModel.supportsUnifiedAction(.setLogLevel) {
-            count += 1
-        }
-        if appModel.controllerMetadata.config.allowLan != nil,
-           appModel.supportsUnifiedAction(.setAllowLAN) {
-            count += 1
-        }
-        if appModel.controllerMetadata.config.ipv6 != nil,
-           appModel.supportsUnifiedAction(.setIPv6) {
-            count += 1
-        }
-        if appModel.controllerMetadata.config.tcpConcurrent != nil,
-           appModel.supportsUnifiedAction(.setTCPConcurrent) {
-            count += 1
-        }
-        if appModel.controllerMetadata.config.tunEnabled != nil,
-           appModel.supportsUnifiedAction(.setTUN) {
-            count += 1
-        }
-        return count + reportedPorts.count + (hasTailscalePresentation ? 1 : 0)
     }
 
     private var hasTailscalePresentation: Bool {
@@ -603,5 +566,21 @@ private struct WorkbenchPortField: View {
     private func commit() {
         guard !disabled, let parsedValue, parsedValue != value else { return }
         onCommit(parsedValue)
+    }
+}
+
+/// Segmented while every choice fits at a glance, otherwise a native menu.
+struct WorkbenchChoicePickerStyle: ViewModifier {
+    let isCompact: Bool
+
+    func body(content: Content) -> some View {
+        if isCompact {
+            content
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+        } else {
+            content.pickerStyle(.menu)
+        }
     }
 }

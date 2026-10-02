@@ -208,6 +208,9 @@ struct OverviewPolicyInspectionField: Identifiable, Equatable {
     var monospaced = false
     var isSensitive = false
     var reportedKey: String? = nil
+    /// The reported boolean behind a localized Enabled/Disabled value, so
+    /// capability presentations can show state without parsing copy.
+    var booleanValue: Bool? = nil
 
     func displayValue(revealingSensitiveValue: Bool = false) -> String {
         isSensitive && !revealingSensitiveValue ? "••••••••" : value
@@ -495,7 +498,8 @@ enum OverviewPolicyInspectionProjection {
             OverviewPolicyInspectionField(
                 id: "transport.\(capability.id)",
                 label: .verbatim(capability.name),
-                value: localizedBoolean(capability.isEnabled, language: language)
+                value: localizedBoolean(capability.isEnabled, language: language),
+                booleanValue: capability.isEnabled
             )
         }
         appendSection(
@@ -1021,7 +1025,26 @@ struct WorkbenchPolicyInspectionFieldRow: View {
     }
 
     private var fieldValue: some View {
-        Text(verbatim: field.displayValue(revealingSensitiveValue: isRevealed))
+        PolicyInspectionFieldValue(field: field, isRevealed: isRevealed)
+    }
+
+    private var revealButton: some View {
+        PolicyInspectionRevealButton(field: field, isRevealed: $isRevealed)
+    }
+}
+
+/// The one sensitive-value renderer: hidden by default, selectable when
+/// revealed, and never announcing a secret VoiceOver has not been asked for.
+struct PolicyInspectionFieldValue: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let field: OverviewPolicyInspectionField
+    let isRevealed: Bool
+    var displayValue: String? = nil
+
+    var body: some View {
+        Text(verbatim: displayValue.map { hidesValue ? field.displayValue() : $0 }
+            ?? field.displayValue(revealingSensitiveValue: isRevealed))
             .micaThemeFont(
                 field.monospaced ? .dataCaption : .caption,
                 weight: .medium
@@ -1030,13 +1053,25 @@ struct WorkbenchPolicyInspectionFieldRow: View {
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             .accessibilityLabel(
-                field.isSensitive && !isRevealed
+                hidesValue
                     ? MicaStrings.localizedKey("routing.node_parameter_hidden", language: language)
                     : field.value
             )
     }
 
-    private var revealButton: some View {
+    private var hidesValue: Bool {
+        field.isSensitive && !isRevealed
+    }
+}
+
+struct PolicyInspectionRevealButton: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let field: OverviewPolicyInspectionField
+    @Binding var isRevealed: Bool
+    var showsTitle = true
+
+    var body: some View {
         Button {
             isRevealed.toggle()
         } label: {
@@ -1047,9 +1082,16 @@ struct WorkbenchPolicyInspectionFieldRow: View {
                 ),
                 systemImage: isRevealed ? "eye.slash" : "eye"
             )
+            .labelStyle(RevealLabelStyle(showsTitle: showsTitle))
             .micaThemeFont(.caption)
         }
         .buttonStyle(.borderless)
+        .help(
+            MicaStrings.localizedKey(
+                isRevealed ? "routing.node_parameter_hide" : "routing.node_parameter_show",
+                language: language
+            )
+        )
         .accessibilityLabel(
             MicaStrings.localized(
                 isRevealed
@@ -1059,9 +1101,21 @@ struct WorkbenchPolicyInspectionFieldRow: View {
             )
         )
     }
+
+    private struct RevealLabelStyle: LabelStyle {
+        let showsTitle: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            if showsTitle {
+                Label(configuration)
+            } else {
+                configuration.icon
+            }
+        }
+    }
 }
 
-private extension OverviewPolicyInspectionField.Tone {
+extension OverviewPolicyInspectionField.Tone {
     var tint: Color {
         switch self {
         case .neutral: MicaTheme.textPrimary

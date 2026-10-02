@@ -16,6 +16,79 @@ extension WorkbenchLogSeverity {
 
 // MARK: - Logs
 
+/// Error and warning totals for everything received, each a shortcut to the
+/// newest matching entry still visible under the current filters.
+private struct WorkbenchLogSeverityCountChips: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let counts: WorkbenchLogSeverityCounts
+    let newestRowIDs: [WorkbenchLogSeverity: String]
+    let reveal: (WorkbenchLogSeverity) -> Void
+
+    var body: some View {
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            ForEach(WorkbenchLogSeverityCounts.highlighted, id: \.self) { severity in
+                chip(severity)
+            }
+        }
+        .fixedSize()
+    }
+
+    private func chip(_ severity: WorkbenchLogSeverity) -> some View {
+        let count = counts.count(for: severity)
+        let title = MicaStrings.localizedKey(severity.titleKey, language: language)
+        let canReveal = newestRowIDs[severity] != nil
+        let help = MicaStrings.localizedKey(
+            count == 0 ? "traffic.severity_none"
+                : canReveal ? severity.revealHelpKey : "traffic.severity_filtered",
+            language: language
+        )
+
+        return Button {
+            reveal(severity)
+        } label: {
+            HStack(spacing: MicaTheme.Spacing.space1) {
+                Circle()
+                    .fill(count > 0 ? severity.tint : MicaTheme.textTertiary.opacity(0.5))
+                    .frame(width: 7, height: 7)
+                Text(verbatim: title)
+                Text(verbatim: String(count))
+                    .monospacedDigit()
+                    .fontWeight(.semibold)
+            }
+            .micaThemeFont(.caption)
+            .foregroundStyle(count > 0 ? MicaTheme.textPrimary : MicaTheme.textTertiary)
+            .padding(.horizontal, MicaTheme.Spacing.space2)
+            .padding(.vertical, 3)
+            .background(
+                count > 0 ? severity.tint.opacity(0.12) : MicaTheme.surface,
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!canReveal)
+        .help(help)
+        .accessibilityLabel(Text(verbatim: "\(title) \(count)"))
+        .accessibilityHint(Text(verbatim: help))
+    }
+}
+
+private extension WorkbenchLogSeverity {
+    var titleKey: String {
+        switch self {
+        case .error: "log_type.error"
+        case .warning: "log_type.warning"
+        case .info: "log_type.info"
+        case .debug: "log_type.debug"
+        case .trace: "log_type.trace"
+        }
+    }
+
+    var revealHelpKey: String {
+        self == .error ? "traffic.reveal_newest_error" : "traffic.reveal_newest_warning"
+    }
+}
+
 struct WorkbenchLogsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
@@ -73,17 +146,26 @@ struct WorkbenchLogsView: View {
             generation: appModel.controllerSessionPresentation.generation
         )
         return WorkbenchCommandBar {
-            WorkbenchCommandSummary(
-                symbolName: "text.alignleft",
-                titleKey: "dashboard.tab_logs",
-                value: String(model.rows.count),
-                detail: appModel.dashboardSessionControls.logsPresentationPaused
-                    ? MicaStrings.localizedKey(
-                        "traffic.log_presentation_paused_detail",
-                        language: language
+            HStack(spacing: MicaTheme.Spacing.space3) {
+                WorkbenchCommandSummary(
+                    symbolName: "text.alignleft",
+                    titleKey: "dashboard.tab_logs",
+                    value: String(model.rows.count),
+                    detail: appModel.dashboardSessionControls.logsPresentationPaused
+                        ? MicaStrings.localizedKey(
+                            "traffic.log_presentation_paused_detail",
+                            language: language
+                        )
+                        : nil
+                )
+                if supportsLogs {
+                    WorkbenchLogSeverityCountChips(
+                        counts: model.severityCounts,
+                        newestRowIDs: model.newestRowIDsBySeverity,
+                        reveal: { model.revealNewest($0) }
                     )
-                    : nil
-            )
+                }
+            }
         } controls: {
             Picker(
                 MicaStrings.localizedKey("traffic.log_level", language: language),
@@ -102,9 +184,12 @@ struct WorkbenchLogsView: View {
                         .tag(level)
                 }
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
+            // The level decides what Mica subscribes to (and, on Surge, the
+            // controller's own level); every level stays one click away.
+            .modifier(WorkbenchChoicePickerStyle(isCompact: availableLogLevels.count <= 6))
+            .fixedSize()
             .disabled(appModel.selectedRouter == nil || appModel.isBusy || !canAdjustLogLevel)
+            .help(MicaStrings.localizedKey("traffic.log_level_help", language: language))
             .accessibilityLabel(
                 MicaStrings.localizedKey("traffic.log_level", language: language)
             )
@@ -116,10 +201,15 @@ struct WorkbenchLogsView: View {
             )
 
             Toggle(
-                MicaStrings.localizedKey("traffic.follow_bottom", language: language),
                 isOn: Binding(get: { model.followsNewest }, set: { model.setFollowing($0) })
-            )
-            .toggleStyle(.checkbox)
+            ) {
+                Label(
+                    MicaStrings.localizedKey("traffic.follow_bottom", language: language),
+                    systemImage: "arrow.down.to.line"
+                )
+            }
+            .toggleStyle(.button)
+            .controlSize(.small)
             .disabled(!supportsLogs)
             .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         } commands: {
@@ -135,7 +225,7 @@ struct WorkbenchLogsView: View {
                 appModel.toggleControllerLogsPaused()
             }
 
-            WorkbenchIconCommand(
+            WorkbenchLabeledCommand(
                 titleKey: "traffic.clear_logs",
                 systemImage: "trash",
                 isEnabled: supportsLogs && model.sourceCount > 0 && !appModel.isBusy,

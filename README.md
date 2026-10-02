@@ -1,73 +1,56 @@
 # Mica
 
-Mica is a native macOS workbench for user-managed remote controllers. It connects to controller APIs that the user has already enabled; it does not download, bundle, start, or supervise a local core.
+Mica is a native macOS workbench for monitoring and managing remote controller APIs that you configure and operate. It connects to an existing controller; it does not download, bundle, launch, or supervise a local core.
 
-## Current Workbench
+## What you can do
 
-The main window is a single native `NavigationSplitView` with these ten
-destinations:
+- Review live traffic, connections, logs, rules, sources, and controller health.
+- Inspect proxy groups, nodes, and reported route paths.
+- Manage controller profiles and use the operations supported by the selected runtime.
+- Move between ten workspaces in one native window. Application preferences live in the separate macOS Settings window.
 
-1. Overview
-2. Proxies
-3. Connections
-4. Logs
-5. Rules
-6. Sources
-7. Controllers
-8. Configuration
-9. Actions
-10. Diagnostics
+The workspaces are grouped in the sidebar:
 
-The sidebar groups these destinations into Workspace, Monitor, and Controller. Native
-application Settings is separate and opens from the app menu; it is not a
-Workbench destination. Policy groups expand inline and preserve controller
-order. Node selection, latency tests, connection inspection, and source
-inspection stay in the same window rather than opening ordinary sheets or
-popovers.
+| Group | Workspaces |
+| --- | --- |
+| Workspace | Overview, Proxies, Connections, Rules, Sources |
+| Monitor | Logs, Diagnostics |
+| Controller | Controllers, Configuration, Actions |
 
-## Data Contract
+## Supported controllers
 
-- Active workspaces show controller-reported business data in full: endpoint, host, request URL, IDs, provider/source names, policy and node names, rule payloads, route chains, and log messages.
-- Missing fields render as localized unavailable or not-reported values. Mica does not invent counts, delays, rows, hit rates, or chart samples.
-- Charts are allowed only when a real time series exists.
-- Copied diagnostics exclude credentials, authorization headers, subscription URLs, Keychain contents, raw response bodies, and raw stream bodies.
+| Controller API | Connection |
+| --- | --- |
+| Mihomo-compatible APIs | Supports Mihomo, Nikki, OpenClash, CMFA, and Stash profiles, with capabilities depending on the runtime |
+| Surge | HTTP API with a user-provided `X-Key` |
+| sing-box | StartedService over gRPC with optional Bearer authentication |
 
-## Controller Support
+Auto Detect identifies a supported runtime before enabling its operations. See the [controller compatibility guide](docs/CONTROLLER_COMPATIBILITY.md) for supported operations and runtime-specific limits.
 
-- Mihomo-compatible external-controller APIs, including Nikki, OpenClash, CMFA,
-  and Stash profiles, with runtime-specific capability boundaries.
-- Surge HTTP API through user-provided `X-Key` access.
-- sing-box StartedService over gRPC, including capability-gated status, policy,
-  connection, log, and Tailscale operations.
-- Auto Detect resolves a supported runtime before exposing its commands; unknown
-  or unsupported capabilities remain visibly unavailable.
+## Data and system boundaries
 
-Tailscale is a readiness- and capability-gated section in Configuration, not a
-top-level destination. Mica never treats shared transport code as proof that a
-controller family supports every operation.
-
-Mica does not modify macOS proxy settings, environment variables, firewall rules, OpenWrt/LuCI, SSH, or `ubus` state.
-
-## Interface
-
-- English, Simplified Chinese, and Follow System language modes.
-- Follow System, Light, and Dark appearance modes.
-- Standard, Comfortable, Large, and Extra Large interface text sizes.
-- Shared native typography, neutral surfaces, and the macOS accent preference.
-- Native toolbar commands, keyboard navigation, SF Symbols, VoiceOver labels, and font-aware sidebar/table layouts.
+- Mica presents controller-reported data and preserves its order. Missing values remain visibly unavailable; charts appear only when a real time series is available.
+- Diagnostic copies exclude credentials, authorization headers, subscription URLs, Keychain contents, and raw response or stream bodies.
+- Mica does not change macOS proxy settings, environment variables, firewall rules, OpenWrt/LuCI, SSH, or `ubus` state.
 
 ## Requirements
 
-- macOS 27 or newer.
-- Swift 6.2 toolchain or a compatible Xcode release.
-- Node.js for source and runtime contract scripts.
-- A controller that you operate and authorize yourself.
+- macOS 27 or later
+- Swift 6.2 or Xcode 27 to build from source
+- Node.js to run the source-contract verification script
 
-## Development
+## Build and run
 
-Disposable output belongs under `tmp/codex/`.
+Build and launch the app with Swift Package Manager:
 
-Default offline checks:
+```bash
+swift build --scratch-path tmp/codex/swift-build
+swift run --scratch-path tmp/codex/swift-build Mica
+```
+
+## Development checks
+
+Run the source and localization checks, then build and test:
 
 ```bash
 node --check scripts/verify-real-controller-source.mjs
@@ -78,22 +61,12 @@ swift build --scratch-path tmp/codex/swift-build
 swift test --scratch-path tmp/codex/swift-build
 ```
 
-Runtime smoke is an explicitly authorized opt-in check, separate from the
-default gate:
-
-```bash
-node --check scripts/verify-runtime-smoke.mjs
-node scripts/verify-runtime-smoke.mjs tmp/codex/swift-build/debug/Mica
-```
-
-The smoke probe exits before `AppModel` is created and does not access a
-controller, launch a core, or modify system networking. Run it only when the
-user or task explicitly permits runtime smoke.
+See the [development guide](docs/DEVELOPMENT.md) for UI rendering, performance measurements, and optional runtime smoke instructions.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Controller Data Model](docs/DATA_MODEL.md)
-- [Controller Compatibility](docs/CONTROLLER_COMPATIBILITY.md)
-- [UI Guidelines](docs/UI_GUIDELINES.md)
-- [Development Workflow](docs/DEVELOPMENT.md)
+- [Controller data model](docs/DATA_MODEL.md)
+- [Controller compatibility](docs/CONTROLLER_COMPATIBILITY.md)
+- [UI guidelines](docs/UI_GUIDELINES.md)
+- [Development workflow](docs/DEVELOPMENT.md)

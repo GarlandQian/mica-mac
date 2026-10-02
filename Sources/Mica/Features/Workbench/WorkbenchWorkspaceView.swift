@@ -142,7 +142,6 @@ struct WorkbenchInspectorContainer: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(MicaTheme.surfaceRaised)
     }
 
     /// Connection detail resolved live through the destination's registered
@@ -244,8 +243,7 @@ struct WorkbenchInspectorContainer: View {
 }
 
 /// Toolbar toggle for the workspace inspector (macOS trailing-sidebar idiom).
-/// The engaged state tints with the accent token: accent marks selection and
-/// active state only (design.md §2).
+/// A native toggle lets the Liquid Glass toolbar draw its own engaged state.
 struct WorkbenchInspectorToggleButton: View {
     @Environment(\.micaAppLanguage) private var language
 
@@ -257,21 +255,11 @@ struct WorkbenchInspectorToggleButton: View {
             language: language
         )
 
-        Button {
-            isPresented.toggle()
-        } label: {
-            Image(systemName: "sidebar.trailing")
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(isPresented ? MicaTheme.accent : .primary)
-                .frame(
-                    width: MicaTheme.Metrics.iconControlSize,
-                    height: MicaTheme.Metrics.iconControlSize
-                )
-                .contentShape(Rectangle())
+        Toggle(isOn: $isPresented) {
+            Label(title, systemImage: "sidebar.trailing")
         }
-        .buttonStyle(.borderless)
+        .toggleStyle(.button)
         .help(title)
         .accessibilityLabel(Text(title))
-        .accessibilityAddTraits(isPresented ? .isSelected : [])
     }
 }

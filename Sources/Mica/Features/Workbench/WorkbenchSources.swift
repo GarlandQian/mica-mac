@@ -106,7 +106,7 @@ struct WorkbenchSourcesView: View {
                 titleKey: "snapshot.loading"
             )
         } commands: {
-            WorkbenchIconCommand(
+            WorkbenchLabeledCommand(
                 titleKey: "action.provider_update_all",
                 systemImage: "arrow.triangle.2.circlepath",
                 isEnabled: canUpdateAll

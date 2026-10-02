@@ -134,6 +134,49 @@ struct WorkbenchManagementHeader: View {
     }
 }
 
+/// Command-bar identity for pages that act on the active controller. The
+/// toolbar already names the page, so the bar names the target instead.
+struct WorkbenchControllerContextHeader: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let symbolName: String
+    let name: String?
+    let detail: String?
+    var fallbackKey = "configuration.no_controller_detail"
+
+    var body: some View {
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            Image(systemName: symbolName)
+                .symbolRenderingMode(.monochrome)
+                .micaThemeFont(.label, weight: .semibold)
+                .foregroundStyle(MicaTheme.accent)
+                .frame(width: 26, height: 26)
+                .background(
+                    MicaTheme.accent.opacity(0.14),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: name?.managementNonEmpty
+                    ?? MicaStrings.localizedKey(fallbackKey, language: language))
+                    .micaThemeFont(.label, weight: .semibold)
+                    .lineLimit(1)
+                if let detail = detail?.managementNonEmpty {
+                    Text(verbatim: detail)
+                        .micaThemeFont(.dataCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .help(detail)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct WorkbenchManagementInlineState: View {
     let systemImage: String
     let title: String
@@ -210,9 +253,12 @@ struct WorkbenchFormRow<Control: View>: View {
                     controlColumn
                 }
             } else {
-                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+                // System Settings layout: the label leads, the control owns
+                // the trailing edge, and the two meet in the middle.
+                HStack(alignment: .center, spacing: MicaTheme.Spacing.space4) {
                     label
-                        .frame(width: MicaTheme.Metrics.formLabelWidth, alignment: .leading)
+                        .frame(minWidth: MicaTheme.Metrics.formLabelWidth, alignment: .leading)
+                        .layoutPriority(1)
                     controlColumn
                 }
             }
@@ -248,25 +294,30 @@ struct WorkbenchFormRow<Control: View>: View {
         }
         .frame(
             maxWidth: .infinity,
-            alignment: .leading
+            alignment: usesStackedLayout ? .leading : .trailing
         )
         .labelsHidden()
     }
 }
 
 struct WorkbenchFormValue: View {
+    @Environment(\.workbenchManagementWidthMode) private var widthMode
+
     let value: String
     var monospaced = false
     var placeholder = false
 
     var body: some View {
+        let alignment: Alignment = widthMode == .compact ? .leading : .trailing
+
         Text(verbatim: value)
             .micaThemeFont(monospaced ? .dataBody : .body)
             .foregroundStyle(placeholder ? .secondary : .primary)
             .lineLimit(nil)
+            .multilineTextAlignment(widthMode == .compact ? .leading : .trailing)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: alignment)
     }
 }
 

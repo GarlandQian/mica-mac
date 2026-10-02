@@ -256,6 +256,9 @@ final class AppModel {
     var persistedStateLoadFailed = false
     var failedSecretRouterIDs: Set<RouterProfile.ID> = []
     @ObservationIgnored var mainWindowCount = 0
+    /// The menu bar item keeps the live session running after the last
+    /// workbench window closes, like an open window does.
+    @ObservationIgnored var menuBarHoldsLiveSession = false
     @ObservationIgnored var sessionSuspendedForSleep = false
 
     private var localizationLocale: Locale {

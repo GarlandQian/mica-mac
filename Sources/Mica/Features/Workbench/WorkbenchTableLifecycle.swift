@@ -4,7 +4,6 @@ import SwiftUI
 @MainActor
 final class WorkbenchNativeTableLifecycle {
     enum Edge { case before, after }
-    private enum Interaction { case idle, gesture, wheel }
 
     private weak var before: NSView?
     private weak var after: NSView?
@@ -19,8 +18,7 @@ final class WorkbenchNativeTableLifecycle {
     private var lastScrollGeometry: CGRect?
     private var scrollCorrections = 0
     private var liveScrollObservations: [NSObjectProtocol] = []
-    private var interaction: Interaction = .idle
-    private var wheelIdleDeadline: ContinuousClock.Instant?
+    private var interaction = WorkbenchScrollInteractionState()
     private var wheelIdleTask: Task<Void, Never>?
     private var wheelIdleGeneration: UInt64 = 0
     private var isCorrectingScroll = false
@@ -209,21 +207,16 @@ final class WorkbenchNativeTableLifecycle {
     private func beginGesture() {
         cancelWheelIdle()
         cancelPendingScroll()
-        let wasIdle = interaction == .idle
-        interaction = .gesture
-        if wasIdle { onInteraction(.began) }
+        if let transition = interaction.beginGesture() { onInteraction(transition) }
     }
 
     private func didScroll(table: NSTableView) {
         // A trackpad's explicit begin/end also brackets momentum. A quiet gap
         // must not end that session. NSScrollView documents that legacy mice
         // can emit didLive without a willStart/didEnd pair.
-        guard interaction != .gesture else { return }
-        let wasIdle = interaction == .idle
-        if wasIdle { cancelPendingScroll() }
-        interaction = .wheel
-        wheelIdleDeadline = ContinuousClock.now.advanced(by: .milliseconds(150))
-        if wasIdle { onInteraction(.began) }
+        guard interaction.phase != .gesture else { return }
+        if interaction.phase == .idle { cancelPendingScroll() }
+        if let transition = interaction.didScroll(at: .now) { onInteraction(transition) }
         guard wheelIdleTask == nil else { return }
         let generation = wheelIdleGeneration
         wheelIdleTask = Task { @MainActor [weak self, weak table] in
@@ -231,19 +224,16 @@ final class WorkbenchNativeTableLifecycle {
             // deadline; they do not cancel and allocate a task per event.
             while !Task.isCancelled {
                 guard let self, let table, self.table === table,
-                      table.window != nil, self.interaction == .wheel,
+                      table.window != nil,
                       generation == self.wheelIdleGeneration,
-                      let deadline = self.wheelIdleDeadline else { return }
-                if deadline > ContinuousClock.now {
-                    do { try await Task.sleep(until: deadline, clock: .continuous) }
-                    catch { return }
-                    continue
+                      let deadline = self.interaction.wheelIdleDeadline else { return }
+                if let transition = self.interaction.wheelIdleElapsed(at: .now) {
+                    self.wheelIdleTask = nil
+                    self.onInteraction(transition)
+                    return
                 }
-                self.wheelIdleTask = nil
-                self.wheelIdleDeadline = nil
-                self.interaction = .idle
-                self.onInteraction(.ended)
-                return
+                do { try await Task.sleep(until: deadline, clock: .continuous) }
+                catch { return }
             }
         }
     }
@@ -252,14 +242,11 @@ final class WorkbenchNativeTableLifecycle {
         wheelIdleGeneration &+= 1
         wheelIdleTask?.cancel()
         wheelIdleTask = nil
-        wheelIdleDeadline = nil
     }
 
     private func finishInteraction() {
         cancelWheelIdle()
-        guard interaction != .idle else { return }
-        interaction = .idle
-        onInteraction(.ended)
+        if let transition = interaction.finish() { onInteraction(transition) }
     }
 
     private func stopObservingFrame() {

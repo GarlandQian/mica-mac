@@ -8,6 +8,7 @@ final class AppPreferencesStore: ObservableObject {
     static let appearanceKey = "appAppearance"
     static let fontScaleKey = "appFontScale"
     static let globalGroupVisibilityKey = "globalGroupVisibility"
+    static let showsMenuBarExtraKey = "showsMenuBarExtra"
 
     @Published var language: AppLanguage {
         didSet {
@@ -35,6 +36,17 @@ final class AppPreferencesStore: ObservableObject {
         }
     }
 
+    /// Shows live rates and policy switching in the menu bar; while shown it
+    /// keeps the live session running after the last window closes.
+    @Published var showsMenuBarExtra: Bool {
+        didSet {
+            guard defaults.object(forKey: Self.showsMenuBarExtraKey) as? Bool != showsMenuBarExtra else {
+                return
+            }
+            defaults.set(showsMenuBarExtra, forKey: Self.showsMenuBarExtraKey)
+        }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -43,6 +55,7 @@ final class AppPreferencesStore: ObservableObject {
         self.appearance = AppAppearance.stored(defaults.string(forKey: Self.appearanceKey))
         self.fontScale = AppFontScale.stored(defaults.string(forKey: Self.fontScaleKey))
         self.globalGroupVisibility = GlobalGroupVisibility.stored(defaults.string(forKey: Self.globalGroupVisibilityKey))
+        self.showsMenuBarExtra = defaults.object(forKey: Self.showsMenuBarExtraKey) as? Bool ?? true
 
         Bundle.setMicaLocalizationLanguage(MicaStrings.resolvedLanguageCode(for: language))
         appearance.applyToApplication()

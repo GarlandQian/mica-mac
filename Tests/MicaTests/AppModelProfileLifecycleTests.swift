@@ -411,6 +411,41 @@ struct AppModelProfileLifecycleTests {
         #expect(model.controllerSession.controllerID == failed.id)
     }
 
+    @Test func menuBarHoldsTheLiveSessionAfterTheLastWindowCloses() async {
+        let selected = profile("A")
+        let fixture = ProfileLifecycleFixture(
+            profileStore: LifecycleProfileStore(profiles: [selected])
+        )
+        defer { fixture.finish() }
+        let model = fixture.model
+
+        model.menuBarExtraDidAppear()
+        await model.loadTask?.value
+        #expect(model.didFinishLoadingPersistedState)
+        #expect(model.controllerSession.controllerID == selected.id)
+        let generation = model.controllerSession.generation
+
+        model.mainWindowDidAppear()
+        model.mainWindowDidDisappear()
+        #expect(model.controllerSession.controllerID == selected.id)
+        #expect(model.controllerSession.generation == generation)
+
+        model.menuBarExtraDidAppear()
+        #expect(model.controllerSession.generation == generation)
+
+        model.menuBarExtraDidDisappear()
+        #expect(model.controllerSession.controllerID == nil)
+        #expect(!model.hasLiveSessionHolder)
+
+        model.mainWindowDidAppear()
+        #expect(model.controllerSession.controllerID == selected.id)
+        model.menuBarExtraDidAppear()
+        model.mainWindowDidDisappear()
+        #expect(model.controllerSession.controllerID == selected.id)
+        model.menuBarExtraDidDisappear()
+        #expect(model.controllerSession.controllerID == nil)
+    }
+
     @Test func closingWindowsBeforeLoadCompletesDoesNotStartSession() async {
         let selected = profile("A", withSecret: true)
         let secrets = LifecycleSecretStore(

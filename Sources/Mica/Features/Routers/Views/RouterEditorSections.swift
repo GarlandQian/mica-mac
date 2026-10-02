@@ -24,7 +24,8 @@ extension RouterEditorView {
                     selection: $draft.controllerKind
                 ) {
                     ForEach(ControllerKind.editableCases, id: \.self) { kind in
-                        Text(kind.micaLabel(language: appLanguage)).tag(kind)
+                        Label(kind.micaLabel(language: appLanguage), systemImage: kind.editorSymbol)
+                            .tag(kind)
                     }
                 }
                 .pickerStyle(.menu)
@@ -86,50 +87,76 @@ extension RouterEditorView {
         }
 
         Section {
-            WorkbenchFormRow("editor.scheme") {
-                Picker(
-                    MicaStrings.localizedKey("editor.scheme", language: appLanguage),
-                    selection: $draft.scheme
-                ) {
-                    ForEach(ControllerScheme.allCases, id: \.self) { scheme in
-                        Text(scheme.displayToken).tag(scheme)
+            // Scheme, host, and port read as the one URL they build, with the
+            // resulting endpoint echoed below as it is typed.
+            WorkbenchFormRow("editor.address") {
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                    HStack(spacing: MicaTheme.Spacing.space1) {
+                        Picker(
+                            MicaStrings.localizedKey("editor.scheme", language: appLanguage),
+                            selection: $draft.scheme
+                        ) {
+                            ForEach(ControllerScheme.allCases, id: \.self) { scheme in
+                                Text(scheme.displayToken).tag(scheme)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .fixedSize()
+                        .help(MicaStrings.localizedKey("editor.help_scheme", language: appLanguage))
+                        .accessibilityLabel(
+                            MicaStrings.localizedKey("editor.acc_scheme", language: appLanguage)
+                        )
+
+                        TextField(
+                            "",
+                            text: $draft.host,
+                            prompt: Text(
+                                MicaStrings.localizedKey(
+                                    "editor.host_prompt",
+                                    language: appLanguage
+                                )
+                            )
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .textContentType(.URL)
+                        .frame(minWidth: 140, maxWidth: MicaTheme.Metrics.formControlMax)
+                        .help(MicaStrings.localizedKey("editor.help_host", language: appLanguage))
+                        .accessibilityLabel(
+                            MicaStrings.localizedKey("editor.acc_host", language: appLanguage)
+                        )
+
+                        Text(verbatim: ":")
+                            .micaThemeFont(.dataLabel)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+
+                        TextField(
+                            "",
+                            text: $draft.portText,
+                            prompt: Text(verbatim: MicaStrings.localizedKey("editor.port", language: appLanguage))
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 76)
+                        .help(MicaStrings.localizedKey("editor.help_port", language: appLanguage))
+                        .accessibilityLabel(
+                            MicaStrings.localizedKey("editor.acc_port", language: appLanguage)
+                        )
+                    }
+
+                    if !draft.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label {
+                            Text(verbatim: draft.controllerURLLabel)
+                                .micaThemeFont(.dataCaption)
+                                .textSelection(.enabled)
+                        } icon: {
+                            Image(systemName: "link")
+                        }
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
                     }
                 }
-                .pickerStyle(.menu)
-                .help(MicaStrings.localizedKey("editor.help_scheme", language: appLanguage))
-                .accessibilityLabel(
-                    MicaStrings.localizedKey("editor.acc_scheme", language: appLanguage)
-                )
-            }
-
-            WorkbenchFormRow("editor.host") {
-                TextField(
-                    "",
-                    text: $draft.host,
-                    prompt: Text(
-                        MicaStrings.localizedKey(
-                            "editor.host_prompt",
-                            language: appLanguage
-                        )
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-                .textContentType(.URL)
-                .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
-                .help(MicaStrings.localizedKey("editor.help_host", language: appLanguage))
-                .accessibilityLabel(
-                    MicaStrings.localizedKey("editor.acc_host", language: appLanguage)
-                )
-            }
-
-            WorkbenchFormRow("editor.port") {
-                TextField("", text: $draft.portText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 140)
-                .help(MicaStrings.localizedKey("editor.help_port", language: appLanguage))
-                .accessibilityLabel(
-                    MicaStrings.localizedKey("editor.acc_port", language: appLanguage)
-                )
             }
         } header: {
             RouterEditorSectionHeader(

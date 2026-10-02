@@ -89,7 +89,6 @@ struct WorkbenchDiagnosticsView: View {
                 }
 
                 if !snapshot.availableAreas.isEmpty {
-                    Divider()
                     WorkbenchDiagnosticsAvailableAreas(
                         areas: snapshot.availableAreas
                     ) { destination in
@@ -98,7 +97,6 @@ struct WorkbenchDiagnosticsView: View {
                 }
 
                 if !snapshot.technicalGroups.isEmpty {
-                    Divider()
                     WorkbenchDiagnosticsTechnicalDetails(
                         groups: snapshot.technicalGroups,
                         isExpanded: $technicalDetailsExpanded
@@ -118,30 +116,25 @@ struct WorkbenchDiagnosticsView: View {
         _ snapshot: WorkbenchDiagnosticsSnapshot?
     ) -> some View {
         WorkbenchCommandBar {
-            WorkbenchManagementHeader(
-                systemImage: "stethoscope",
-                titleKey: "diagnostics.title",
-                detail: snapshot?.controllerName,
-                value: snapshot?.visibleTarget
+            WorkbenchControllerContextHeader(
+                symbolName: appModel.selectedRouter?.controllerKind.editorSymbol ?? "stethoscope",
+                name: snapshot?.controllerName,
+                detail: snapshot?.visibleTarget
             )
-        } controls: {
-            if let snapshot {
-                WorkbenchStatusBadge(
-                    text: MicaStrings.localizedKey(
-                        snapshot.overallState.labelKey,
-                        language: language
-                    ),
-                    tint: snapshot.overallState.tint
-                )
-            }
         } commands: {
-            WorkbenchIconCommand(
-                titleKey: "diagnostics.copy_report",
-                systemImage: "doc.on.doc",
-                isEnabled: snapshot != nil && !appModel.diagnosticsReportSections.isEmpty
-            ) {
+            // The verdict below owns the state; the bar keeps the export.
+            Button {
                 appModel.copyDiagnosticsReport()
+            } label: {
+                Label(
+                    MicaStrings.localizedKey("diagnostics.copy_report", language: language),
+                    systemImage: "doc.on.doc"
+                )
+                .fixedSize()
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(snapshot == nil || appModel.diagnosticsReportSections.isEmpty)
         }
     }
 

@@ -62,6 +62,35 @@ struct WorkbenchLogsModelTests {
         #expect(model.formattedRowCount == formatted)
     }
 
+    @Test func severityCountsCoverEveryReceivedEntryAndRevealTheNewestVisibleMatch() {
+        let (model, scope) = makeModel()
+        let entries = [
+            entry("e1", level: "error"), entry("w1", level: "warn"), entry("i1"),
+            entry("e2", level: "fatal", payload: "disk"), entry("w2", level: "warning"),
+        ]
+        publish(entries, revision: 1, to: model, scope: scope)
+        #expect(model.severityCounts.count(for: .error) == 2)
+        #expect(model.severityCounts.count(for: .warning) == 2)
+        #expect(model.severityCounts.count(for: .info) == 0)
+        #expect(model.newestRowIDsBySeverity == [.error: "e2", .warning: "w2"])
+
+        model.revealNewest(.error)
+        #expect(model.selectedRowID == "e2")
+        #expect(model.scrollRequest?.id == "e2")
+        #expect(!model.followsNewest)
+
+        // Filters narrow what can be revealed, never what was received.
+        publish(entries, revision: 1, to: model, scope: scope, query: "w1")
+        #expect(model.severityCounts.count(for: .error) == 2)
+        #expect(model.newestRowIDsBySeverity == [.warning: "w1"])
+        model.revealNewest(.error)
+        #expect(model.selectedRowID == nil)
+
+        publish([entry("i2")], revision: 2, to: model, scope: scope)
+        #expect(model.severityCounts == WorkbenchLogSeverityCounts())
+        #expect(model.newestRowIDsBySeverity.isEmpty)
+    }
+
     @Test func followBurstKeepsOneDeadlineAndScrollsToLatestReceivedRow() throws {
         let (model, scope) = makeModel()
         let start = Date(timeIntervalSince1970: 1_000)

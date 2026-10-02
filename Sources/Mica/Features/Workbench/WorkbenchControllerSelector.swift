@@ -55,6 +55,7 @@ struct WorkbenchSidebarControllerSwitcher: View {
 
 private struct WorkbenchControllerSelector: View {
     @Environment(\.micaAppLanguage) private var language
+    @State private var isHovered = false
 
     let snapshot: WorkbenchControllerSelectorSnapshot
     let isEnabled: Bool
@@ -116,10 +117,16 @@ private struct WorkbenchControllerSelector: View {
             HStack(spacing: MicaTheme.Spacing.space2) {
                 Image(systemName: snapshot.selectedItem?.symbolName ?? "server.rack")
                     .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(MicaTheme.textSecondary)
-                    .frame(width: 20)
+                    .micaThemeFont(.body, weight: .medium)
+                    .foregroundStyle(MicaTheme.accent)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        MicaTheme.accent.opacity(0.14),
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: controllerName)
                         .micaThemeFont(.body, weight: .semibold)
                         .foregroundStyle(MicaTheme.textPrimary)
@@ -140,13 +147,21 @@ private struct WorkbenchControllerSelector: View {
                     .foregroundStyle(MicaTheme.textSecondary)
             }
             .padding(.horizontal, MicaTheme.Spacing.space2)
-            .padding(.vertical, MicaTheme.Spacing.space2)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(
+                isHovered && isEnabled ? MicaTheme.surfaceHover : MicaTheme.surface,
+                in: RoundedRectangle(cornerRadius: MicaTheme.Metrics.moduleRadius, style: .continuous)
+            )
+            .contentShape(
+                RoundedRectangle(cornerRadius: MicaTheme.Metrics.moduleRadius, style: .continuous)
+            )
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
+        .onHover { isHovered = $0 }
+        .micaStateChangeAnimation(MicaTheme.Motion.press, value: isHovered)
         .disabled(!isEnabled)
         .accessibilityLabel(Text(localized("settings.active_controller")))
         .accessibilityValue(Text(verbatim: controllerName))

@@ -4,17 +4,24 @@ import SwiftUI
 // MARK: - Tokens
 
 /// Shared appearance, typography, and layout for the native workspace.
+///
+/// macOS 27 owns the window's control layer: the toolbar, sidebar, and
+/// inspector are system Liquid Glass and are never painted by Mica. Content
+/// sits on the system window background and groups itself with the system
+/// fill hierarchy, so the workbench tracks Increase Contrast, Reduce
+/// Transparency, and the user's glass tint preference without custom colors.
 enum MicaTheme {
     // MARK: Color
 
-    /// Window background.
-    static let canvas = Color(micaLight: rgb(0xFAFAFB), dark: rgb(0x151618))
-    /// Panels and sidebar selections.
-    static let surface = Color(micaLight: rgb(0xF0F1F3), dark: rgb(0x1D1F22))
-    /// Inspector and popovers.
-    static let surfaceRaised = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x25282C))
-    /// Opaque hairlines only.
-    static let separator = Color(micaLight: rgb(0xD9DCE1), dark: rgb(0x34373C))
+    /// Page fill: the system window background beneath the glass chrome.
+    static let canvas = Color(nsColor: .windowBackgroundColor)
+    /// Grouped panels and cards; matches the native grouped `Form` section
+    /// fill, one step deeper in dark mode where the base is darker.
+    static let surface = Color(micaLight: .quaternarySystemFill, dark: .tertiarySystemFill)
+    /// Pointer hover on a grouped row or tile.
+    static let surfaceHover = Color(nsColor: .secondarySystemFill)
+    /// System hairline; follows Increase Contrast.
+    static let separator = Color(nsColor: .separatorColor)
 
     /// System-compatible text ramps; both appearances resolve through the
     /// system label colors so contrast tracks the user's accessibility settings.
@@ -32,8 +39,23 @@ enum MicaTheme {
     }
 
     enum Topology {
-        static let nodeSurface = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x282C32))
-        static let headerSurface = Color(micaLight: rgb(0xE8EBEF), dark: rgb(0x23262B))
+        /// The grouped `surface` resolved over `canvas`. The route canvas is
+        /// an opaque layer, so it cannot composite a translucent system fill.
+        static let panelSurface = Color(micaLight: rgb(0xF7F7F7), dark: rgb(0x292929))
+        /// Opaque so cards paint over every route beneath them.
+        static let nodeSurface = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x363638))
+        static let headerSurface = Color(micaLight: rgb(0xF0F0F0), dark: rgb(0x2F2F2F))
+    }
+
+    /// Fixed miniature window colors for the Settings appearance tiles; each
+    /// tile depicts its appearance regardless of the current one.
+    enum AppearancePreview {
+        static let lightWindow = Color(nsColor: rgb(0xFFFFFF))
+        static let lightSidebar = Color(nsColor: rgb(0xE9E9EB))
+        static let lightLine = Color(nsColor: rgb(0xD1D1D6))
+        static let darkWindow = Color(nsColor: rgb(0x1E1E1E))
+        static let darkSidebar = Color(nsColor: rgb(0x323234))
+        static let darkLine = Color(nsColor: rgb(0x48484A))
     }
 
     /// Controller-reported status ONLY; system equivalents keep both
@@ -225,10 +247,15 @@ extension MicaTheme {
         static let panelPadding: CGFloat = space4
     }
 
+    /// Continuous corners sized for macOS 27 window geometry. Nested shapes
+    /// use `ConcentricRectangle` inside a `micaCard` container instead of
+    /// picking a smaller literal radius.
     enum Shape {
-        static let panelRadius: CGFloat = 6
-        static let windowRadius: CGFloat = 10
-        /// Flat hairline separators replace elevation; no shadows in dark mode.
+        /// Cards and bounded content regions.
+        static let panelRadius: CGFloat = 12
+        /// Rows and tiles that stand alone inside a scrolling list.
+        static let rowRadius: CGFloat = 8
+        /// Hairlines separate adjacent content; elevation belongs to glass.
         static let hairline: CGFloat = 1
     }
 
@@ -239,8 +266,7 @@ extension MicaTheme {
 
         /// Compact pointer-control bounds.
         static let iconControlSize: CGFloat = 28
-        static let moduleRadius: CGFloat = 8
-        static let badgeRadius: CGFloat = 5
+        static let moduleRadius: CGFloat = 10
         /// Minimum height for standalone controls.
         static let controlMinHeight: CGFloat = 28
         /// Commands can grow vertically when controls wrap.
@@ -271,13 +297,14 @@ extension MicaTheme {
 // MARK: - Motion
 
 extension MicaTheme {
-    /// State-change motion only: 120-200ms ease-out. No idle
-    /// loops exist in this system; callers must gate every animation on
+    /// State-change motion only: the system's critically damped springs at
+    /// 120-200ms, matching Liquid Glass controls. No idle loops exist in this
+    /// system; callers must gate every animation on
     /// `accessibilityReduceMotion` (use `micaStateChangeAnimation`).
     enum Motion {
-        static let press = Animation.easeOut(duration: 0.12)
-        static let stateChange = Animation.easeOut(duration: 0.15)
-        static let reveal = Animation.easeOut(duration: 0.2)
+        static let press = Animation.snappy(duration: 0.12)
+        static let stateChange = Animation.smooth(duration: 0.16)
+        static let reveal = Animation.smooth(duration: 0.2)
     }
 }
 
@@ -300,5 +327,35 @@ extension View {
         value: Value
     ) -> some View {
         modifier(MicaStateChangeAnimationModifier(animation: animation, value: value))
+    }
+}
+
+// MARK: - Surfaces
+
+extension View {
+    /// Grouped content card: a system-fill panel with continuous corners and
+    /// no border, like a native grouped `Form` section. The card also becomes
+    /// the container shape, so nested `ConcentricRectangle` fills stay
+    /// concentric with it at any padding.
+    func micaCard(
+        _ fill: Color = MicaTheme.surface,
+        cornerRadius: CGFloat = MicaTheme.Shape.panelRadius
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return background(fill, in: shape)
+            .containerShape(shape)
+    }
+
+    /// Liquid Glass for Mica's own floating control layer: transient previews
+    /// and overlays that hover above content. Business data surfaces never
+    /// use glass; the system glass itself handles Reduce Transparency and
+    /// Increase Contrast.
+    func micaFloatingGlass(
+        cornerRadius: CGFloat = MicaTheme.Shape.panelRadius
+    ) -> some View {
+        glassEffect(
+            .regular,
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
     }
 }

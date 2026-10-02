@@ -39,7 +39,7 @@ struct MicaApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: MicaSceneID.workbench) {
             ContentView(overviewPreferencesStore: overviewPreferencesStore)
                 .environment(appModel)
                 .environmentObject(preferences)
@@ -54,7 +54,7 @@ struct MicaApp: App {
         }
         .defaultSize(width: 1440, height: 900)
         .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unifiedCompact)
+        .windowToolbarStyle(.unified)
         .windowStyle(.titleBar)
         .commands {
             CommandGroup(after: .newItem) {
@@ -152,6 +152,18 @@ struct MicaApp: App {
         }
         .defaultSize(width: 880, height: 700)
         .windowResizability(.contentMinSize)
+
+        MenuBarExtra(isInserted: $preferences.showsMenuBarExtra) {
+            MicaMenuBarContent()
+                .environment(appModel)
+                .environmentObject(preferences)
+                .micaAppPreferences(language: appLanguage, appearance: appAppearance, fontScale: appFontScale)
+        } label: {
+            MicaMenuBarLabel()
+                .environment(appModel)
+                .micaAppPreferences(language: appLanguage, appearance: appAppearance, fontScale: appFontScale)
+        }
+        .menuBarExtraStyle(.menu)
     }
 
     private var pauseCommandTitleKey: String {
@@ -175,14 +187,17 @@ private struct OptionalNumberShortcut: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
+    /// macOS 27 window chrome. The system draws the Liquid Glass toolbar,
+    /// floating sidebar, and inspector over the window background; Mica only
+    /// names that background and never paints the toolbar, so content can
+    /// scroll beneath the glass with the native scroll-edge effect.
     func micaWindowChrome() -> some View {
-        background(MicaTheme.canvas)
-            .containerBackground(MicaTheme.canvas, for: .window)
-            .toolbarBackground(MicaTheme.canvas, for: .windowToolbar)
-            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        containerBackground(MicaTheme.canvas, for: .window)
     }
+}
 
+private extension View {
     @ViewBuilder
     func micaScenePreferences(
         language: AppLanguage,

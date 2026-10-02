@@ -30,6 +30,7 @@ final class RulesWorkspaceModel {
         }
     }
     var sortOrder: [KeyPathComparator<WorkbenchRuleRow>] = []
+    var facets = WorkbenchRuleFacets.none
 
     @ObservationIgnored private var previousRules: [RuleViewState]?
     @ObservationIgnored private var previousLanguage: AppLanguage?
@@ -43,6 +44,7 @@ final class RulesWorkspaceModel {
 
     private struct PresentationConfiguration: Equatable {
         let query: String
+        let facets: WorkbenchRuleFacets
         let language: AppLanguage
         let sortOrder: [KeyPathComparator<WorkbenchRuleRow>]
     }
@@ -50,6 +52,7 @@ final class RulesWorkspaceModel {
     var allRows: [WorkbenchRuleRow] { cache.allRows }
     var rows: [WorkbenchRuleRow] { cache.visibleRows }
     var selectedRow: WorkbenchRuleRow? { cache.row(id: selectedRowID) }
+    var facetOptions: WorkbenchRuleFacetOptions { cache.facetOptions }
     var staticProjectionCount: Int { cache.staticProjectionCount }
     var connectionIndexRebuildCount: Int { cache.connectionIndexRebuildCount }
     var accessibilityWindow: WorkbenchAccessibilityWindow {
@@ -82,6 +85,10 @@ final class RulesWorkspaceModel {
         self.identity = identity
         isActive = true
         sortOrder = Self.sortOrder(from: workspace.sort)
+        facets = WorkbenchRuleFacets(
+            type: workspace.filters[Self.typeFacetKey]?.dataNonEmpty,
+            policy: workspace.filters[Self.policyFacetKey]?.dataNonEmpty
+        )
         selectedRowID = workspace.selectedItemID
         self.restoredScrollAnchorID = restoredScrollAnchorID
     }
@@ -105,6 +112,7 @@ final class RulesWorkspaceModel {
         acceptedStructureRevision = input.structureRevision
         let configuration = PresentationConfiguration(
             query: input.query,
+            facets: facets,
             language: input.language,
             sortOrder: sortOrder
         )
@@ -134,6 +142,7 @@ final class RulesWorkspaceModel {
             generation: input.identity.generation,
             structureRevision: input.structureRevision,
             query: input.query,
+            facets: facets,
             sortOrder: sortOrder,
             language: input.language,
             isActive: isActive
@@ -197,7 +206,10 @@ final class RulesWorkspaceModel {
               ) else { return nil }
         var next = input
         if visiblePositions[row.id] == nil {
+            // Navigation must land on its rule, so it lifts every filter
+            // that hides it.
             next.query = ""
+            facets = .none
             guard update(next, reconcileSelection: false, forcePresentation: true) else { return nil }
         }
         guard visiblePositions[row.id] != nil else { return nil }
@@ -228,6 +240,9 @@ final class RulesWorkspaceModel {
             idAt: { visibleIDs.indices.contains($0) ? visibleIDs[$0] : nil }
         )
     }
+
+    static let typeFacetKey = "ruleType"
+    static let policyFacetKey = "rulePolicy"
 
     static func sortOrder(
         from workspaceSort: [WorkbenchWorkspaceSort]

@@ -162,6 +162,62 @@ struct WorkbenchPageModelsTests {
         #expect(model.accessibilityWindow.range.contains(1))
     }
 
+    @Test func ruleFacetsNarrowControllerOrderAndRevealLiftsThem() throws {
+        let identity = Self.identity()
+        let controllerID = try #require(identity.controllerID)
+        let model = RulesWorkspaceModel()
+        var workspace = WorkbenchDestinationWorkspace()
+        workspace.filters[RulesWorkspaceModel.policyFacetKey] = "Proxy"
+        model.activate(identity: identity, workspace: workspace, restoredScrollAnchorID: nil)
+        #expect(model.facets == WorkbenchRuleFacets(type: nil, policy: "Proxy"))
+
+        let rules = [
+            RuleViewState(id: "a", index: 1, type: "DOMAIN", payload: "a.example", proxy: "Proxy"),
+            RuleViewState(id: "b", index: 2, type: "GEOIP", payload: "CN", proxy: "DIRECT"),
+            RuleViewState(id: "c", index: 3, type: "DOMAIN-SUFFIX", payload: "c.example", proxy: "Proxy"),
+            RuleViewState(id: "d", index: 4, type: "DOMAIN-SUFFIX", payload: "d.example", proxy: "DIRECT"),
+            RuleViewState(id: "e", index: 5, type: "DOMAIN-SUFFIX", payload: "e.example", proxy: "Proxy"),
+            RuleViewState(id: "f", index: 6, type: "MATCH", payload: "", proxy: "Proxy"),
+        ]
+        let input = RulesWorkspaceInput(
+            identity: identity,
+            rules: rules,
+            connections: [],
+            structureRevision: 1,
+            query: "",
+            language: .english
+        )
+        #expect(model.update(input))
+        #expect(model.rows.map(\.rule.id) == ["a", "c", "e", "f"])
+        #expect(model.allRows.count == rules.count)
+        #expect(model.facetOptions.types.map(\.value) == ["DOMAIN-SUFFIX", "DOMAIN", "GEOIP", "MATCH"])
+        #expect(model.facetOptions.types.map(\.count) == [3, 1, 1, 1])
+        #expect(model.facetOptions.policies.map(\.value) == ["Proxy", "DIRECT"])
+
+        model.facets.type = "DOMAIN-SUFFIX"
+        #expect(model.update(input))
+        #expect(model.rows.map(\.rule.id) == ["c", "e"])
+        let staticBuilds = model.staticProjectionCount
+        var searched = input
+        searched.query = "e.example"
+        #expect(model.update(searched))
+        #expect(model.rows.map(\.rule.id) == ["e"])
+        #expect(model.staticProjectionCount == staticBuilds)
+
+        let hidden = WorkbenchRuleNavigationSelection(
+            controllerID: controllerID,
+            generation: identity.generation,
+            sourceIndex: 1,
+            reportedRuleID: "b",
+            type: "GEOIP",
+            payload: "CN"
+        )
+        #expect(model.reveal(hidden, input: searched) == "")
+        #expect(model.facets == .none)
+        #expect(model.rows.count == rules.count)
+        #expect(model.selectedRow?.rule.id == "b")
+    }
+
     @Test func rulesIgnoreUpdatesAfterDeactivationOrControllerSwitch() throws {
         let identity = Self.identity()
         let model = RulesWorkspaceModel()

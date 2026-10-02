@@ -7,14 +7,19 @@ All disposable output belongs under `tmp/codex/`.
 ```bash
 node --check scripts/verify-real-controller-source.mjs
 node scripts/verify-real-controller-source.mjs
-python3 -m json.tool Sources/Mica/Resources/Localizable.xcstrings >/dev/null
+node scripts/normalize-localizations.mjs --check
 git diff --check
 swift build --scratch-path tmp/codex/swift-build
 swift test --scratch-path tmp/codex/swift-build
 ```
 
 The source verifier checks localization and active implementation boundaries;
-it does not depend on agent configuration or task-management files. Swift tests
+it does not depend on agent configuration or task-management files. Prefer a
+behavior test over a new source-text contract: the verifier's behavior-first
+block only requires that the named tests exist, so a refactor that keeps the
+behavior does not have to keep the wording. `Localizable.xcstrings` is kept
+canonical (keys sorted case-insensitively, every entry `manual`); after adding
+strings, run `node scripts/normalize-localizations.mjs`. Swift tests
 exercise protocol behavior, session ownership, ordering, presentation caches,
 and navigation. Production application launch and real-controller checks are
 separate from these offline tests.
@@ -153,6 +158,19 @@ and active member list. Captures also include the native title bar at its actual
 rescaling. Omit `MICA_RENDER_DESTINATIONS` for Overview only, or pass comma-separated
 destination IDs for a focused check. The test skips unless its output directory
 is explicitly set beneath `tmp/codex/`.
+
+Native Table rows created during the first offscreen layout pass can stay
+undrawn. Set `MICA_RENDER_SETTLE_MS=1000` to recreate unscrolled table rows and
+let the window settle before capture when a review needs table content; the
+default keeps the faster geometry-only capture. `MICA_RENDER_OVERVIEW_MODULES=all`
+renders Overview with every optional module visible. `MICA_RENDER_SCROLL=end` scrolls the page's
+own scroll view to its end before capture, for modules below the fold.
+
+Set `MICA_RENDER_SETTINGS=1` (with the same output directory) and filter to
+`WorkbenchRenderingTests/testOfflineSettingsWindow` to capture the native
+Settings content in English/Chinese and light/dark appearance. Likewise
+`MICA_RENDER_EDITOR=1` with `WorkbenchRenderingTests/testOfflineControllerEditor`
+captures the controller editor for an offline profile at two sizes.
 
 Set `MICA_RENDER_SURFACE=topology` for the production topology alone. Add
 `MICA_RENDER_TOPOLOGY_DENSE=1` for shared multi-stage routes, or `stress` for

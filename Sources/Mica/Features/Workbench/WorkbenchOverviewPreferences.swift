@@ -48,7 +48,12 @@ struct OverviewPreferences: Codable, Equatable, Sendable {
         self.visibleOptionalModules = visibleOptionalModules
     }
 
-    static let `default` = OverviewPreferences()
+    /// Summaries and network facts add information the charts do not show,
+    /// so they start visible; the instrument rail repeats the chart readouts
+    /// and stays opt-in.
+    static let `default` = OverviewPreferences(
+        visibleOptionalModules: [.operationalSummaries, .networkInformation]
+    )
 
     func normalized() -> OverviewPreferences {
         let supportedMetrics = Set(OverviewMetricID.allCases)
@@ -99,7 +104,14 @@ private final class OverviewPreferencesUserDefaultsBox: @unchecked Sendable {
 }
 
 struct OverviewPreferencesPersistenceEnvelope: Codable, Equatable, Sendable {
-    static let schema = "mica.overview.fixed-core.v1"
+    static let schema = "mica.overview.fixed-core.v2"
+    /// v1 predates summaries and network facts being visible by default.
+    static let migratableSchemas = ["mica.overview.fixed-core.v1"]
+    /// Modules a v1 payload gains once when it is upgraded to v2.
+    static let modulesAddedByV2: Set<OverviewOptionalModuleID> = [
+        .operationalSummaries,
+        .networkInformation,
+    ]
 
     let schema: String
     let preferences: OverviewPreferences
@@ -115,7 +127,8 @@ struct OverviewPreferencesPersistenceEnvelope: Codable, Equatable, Sendable {
 final class OverviewPreferencesStore {
     /// The redesigned Overview intentionally replaces the development-only
     /// layout payload at the existing v1 key. The schema discriminator prevents
-    /// the superseded layout object from being interpreted as preferences.
+    /// the superseded layout object from being interpreted as preferences;
+    /// earlier preference schemas listed in the envelope are upgraded.
     static let defaultPersistenceKey = "overview.dashboard.layout.v1"
 
     private(set) var preferences: OverviewPreferences
@@ -134,7 +147,11 @@ final class OverviewPreferencesStore {
 
     init(persistence: OverviewPreferencesPersistenceClient) {
         self.persistence = persistence
-        preferences = Self.restore(from: persistence.loadData())
+        let restored = Self.restore(from: persistence.loadData())
+        preferences = restored.preferences
+        if restored.needsSave {
+            save(restored.preferences)
+        }
     }
 
     func isMetricVisible(_ metric: OverviewMetricID) -> Bool {
@@ -186,23 +203,42 @@ final class OverviewPreferencesStore {
         let normalized = next.normalized()
         guard normalized != preferences else { return }
         preferences = normalized
+        save(normalized)
+    }
+
+    private func save(_ preferences: OverviewPreferences) {
         guard let data = try? encoder.encode(
-            OverviewPreferencesPersistenceEnvelope(preferences: normalized)
+            OverviewPreferencesPersistenceEnvelope(preferences: preferences)
         ) else {
             return
         }
         try? persistence.saveData(data)
     }
 
-    private static func restore(from data: Data?) -> OverviewPreferences {
+    /// A v1 payload keeps every saved choice, gains the modules v2 shows by
+    /// default, and is written back as v2 so the upgrade happens only once;
+    /// hiding those modules afterwards persists normally.
+    private static func restore(
+        from data: Data?
+    ) -> (preferences: OverviewPreferences, needsSave: Bool) {
         guard let data,
               let envelope = try? JSONDecoder().decode(
                 OverviewPreferencesPersistenceEnvelope.self,
                 from: data
-              ),
-              envelope.schema == OverviewPreferencesPersistenceEnvelope.schema else {
-            return .default
+              ) else {
+            return (.default, false)
         }
-        return envelope.preferences.normalized()
+        if envelope.schema == OverviewPreferencesPersistenceEnvelope.schema {
+            return (envelope.preferences.normalized(), false)
+        }
+        guard OverviewPreferencesPersistenceEnvelope.migratableSchemas
+            .contains(envelope.schema) else {
+            return (.default, false)
+        }
+        var migrated = envelope.preferences
+        migrated.visibleOptionalModules.formUnion(
+            OverviewPreferencesPersistenceEnvelope.modulesAddedByV2
+        )
+        return (migrated.normalized(), true)
     }
 }

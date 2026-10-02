@@ -177,12 +177,16 @@ final class WorkbenchTableScrollTests: XCTestCase {
         // native wheel with a synthetic gesture begin allows AppKit's delayed
         // wheel-end notification to end that different input sequence.
         // Real unphased-wheel delivery is covered by the adjacent tests.
+        // The idle rule itself is timed with explicit instants in
+        // WorkbenchScrollInteractionStateTests; this test only checks that
+        // native notifications drive it, so it never waits on the wall clock.
         NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
         NotificationCenter.default.post(name: NSScrollView.didLiveScrollNotification, object: scroll)
-        XCTAssertEqual(driver.scrollBegins, 1)
-        try await Task.sleep(for: .milliseconds(240))
+        NotificationCenter.default.post(name: NSScrollView.didLiveScrollNotification, object: scroll)
         XCTAssertEqual(driver.scrollBegins, 1)
         XCTAssertEqual(driver.scrollEnds, 0)
+        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        XCTAssertEqual(driver.scrollEnds, 1)
         NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
         XCTAssertEqual(driver.scrollEnds, 1)
     }

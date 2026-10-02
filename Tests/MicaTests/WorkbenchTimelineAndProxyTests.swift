@@ -998,7 +998,8 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(values["log-level"] == "debug")
         #expect(values["allow-lan"] == "Enabled")
         #expect(values["ipv6"] == "Disabled")
-        #expect(values["mixed-port"] == "7,890")
+        #expect(values["port"] == "9090")
+        #expect(values["mixed-port"] == "7890")
         #expect(values["http-port"] == nil)
         #expect(values["socks-port"] == nil)
     }

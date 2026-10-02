@@ -232,7 +232,7 @@ struct WorkbenchProviderUpdateAllProgressView: View {
         }
         .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
         .padding(.vertical, MicaTheme.Spacing.space2)
-        .background(MicaTheme.surfaceRaised)
+        .background(MicaTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
         .overlay(alignment: .leading) {
             Rectangle()

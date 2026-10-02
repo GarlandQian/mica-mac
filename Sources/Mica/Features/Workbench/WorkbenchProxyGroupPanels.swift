@@ -303,13 +303,16 @@ struct ProxyBoundedAccessibilityCatalog: View {
 
 struct ProxyPolicyGroupDirectoryRow: View {
     @Environment(\.micaAppLanguage) private var language
+    @State private var isHovered = false
     let item: ProxyGroupDirectoryItem
     let isActive: Bool
     let onActivate: () -> Void
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: MicaTheme.Shape.rowRadius, style: .continuous)
+
         Button(action: onActivate) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: MicaTheme.Spacing.space2) {
                     Circle()
                         .fill(item.health.status.tint)
@@ -322,19 +325,36 @@ struct ProxyPolicyGroupDirectoryRow: View {
                         .micaThemeFont(.dataCaption)
                         .foregroundStyle(MicaTheme.textTertiary)
                 }
-                Text(verbatim: item.selected)
-                    .micaThemeFont(.caption)
-                    .foregroundStyle(MicaTheme.textSecondary)
-                    .lineLimit(1)
-                    .padding(.leading, 14)
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    Text(verbatim: item.selected)
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(isActive ? MicaTheme.accent : MicaTheme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if let type = item.type.proxyNonBlank {
+                        Text(verbatim: type)
+                            .micaThemeFont(.caption)
+                            .foregroundStyle(MicaTheme.textTertiary)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+                    }
+                }
+                .padding(.leading, 14)
             }
-            .padding(.horizontal, MicaTheme.Spacing.space3)
-            .padding(.vertical, MicaTheme.Spacing.space2)
+            .padding(.horizontal, MicaTheme.Spacing.space2)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isActive ? MicaTheme.accent.opacity(0.1) : .clear)
-            .contentShape(Rectangle())
+            .background(
+                isActive
+                    ? MicaTheme.accent.opacity(0.12)
+                    : isHovered ? MicaTheme.surfaceHover : .clear,
+                in: shape
+            )
+            .contentShape(shape)
+            .padding(.horizontal, MicaTheme.Spacing.space1 + 2)
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
         .accessibilityIdentifier("proxy-directory:\(item.id)")
         .accessibilityAddTraits(isActive ? .isSelected : [])
         .help("\(item.groupID) · \(item.type) · \(item.selected)")
@@ -407,6 +427,8 @@ struct ProxyPolicyActiveGroupHeader: View {
                     Label(MicaStrings.localizedKey("routing.test_group", language: language),
                           systemImage: presentation.isTesting ? "hourglass" : "bolt")
                 }
+                // The group's primary command reads as a button, not quiet text.
+                .buttonStyle(.bordered)
                 .disabled(!commandsEnabled || !canTestGroup || presentation.isTesting
                     || presentation.isSwitching || presentation.isClearingFixed)
             }
@@ -600,21 +622,9 @@ struct ProxyPolicyNodeTile: View {
         }
         .frame(minHeight: 48, alignment: .leading)
         .background(tileFill)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: MicaTheme.Metrics.badgeRadius,
-                style: .continuous
-            )
-        )
+        .clipShape(tileShape)
         .overlay {
-            RoundedRectangle(
-                cornerRadius: MicaTheme.Metrics.badgeRadius,
-                style: .continuous
-            )
-            .stroke(
-                tileStroke,
-                lineWidth: 1
-            )
+            tileShape.strokeBorder(tileStroke, lineWidth: 1)
         }
         .onHover { hovering in
             guard isHovered != hovering else { return }
@@ -638,18 +648,31 @@ struct ProxyPolicyNodeTile: View {
         )
     }
 
+    /// An opened tile is the header of its detail card, so only its top
+    /// corners round; `ProxyInspectedNodeFrame` outlines the whole card.
+    private var tileShape: UnevenRoundedRectangle {
+        let radius = MicaTheme.Shape.rowRadius
+        return UnevenRoundedRectangle(
+            topLeadingRadius: radius,
+            bottomLeadingRadius: isInspected ? 0 : radius,
+            bottomTrailingRadius: isInspected ? 0 : radius,
+            topTrailingRadius: radius,
+            style: .continuous
+        )
+    }
+
     private var tileFill: Color {
         if isHighlighted {
             return MicaTheme.accent.opacity(0.2)
         }
-        if member.isControllerSelected {
-            return MicaTheme.accent.opacity(0.09)
-        }
         if isInspected {
-            return MicaTheme.accent.opacity(0.14)
+            return MicaTheme.accent.opacity(0.12)
+        }
+        if member.isControllerSelected {
+            return MicaTheme.accent.opacity(0.08)
         }
         if isHovered && !scrollInteractionTracker.isScrolling {
-            return MicaTheme.surfaceRaised
+            return MicaTheme.surfaceHover
         }
         return MicaTheme.surface
     }
@@ -657,12 +680,6 @@ struct ProxyPolicyNodeTile: View {
     private var tileStroke: Color {
         if isHighlighted {
             return MicaTheme.accent
-        }
-        if isInspected {
-            return MicaTheme.accent.opacity(0.5)
-        }
-        if isHovered && !scrollInteractionTracker.isScrolling {
-            return MicaTheme.separator
         }
         return .clear
     }

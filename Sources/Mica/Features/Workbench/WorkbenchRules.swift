@@ -72,6 +72,10 @@ struct WorkbenchRulesView: View {
             persistSortOrder()
             model.update(presentationInput)
         }
+        .onChange(of: model.facets) {
+            persistFacets()
+            model.update(presentationInput)
+        }
         .onChange(of: language) {
             model.update(presentationInput)
             consumeRuleNavigation()
@@ -102,6 +106,22 @@ struct WorkbenchRulesView: View {
                 detail: nil
             )
         } controls: {
+            if !model.allRows.isEmpty {
+                facetMenu(
+                    titleKey: "dashboard.col_type",
+                    allKey: "traffic.rule_facet_all_types",
+                    systemImage: "tag",
+                    options: model.facetOptions.types,
+                    selection: \.type
+                )
+                facetMenu(
+                    titleKey: "dashboard.col_proxy",
+                    allKey: "traffic.rule_facet_all_policies",
+                    systemImage: "arrow.triangle.branch",
+                    options: model.facetOptions.policies,
+                    selection: \.policy
+                )
+            }
             WorkbenchDataActivityIndicator(
                 isActive: appModel.reloadingRules || appModel.rulesSnapshotState.isLoading,
                 titleKey: "snapshot.loading"
@@ -115,6 +135,56 @@ struct WorkbenchRulesView: View {
                 appModel.reloadRules()
             }
         }
+    }
+
+    /// One facet as a pull-down: every reported value with its rule count,
+    /// most frequent first, plus a way back to all rules.
+    private func facetMenu(
+        titleKey: String,
+        allKey: String,
+        systemImage: String,
+        options: [WorkbenchRuleFacetOption],
+        selection: WritableKeyPath<WorkbenchRuleFacets, String?>
+    ) -> some View {
+        let title = MicaStrings.localizedKey(titleKey, language: language)
+        let allTitle = MicaStrings.localizedKey(allKey, language: language)
+        let chosen = model.facets[keyPath: selection]
+        let current = chosen ?? allTitle
+        let binding = Binding<String?>(
+            get: { model.facets[keyPath: selection] },
+            set: { model.facets[keyPath: selection] = $0 }
+        )
+
+        return Menu {
+            Picker(title, selection: binding) {
+                Text(MicaStrings.localizedKey(allKey, language: language))
+                    .tag(String?.none)
+                Divider()
+                ForEach(options) { option in
+                    Text(verbatim: "\(option.value) (\(option.count))")
+                        .tag(Optional(option.value))
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            // "All Types" names itself; a chosen value needs its facet.
+            Label(
+                chosen.map {
+                    MicaStrings.localized(
+                        "format.label_value \(title) \($0)",
+                        language: language
+                    )
+                } ?? allTitle,
+                systemImage: systemImage
+            )
+        }
+        .menuStyle(.button)
+        .controlSize(.small)
+        .fixedSize()
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityValue(current)
     }
 
     @ViewBuilder
@@ -145,11 +215,22 @@ struct WorkbenchRulesView: View {
                 detailKey: "traffic.rules_empty_message"
             )
         case .filterEmpty:
-            WorkbenchStateView(
-                kind: .filterEmpty,
-                titleKey: "dashboard.no_matching_rules",
-                detailKey: "traffic.empty_filtered"
-            )
+            if model.facets.isActive {
+                WorkbenchStateView(
+                    kind: .filterEmpty,
+                    titleKey: "dashboard.no_matching_rules",
+                    detailKey: "traffic.empty_filtered",
+                    actionTitleKey: "traffic.rule_facets_clear",
+                    actionSystemImage: "line.3.horizontal.decrease.circle",
+                    action: { model.facets = .none }
+                )
+            } else {
+                WorkbenchStateView(
+                    kind: .filterEmpty,
+                    titleKey: "dashboard.no_matching_rules",
+                    detailKey: "traffic.empty_filtered"
+                )
+            }
         case .failed(let message):
             WorkbenchStateView(
                 kind: .failed,
@@ -420,19 +501,26 @@ struct WorkbenchRulesView: View {
         )
     }
 
+    @ViewBuilder
     private func ruleStateLabel(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space1) {
-            Circle()
-                .fill(ruleStatusTint(row.rule))
-                .frame(width: 6, height: 6)
-                .accessibilityHidden(true)
+        if row.rule.disabled == nil {
+            // No reported state: no status dot, only the quiet placeholder.
+            WorkbenchDataText(value: row.statusText, role: .caption)
+                .fixedSize()
+        } else {
+            HStack(spacing: MicaTheme.Spacing.space1) {
+                Circle()
+                    .fill(ruleStatusTint(row.rule))
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
 
-            Text(verbatim: row.statusText)
-                .micaThemeFont(.dataCaption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                Text(verbatim: row.statusText)
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
         }
-        .accessibilityElement(children: .combine)
     }
 
     private func ruleMetric(
@@ -483,8 +571,7 @@ struct WorkbenchRulesView: View {
         WorkbenchDataPrimaryCell(
             title: row.definitionTitleText,
             detail: row.definitionDetailText,
-            systemImage: "arrow.triangle.branch",
-            tint: .secondary,
+            systemImage: nil,
             titleIsMonospaced: true,
             detailIsMonospaced: true
         )
@@ -514,7 +601,7 @@ struct WorkbenchRulesView: View {
             isSupported: appModel.selectedUnifiedCapabilities.rules,
             sourceCount: model.allRows.count,
             visibleCount: model.rows.count,
-            isFiltering: searchText.dataNonEmpty != nil,
+            isFiltering: searchText.dataNonEmpty != nil || model.facets.isActive,
             endpointStatus: appModel.controllerHealth.status(for: .rules),
             snapshotState: appModel.rulesSnapshotState,
             sessionState: appModel.controllerSessionPresentation.state,
@@ -624,6 +711,16 @@ struct WorkbenchRulesView: View {
             destination: .rules,
             anchorID: anchorID
         )
+    }
+
+    private func persistFacets() {
+        workspaceStore.update(
+            controllerID: appModel.selectedRouterID,
+            destination: .rules
+        ) { workspace in
+            workspace.filters[RulesWorkspaceModel.typeFacetKey] = model.facets.type
+            workspace.filters[RulesWorkspaceModel.policyFacetKey] = model.facets.policy
+        }
     }
 
     private func persistSortOrder() {

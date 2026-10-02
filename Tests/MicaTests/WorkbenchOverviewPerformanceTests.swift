@@ -1656,7 +1656,6 @@ struct WorkbenchOverviewPerformanceTests {
 
         #expect(preferencesSource.contains("struct OverviewPreferences"))
         #expect(preferencesSource.contains("final class OverviewPreferencesStore"))
-        #expect(preferencesSource.contains("mica.overview.fixed-core.v1"))
         #expect(preferencesSource.contains("visibleMetrics"))
         #expect(preferencesSource.contains("timelineWindow"))
         #expect(preferencesSource.contains("visibleOptionalModules"))
@@ -1696,7 +1695,7 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(topologyViewport.contains(".scrollPosition($scrollPosition)"))
         #expect(topologyViewport.contains("hasHorizontalOverflow ? .visible : .hidden"))
         #expect(topologyViewport.contains("if reduceMotion"))
-        #expect(topologyViewport.contains("MicaTheme.surface"))
+        #expect(topologyViewport.contains(".micaCard(MicaTheme.Topology.panelSurface)"))
         #expect(topologyViewport.contains(".help(hoverTooltip"))
         #expect(topologyViewport.contains("OverviewTopologyProjection.selectionDescription("))
         #expect(topologyViewport.contains(".onMoveCommand(perform: movePathSelection)"))

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.33.0 - 2026-10-02
+
+### Workbench
+
+- Adopted the macOS 27 Liquid Glass design: the unified toolbar, floating sidebar, and inspector are now drawn by the system instead of a painted page fill.
+- Moved content to system semantic colors and grouped fills, so the workbench follows Increase Contrast, Reduce Transparency, and the glass tint preference.
+- Refreshed panels, topology, telemetry, proxy nodes, and badges with borderless concentric cards, continuous corners, capsule tags, and inset data tables.
+- Grouped toolbar commands with visibility priorities, pinned the controller switcher above sidebar navigation, and presented proxy node previews on Liquid Glass.
+- Redesigned proxy node details as one framed card with summary and capability tags, titled section cards, aligned key-value rows, localized test times, and a delay-history strip.
+- Added a menu bar item with live upload and download rates and per-group node switching; while shown it keeps the controller session running after the last window closes, and Settings can hide it.
+- Policy groups can sort the displayed nodes by lowest latency from a Sort Nodes menu; controller order stays the default and the catalog is never reordered.
+- Controllers rows now offer one-click Use and native drag reordering; Actions presents each command as a card with a single Run command and in-card confirmation.
+- Overview shows operational summaries and network information by default, and saved Overview preferences are upgraded once to include them; the redundant instrument rail is opt-in.
+- Network information groups align to the top of their columns, and ports show as plain numbers without digit grouping.
+- Scan tables draw unreported values as quiet dashes, drop repeated row icons and placeholder separators, and use consistent title-case headers.
+- Logs shows error and warning totals beside the entry count; each jumps to the newest visible entry of that level.
+- Rules can be narrowed by reported type and target policy from facet menus with per-value counts.
+- Made the Logs level a segmented choice with accurate help, made Follow Newest a toggle button, and combined the editor's scheme, host, and port into one address row with a live URL preview.
+- Action, Configuration, and Diagnostics bars name the target controller instead of repeating the page title.
+- Inspectors collapse unreported fields into one summary line per section; the policy-group directory gained rounded selection, hover, and group types, and duplicate Locate and status-badge commands were removed.
+- Configuration shows a small set of outbound modes as a segmented control, and management forms place controls at the trailing edge like System Settings.
+- Settings previews Appearance and interface text size as tiles; its first section is now General.
+- Diagnostics leads with a status-tinted verdict card with fact tags and shows working areas as navigation cards.
+- Bulk and destructive commands (Close All, Close Connection/Group, Clear Logs, Update All Sources) are titled buttons; the editor bar names the controller being edited.
+
+### Verification
+
+- Scroll interaction timing (explicit gestures versus wheel bursts) is a pure state machine tested with explicit instants, removing the wall-clock wait that made a table scroll test flaky under load.
+- New rules are verified by named behavior tests that the source contract requires, replacing several implementation-text checks.
+- `Localizable.xcstrings` is kept canonical by `scripts/normalize-localizations.mjs`, and the source contract rejects unsorted or reformatted catalogs.
+
 ## 0.32.0 - 2026-09-23
 
 ### Reliability and controller data

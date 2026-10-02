@@ -20,17 +20,17 @@ struct WorkbenchSessionControlButton: View {
         let title = MicaStrings.localizedKey(titleKey, language: language)
         let help = MicaStrings.localizedKey(helpKey, language: language)
 
+        // Native toolbar label: the Liquid Glass toolbar supplies the
+        // capsule, hover, pressed, and overflow-menu presentations.
         Button(action: perform) {
-            Image(systemName: systemImage)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(tint)
-                .frame(
-                    width: MicaTheme.Metrics.iconControlSize,
-                    height: MicaTheme.Metrics.iconControlSize
-                )
-                .contentShape(Rectangle())
+            Label {
+                Text(verbatim: title)
+            } icon: {
+                Image(systemName: systemImage)
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(tint)
+            }
         }
-        .buttonStyle(.borderless)
         .disabled(!isEnabled)
         .help(help)
         .accessibilityLabel(Text(title))

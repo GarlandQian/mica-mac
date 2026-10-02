@@ -76,6 +76,65 @@ struct WorkbenchRuleRow: Identifiable, Equatable {
     var size: Int { rule.size ?? -1 }
 }
 
+/// Exact-match narrowing by reported rule type and target policy. Facets
+/// filter the controller order; they never sort or regroup rows.
+struct WorkbenchRuleFacets: Equatable, Hashable, Sendable {
+    var type: String?
+    var policy: String?
+
+    static let none = WorkbenchRuleFacets()
+
+    var isActive: Bool { type != nil || policy != nil }
+
+    func includes(_ row: WorkbenchRuleRow) -> Bool {
+        (type == nil || row.rule.type == type)
+            && (policy == nil || row.rule.proxy == policy)
+    }
+}
+
+struct WorkbenchRuleFacetOption: Identifiable, Equatable, Sendable {
+    let value: String
+    let count: Int
+
+    var id: String { value }
+}
+
+/// Facet choices with their rule counts, built once per rule snapshot.
+struct WorkbenchRuleFacetOptions: Equatable, Sendable {
+    private(set) var types: [WorkbenchRuleFacetOption] = []
+    private(set) var policies: [WorkbenchRuleFacetOption] = []
+
+    init() {}
+
+    init(rows: [WorkbenchRuleRow]) {
+        types = Self.options(rows.lazy.map(\.rule.type))
+        policies = Self.options(rows.lazy.map(\.rule.proxy))
+    }
+
+    /// Most frequent first; equal counts keep first-reported order.
+    private static func options(
+        _ values: some Sequence<String>
+    ) -> [WorkbenchRuleFacetOption] {
+        var counts: [String: Int] = [:]
+        var firstSeen: [String] = []
+        for value in values where value.dataNonEmpty != nil {
+            if counts[value] == nil { firstSeen.append(value) }
+            counts[value, default: 0] += 1
+        }
+        return firstSeen.enumerated()
+            .map { (offset: $0.offset, option: WorkbenchRuleFacetOption(
+                value: $0.element,
+                count: counts[$0.element, default: 0]
+            )) }
+            .sorted { lhs, rhs in
+                lhs.option.count != rhs.option.count
+                    ? lhs.option.count > rhs.option.count
+                    : lhs.offset < rhs.offset
+            }
+            .map(\.option)
+    }
+}
+
 struct WorkbenchRuleConnectionIndex: Equatable {
     private struct ExactKey: Hashable {
         let type: String
@@ -424,10 +483,12 @@ struct WorkbenchRuleProjectionCache {
     private(set) var activeCountRowProjectionCount = 0
     private(set) var filterProjectionCount = 0
     private(set) var sortProjectionCount = 0
+    private(set) var facetOptions = WorkbenchRuleFacetOptions()
 
     private var connectionIndexCache = WorkbenchRuleConnectionIndexCache()
     private var structureRevision: UInt64?
     private var query: String?
+    private var facets = WorkbenchRuleFacets.none
     private var sortOrder: [KeyPathComparator<WorkbenchRuleRow>] = []
     private var filteredSourceIndices: [Int] = []
     private var rowIndexByID: [String: Int] = [:]
@@ -445,6 +506,7 @@ struct WorkbenchRuleProjectionCache {
         generation: UUID,
         structureRevision: UInt64,
         query: String,
+        facets: WorkbenchRuleFacets = .none,
         sortOrder: [KeyPathComparator<WorkbenchRuleRow>],
         language: AppLanguage,
         isActive: Bool = true
@@ -505,8 +567,12 @@ struct WorkbenchRuleProjectionCache {
             break
         }
 
+        if sourceChanged {
+            facetOptions = WorkbenchRuleFacetOptions(rows: allRows)
+        }
         let visibleChanged = updateVisibleRows(
             query: query,
+            facets: facets,
             sortOrder: sortOrder,
             sourceChanged: sourceChanged,
             activeCountsChanged: activeCountsChanged
@@ -557,16 +623,18 @@ struct WorkbenchRuleProjectionCache {
 
     private mutating func updateVisibleRows(
         query: String,
+        facets: WorkbenchRuleFacets,
         sortOrder: [KeyPathComparator<WorkbenchRuleRow>],
         sourceChanged: Bool,
         activeCountsChanged: Bool
     ) -> Bool {
         let normalizedQuery = query.dataNonEmpty
-        let filterChanged = self.query != normalizedQuery
+        let filterChanged = self.query != normalizedQuery || self.facets != facets
         let sortChanged = self.sortOrder != sortOrder
 
         if sourceChanged || filterChanged {
             filteredSourceIndices = allRows.indices.filter { index in
+                guard facets.includes(allRows[index]) else { return false }
                 guard let normalizedQuery else { return true }
                 return WorkbenchDataSearch.contains(
                     normalizedQuery,
@@ -598,6 +666,7 @@ struct WorkbenchRuleProjectionCache {
         }
 
         self.query = normalizedQuery
+        self.facets = facets
         self.sortOrder = sortOrder
         return sourceChanged || filterChanged || sortChanged || activeCountsChanged
     }

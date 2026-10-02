@@ -36,7 +36,7 @@ struct WorkbenchConnectionDecisionPathRail: View {
         .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
         .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MicaTheme.surfaceRaised)
+        .background(MicaTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .contain)
     }
@@ -145,14 +145,13 @@ struct WorkbenchConnectionDecisionPathRail: View {
                         .controlSize(.small)
                         .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
                 } else {
-                    WorkbenchIconCommand(
+                    WorkbenchLabeledCommand(
                         titleKey: "action.close_connection",
                         systemImage: "xmark.circle",
                         isEnabled: canClose,
                         role: .destructive,
                         action: requestClose
                     )
-                    .foregroundStyle(MicaTheme.statusError)
                 }
             }
 
@@ -162,14 +161,13 @@ struct WorkbenchConnectionDecisionPathRail: View {
                         .controlSize(.small)
                         .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
                 } else {
-                    WorkbenchIconCommand(
+                    WorkbenchLabeledCommand(
                         titleKey: "action.close_connection_group",
                         systemImage: "rectangle.3.group.bubble.left",
                         isEnabled: canCloseGroup,
                         role: .destructive,
                         action: requestCloseGroup
                     )
-                    .foregroundStyle(MicaTheme.statusError)
                 }
             }
         }

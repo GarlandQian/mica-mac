@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Panel
 
-/// A bounded tool surface with a subtle border.
+/// A bounded tool surface: a borderless grouped card.
 struct MicaPanel<Content: View>: View {
     var fill: Color = MicaTheme.surface
     var padding: CGFloat = MicaTheme.Spacing.panelPadding
@@ -13,20 +13,7 @@ struct MicaPanel<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: alignment)
-            .background(
-                fill,
-                in: RoundedRectangle(
-                    cornerRadius: MicaTheme.Shape.panelRadius,
-                    style: .continuous
-                )
-            )
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: MicaTheme.Shape.panelRadius,
-                    style: .continuous
-                )
-                .strokeBorder(MicaTheme.separator, lineWidth: MicaTheme.Shape.hairline)
-            }
+            .micaCard(fill)
     }
 }
 
@@ -38,6 +25,62 @@ extension View {
         alignment: Alignment = .topLeading
     ) -> some View {
         MicaPanel(fill: fill, padding: padding, alignment: alignment) { self }
+    }
+}
+
+// MARK: - Tag flow
+
+/// Wraps tags and chips onto as many lines as the width requires, keeping
+/// their order.
+struct MicaTagFlow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.map(\.height).reduce(0, +) + CGFloat(max(0, rows.count - 1)) * spacing
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let proposedWidth = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            if proposedWidth > width, !current.indices.isEmpty {
+                rows.append(current)
+                current = Row()
+            }
+            current.width = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            current.height = max(current.height, size.height)
+            current.indices.append(index)
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
     }
 }
 
@@ -130,15 +173,9 @@ struct MicaStatusBadge: View {
         Text(text)
             .micaThemeFont(.caption, weight: .semibold)
             .foregroundStyle(status.color)
-            .padding(.horizontal, MicaTheme.Spacing.space2 - 2)
+            .padding(.horizontal, MicaTheme.Spacing.space2)
             .padding(.vertical, MicaTheme.Spacing.space1 / 2)
-            .background(
-                status.color.opacity(0.14),
-                in: RoundedRectangle(
-                    cornerRadius: MicaTheme.Shape.panelRadius,
-                    style: .continuous
-                )
-            )
+            .background(status.color.opacity(0.14), in: Capsule())
             .accessibilityAddTraits(.isStaticText)
     }
 }
@@ -481,7 +518,10 @@ struct WorkbenchCommandBar<Summary: View, Controls: View, Commands: View>: View 
                     Spacer(minLength: MicaTheme.Spacing.space2)
                     commands
                 }
-                controls
+                // Wrapped controls stay one row rather than stacking.
+                HStack(spacing: MicaTheme.Spacing.space3) {
+                    controls
+                }
             }
         }
         .padding(.vertical, MicaTheme.Spacing.space1)
@@ -654,7 +694,10 @@ struct WorkbenchContentBand<Content: View>: View {
             .padding(.horizontal, MicaTheme.Spacing.space3)
             .padding(.vertical, MicaTheme.Spacing.space1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(surface == .raised ? MicaTheme.surface : .clear)
+            .micaCard(
+                surface == .raised ? MicaTheme.surface : .clear,
+                cornerRadius: MicaTheme.Metrics.moduleRadius
+            )
     }
 }
 
@@ -838,13 +881,7 @@ struct WorkbenchStatusBadge: View {
         .micaThemeFont(.caption, weight: .medium)
         .padding(.horizontal, MicaTheme.Spacing.space2)
         .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(
-                cornerRadius: MicaTheme.Metrics.badgeRadius,
-                style: .continuous
-            )
-            .fill(tint.opacity(0.12))
-        )
+        .background(tint.opacity(0.12), in: Capsule())
         .accessibilityElement(children: .combine)
     }
 }
@@ -897,5 +934,31 @@ struct WorkbenchIconCommand: View {
             minHeight: MicaTheme.Metrics.iconControlSize
         )
         .contentShape(Rectangle())
+    }
+}
+
+/// A titled bar command. Bulk and destructive operations name themselves
+/// instead of hiding behind an icon; the role colors destructive titles.
+struct WorkbenchLabeledCommand: View {
+    @Environment(\.micaAppLanguage) private var language
+
+    let titleKey: String
+    let systemImage: String
+    var isEnabled = true
+    var role: ButtonRole?
+    let action: () -> Void
+
+    var body: some View {
+        let title = MicaStrings.localizedKey(titleKey, language: language)
+
+        Button(role: role, action: action) {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
+                .fixedSize()
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(!isEnabled)
+        .help(title)
     }
 }

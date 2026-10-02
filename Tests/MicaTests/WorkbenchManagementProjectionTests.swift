@@ -378,38 +378,26 @@ struct WorkbenchManagementProjectionTests {
         #expect(snapshot.groups.flatMap(\.commands).allSatisfy { !$0.isEnabled })
     }
 
-    @Test func actionsLayoutUsesCompactSingleColumnOnlyForSparseCommands() {
-        for commandCount in 0...4 {
-            let narrow = WorkbenchActionsLayoutDecision.resolve(
-                commandCount: commandCount,
-                availableWidth: 1_200
-            )
-            #expect(
-                narrow.maximumContentWidth
-                    == WorkbenchActionsLayoutDecision.compactMaximumWidth
-            )
-            #expect(!narrow.usesTwoColumns)
+    @Test func actionsLayoutFitsReadableCardColumnsWithoutExceedingCommands() {
+        typealias Layout = WorkbenchActionsLayoutDecision
+
+        // Never more columns than commands, and at least one for empty states.
+        for commandCount in 0...2 {
+            let layout = Layout.resolve(commandCount: commandCount, availableWidth: 1_400)
+            #expect(layout.columns == max(commandCount, 1))
         }
 
-        let constrainedDense = WorkbenchActionsLayoutDecision.resolve(
-            commandCount: 5,
-            availableWidth: 899
-        )
-        #expect(
-            constrainedDense.maximumContentWidth
-                == WorkbenchActionsLayoutDecision.denseMaximumWidth
-        )
-        #expect(!constrainedDense.usesTwoColumns)
+        // Width decides how many readable cards fit, capped at three.
+        #expect(Layout.resolve(commandCount: 8, availableWidth: 1_400).columns == 3)
+        #expect(Layout.resolve(commandCount: 8, availableWidth: 540).columns == 2)
+        #expect(Layout.resolve(commandCount: 8, availableWidth: 531).columns == 1)
+        #expect(Layout.resolve(commandCount: 8, availableWidth: 200).columns == 1)
 
-        let wideDense = WorkbenchActionsLayoutDecision.resolve(
-            commandCount: 5,
-            availableWidth: 900
-        )
-        #expect(
-            wideDense.maximumContentWidth
-                == WorkbenchActionsLayoutDecision.denseMaximumWidth
-        )
-        #expect(wideDense.usesTwoColumns)
+        // Cards stop at their reading width instead of stretching.
+        let wide = Layout.resolve(commandCount: 3, availableWidth: 2_000)
+        #expect(wide.maximumContentWidth == 3 * Layout.cardMaximumWidth + 2 * Layout.spacing)
+        let single = Layout.resolve(commandCount: 1, availableWidth: 2_000)
+        #expect(single.maximumContentWidth == Layout.cardMaximumWidth)
     }
 
     @Test func actionsRuntimeObservationMatchesDispatcherFamilies() {

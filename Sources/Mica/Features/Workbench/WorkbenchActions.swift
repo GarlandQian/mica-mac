@@ -97,11 +97,10 @@ struct WorkbenchActionsView: View {
         _ snapshot: WorkbenchActionsSnapshot?
     ) -> some View {
         WorkbenchCommandBar {
-            WorkbenchManagementHeader(
-                systemImage: "bolt.badge.checkmark",
-                titleKey: "workbench.actions",
-                detail: appModel.selectedRouter?.displayName,
-                value: appModel.selectedRouter?.endpointURL
+            WorkbenchControllerContextHeader(
+                symbolName: appModel.selectedRouter?.controllerKind.editorSymbol ?? "server.rack",
+                name: appModel.selectedRouter?.displayName,
+                detail: appModel.selectedRouter?.endpointURL
             )
         } controls: {
             if let snapshot {
@@ -358,10 +357,7 @@ struct WorkbenchActionsView: View {
                         WorkbenchStaleNotice(message: retainedFailureMessage)
                     }
 
-                    commandWorkspace(
-                        snapshot: snapshot,
-                        usesTwoColumns: layout.usesTwoColumns
-                    )
+                    commandWorkspace(snapshot: snapshot, columns: layout.columns)
 
                     if !snapshot.relatedDestinations.isEmpty {
                         relatedWorkspaces(snapshot.relatedDestinations)
@@ -379,51 +375,22 @@ struct WorkbenchActionsView: View {
     @ViewBuilder
     private func commandWorkspace(
         snapshot: WorkbenchActionsSnapshot,
-        usesTwoColumns: Bool
+        columns: Int
     ) -> some View {
-        let ordinaryGroups = snapshot.groups.filter { $0.group != .lifecycle }
-        let lifecycleGroup = snapshot.groups.first { $0.group == .lifecycle }
+        // Ordinary groups first; lifecycle commands close the page.
+        let ordered = snapshot.groups.filter { $0.group != .lifecycle }
+            + snapshot.groups.filter { $0.group == .lifecycle }
 
-        if usesTwoColumns, ordinaryGroups.count > 1 {
-            HStack(alignment: .top, spacing: MicaTheme.Spacing.space4) {
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
-                    ForEach(Array(ordinaryGroups.enumerated()), id: \.element.id) { index, group in
-                        if index.isMultiple(of: 2) {
-                            commandGroup(group)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
-                    ForEach(Array(ordinaryGroups.enumerated()), id: \.element.id) { index, group in
-                        if !index.isMultiple(of: 2) {
-                            commandGroup(group)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
-                ForEach(ordinaryGroups) { group in
-                    commandGroup(group)
-                }
-            }
-        }
-
-        if let lifecycleGroup {
-            Divider()
-            commandGroup(lifecycleGroup)
+        ForEach(ordered) { group in
+            commandGroup(group, columns: columns)
         }
     }
 
     private func commandGroup(
-        _ group: WorkbenchActionCommandGroup
+        _ group: WorkbenchActionCommandGroup,
+        columns: Int
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             WorkbenchSectionHeading(
                 systemImage: group.group.systemImage,
                 titleKey: group.group.titleKey,
@@ -431,40 +398,61 @@ struct WorkbenchActionsView: View {
                     ? MicaTheme.statusWarning
                     : MicaTheme.textSecondary
             )
-            .padding(.bottom, MicaTheme.Spacing.space2)
 
-            ForEach(Array(group.commands.enumerated()), id: \.element.id) { index, command in
-                if index > 0 { Divider() }
-                commandRow(command)
-                if hasPendingConfirmation(for: command) {
-                    Divider()
-                    inlineConfirmation(command)
-                        .padding(.vertical, MicaTheme.Spacing.space2)
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(
+                        .flexible(),
+                        spacing: WorkbenchActionsLayoutDecision.spacing,
+                        alignment: .top
+                    ),
+                    count: columns
+                ),
+                alignment: .leading,
+                spacing: WorkbenchActionsLayoutDecision.spacing
+            ) {
+                ForEach(group.commands) { command in
+                    commandCard(command)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private func commandRow(_ command: WorkbenchActionCommand) -> some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+    /// One operation: what it does, then its single command. A confirmation
+    /// replaces the command inside the same card, beside what it confirms.
+    private func commandCard(_ command: WorkbenchActionCommand) -> some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             commandIdentity(command)
-            commandButton(command)
+
+            Spacer(minLength: 0)
+
+            if hasPendingConfirmation(for: command) {
+                inlineConfirmation(command)
+            } else {
+                commandButton(command)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
-        .padding(.vertical, MicaTheme.Spacing.space3)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(MicaTheme.Spacing.space3)
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+        .micaCard(cornerRadius: MicaTheme.Metrics.moduleRadius)
     }
 
     private func commandIdentity(_ command: WorkbenchActionCommand) -> some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-            WorkbenchSymbol(
-                systemName: command.systemImage,
-                tint: command.risk == .destructive
-                    ? MicaTheme.statusWarning
-                    : MicaTheme.textSecondary,
-                frameSize: 20
-            )
-            .accessibilityHidden(true)
+        let tint = command.risk == .destructive ? MicaTheme.statusWarning : MicaTheme.accent
+
+        return HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+            Image(systemName: command.systemImage)
+                .symbolRenderingMode(.monochrome)
+                .micaThemeFont(.body, weight: .semibold)
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .background(
+                    tint.opacity(0.14),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                 Text(MicaStrings.localizedKey(command.titleKey, language: language))
@@ -481,17 +469,16 @@ struct WorkbenchActionsView: View {
     }
 
     private func commandButton(_ command: WorkbenchActionCommand) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
+        let title = MicaStrings.localizedKey(command.titleKey, language: language)
+
+        return HStack(spacing: MicaTheme.Spacing.space2) {
             if isRunning(command) {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityHidden(true)
             }
 
-            Button(
-                MicaStrings.localizedKey(command.titleKey, language: language),
-                role: command.risk == .destructive ? .destructive : nil
-            ) {
+            Button(role: command.risk == .destructive ? .destructive : nil) {
                 if command.requiresConfirmation {
                     guard let routerID = appModel.selectedRouterID else { return }
                     pendingConfirmation = WorkbenchRuntimeConfirmation(
@@ -502,6 +489,15 @@ struct WorkbenchActionsView: View {
                 } else {
                     perform(command.intent)
                 }
+            } label: {
+                Label(
+                    MicaStrings.localizedKey(
+                        command.requiresConfirmation ? "actions.run_confirming" : "actions.run",
+                        language: language
+                    ),
+                    systemImage: command.requiresConfirmation ? "exclamationmark.triangle" : "play.fill"
+                )
+                .labelStyle(.titleAndIcon)
             }
             .micaThemeFont(.label)
             .buttonStyle(.bordered)
@@ -509,6 +505,7 @@ struct WorkbenchActionsView: View {
             .fixedSize(horizontal: true, vertical: false)
             .disabled(!command.isEnabled || hasPendingConfirmation(for: command))
             .help(MicaStrings.localizedKey(command.detailKey, language: language))
+            .accessibilityLabel(title)
         }
         .frame(minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .trailing)
     }

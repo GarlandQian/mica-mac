@@ -209,8 +209,8 @@ struct OverviewSymbolMark: View {
 
         var cornerRadius: CGFloat {
             switch self {
-            case .section: 8
-            case .metric: 6
+            case .section: 9
+            case .metric: 7
             }
         }
     }
@@ -226,13 +226,9 @@ struct OverviewSymbolMark: View {
             .foregroundStyle(tint)
             .frame(width: size.frameSize, height: size.frameSize)
             .background(
-                MicaTheme.surface,
+                tint.opacity(0.12),
                 in: RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
-                    .strokeBorder(MicaTheme.separator, lineWidth: MicaTheme.Shape.hairline)
-            }
             .accessibilityHidden(true)
     }
 }
@@ -807,7 +803,11 @@ private struct OverviewNetworkFactsSection: View {
             } else {
                 LazyVGrid(
                     columns: [
-                        GridItem(.adaptive(minimum: 320), spacing: MicaTheme.Spacing.space4),
+                        GridItem(
+                            .adaptive(minimum: 320),
+                            spacing: MicaTheme.Spacing.space4,
+                            alignment: .topLeading
+                        ),
                     ],
                     alignment: .leading,
                     spacing: 0

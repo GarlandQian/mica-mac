@@ -63,10 +63,12 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
     let canRecheck: Bool
     let onRecheck: () -> Void
 
+    /// The verdict leads the page as one status-tinted card: state, what it
+    /// means, the facts behind it, and the one command that re-checks it.
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+                HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
                     verdictIdentity
                     Spacer(minLength: MicaTheme.Spacing.space3)
                     recheckButton
@@ -77,37 +79,32 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
                 }
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: MicaTheme.Spacing.space4) {
-                    freshnessFact
-                    checkedFact
-                    targetFact
-                }
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                    freshnessFact
-                    checkedFact
-                    targetFact
-                }
+            MicaTagFlow(spacing: MicaTheme.Spacing.space2) {
+                freshnessFact
+                checkedFact
+                targetFact
             }
         }
+        .padding(MicaTheme.Spacing.space4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .micaCard(snapshot.overallState.tint.opacity(0.08))
     }
 
     private var verdictIdentity: some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+        HStack(alignment: .center, spacing: MicaTheme.Spacing.space3) {
             Group {
                 if snapshot.overallState == .checking {
                     ProgressView()
                         .controlSize(.regular)
                 } else {
-                    WorkbenchSymbol(
-                        systemName: snapshot.overallState.systemImage,
-                        tint: snapshot.overallState.tint,
-                        font: .title.weight(.semibold),
-                        frameSize: 32
-                    )
+                    Image(systemName: snapshot.overallState.systemImage)
+                        .symbolRenderingMode(.monochrome)
+                        .micaThemeFont(.title, weight: .semibold)
+                        .foregroundStyle(snapshot.overallState.tint)
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 44, height: 44)
+            .background(snapshot.overallState.tint.opacity(0.16), in: Circle())
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -181,22 +178,20 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
         systemImage: String,
         tint: Color
     ) -> some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-            WorkbenchSymbol(
-                systemName: systemImage,
-                tint: tint,
-                font: .caption.weight(.semibold),
-                frameSize: 16
-            )
-            VStack(alignment: .leading, spacing: 1) {
-                Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaThemeFont(.caption, weight: .semibold)
-                    .foregroundStyle(.secondary)
-                Text(verbatim: value)
-                    .micaThemeFont(.caption)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(MicaStrings.localizedKey(titleKey, language: language))
+                .foregroundStyle(.secondary)
+            Text(verbatim: value)
+                .fontWeight(.medium)
         }
+        .micaThemeFont(.caption)
+        .lineLimit(1)
+        .padding(.horizontal, MicaTheme.Spacing.space2)
+        .padding(.vertical, 4)
+        .background(MicaTheme.canvas.opacity(0.7), in: Capsule())
         .accessibilityElement(children: .combine)
     }
 
@@ -496,40 +491,17 @@ struct WorkbenchDiagnosticsAvailableAreas: View {
             )
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 170, maximum: 250), spacing: MicaTheme.Spacing.space3)],
+                columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: MicaTheme.Spacing.space2)],
                 alignment: .leading,
-                spacing: 0
+                spacing: MicaTheme.Spacing.space2
             ) {
                 ForEach(areas) { area in
-                    Button {
+                    WorkbenchDiagnosticsAreaCard(
+                        title: MicaStrings.localizedKey(area.titleKey, language: language),
+                        systemImage: area.systemImage
+                    ) {
                         onNavigate(area.destination)
-                    } label: {
-                        HStack(spacing: MicaTheme.Spacing.space2) {
-                            WorkbenchSymbol(
-                                systemName: area.systemImage,
-                                tint: MicaTheme.statusOK,
-                                font: .callout.weight(.semibold),
-                                frameSize: 18
-                            )
-                            Text(MicaStrings.localizedKey(area.titleKey, language: language))
-                                .micaThemeFont(.label, weight: .medium)
-                                .foregroundStyle(.primary)
-                            Spacer(minLength: MicaTheme.Spacing.space2)
-                            Image(systemName: "arrow.up.right")
-                                .micaThemeFont(.caption, weight: .semibold)
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
-                        .padding(.vertical, MicaTheme.Spacing.space2)
-                        .contentShape(.rect)
-                        .overlay(alignment: .bottom) {
-                            Rectangle()
-                                .fill(MicaTheme.separator)
-                                .frame(height: 0.5)
-                                .accessibilityHidden(true)
-                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -812,5 +784,44 @@ private extension WorkbenchDiagnosticsIssueSeverity {
         case .critical: "xmark.octagon.fill"
         case .warning: "exclamationmark.triangle.fill"
         }
+    }
+}
+
+/// One working area as a small navigation card with a hover state.
+private struct WorkbenchDiagnosticsAreaCard: View {
+    @State private var isHovered = false
+
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: MicaTheme.Metrics.moduleRadius, style: .continuous)
+
+        Button(action: action) {
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                Image(systemName: systemImage)
+                    .symbolRenderingMode(.monochrome)
+                    .micaThemeFont(.label, weight: .semibold)
+                    .foregroundStyle(MicaTheme.statusOK)
+                    .frame(width: 26, height: 26)
+                    .background(MicaTheme.statusOK.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .accessibilityHidden(true)
+                Text(verbatim: title)
+                    .micaThemeFont(.label, weight: .medium)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: MicaTheme.Spacing.space2)
+                Image(systemName: "arrow.up.right")
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(MicaTheme.Spacing.space2)
+            .background(isHovered ? MicaTheme.surfaceHover : MicaTheme.surface, in: shape)
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }

@@ -176,7 +176,7 @@ struct WorkbenchConnectionsView: View {
             .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
         } commands: {
             if model.scope == .active {
-                WorkbenchIconCommand(
+                WorkbenchLabeledCommand(
                     titleKey: "action.close_all",
                     systemImage: "xmark.circle",
                     isEnabled: !model.allRows.isEmpty && canCloseAll,
@@ -184,9 +184,8 @@ struct WorkbenchConnectionsView: View {
                 ) {
                     model.requestClose(.all, identity: sessionIdentity)
                 }
-                .foregroundStyle(MicaTheme.statusError)
             } else {
-                WorkbenchIconCommand(
+                WorkbenchLabeledCommand(
                     titleKey: "traffic.clear_closed",
                     systemImage: "trash",
                     isEnabled: !model.allRows.isEmpty,
@@ -306,25 +305,20 @@ struct WorkbenchConnectionsView: View {
                             MicaStrings.localizedKey("traffic.connection_process", language: language),
                             value: \.process
                         ) { row in
-                            VStack(alignment: .leading, spacing: 1) {
-                                processCell(row)
-                                WorkbenchDataText(
-                                    value: row.network,
-                                    role: .dataCaption,
-                                    tone: .secondary
+                            // The network already sits under the host; the
+                            // process column owns process name and path.
+                            processCell(row)
+                                .frame(
+                                    minHeight: WorkbenchDataRowGeometry.height,
+                                    maxHeight: WorkbenchDataRowGeometry.height,
+                                    alignment: .leading
                                 )
-                            }
-                            .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height,
-                                alignment: .leading
-                            )
                         }
                         .width(min: 130, ideal: 190)
 
                         TableColumn(MicaStrings.localizedKey("dashboard.col_rule", language: language)) { row in
                             VStack(alignment: .leading, spacing: 1) {
-                                WorkbenchDataText(value: row.rulePayloadText)
+                                WorkbenchDataText(value: Self.reportedParts([row.rule, row.payload]))
                                 WorkbenchDataText(
                                     value: row.route,
                                     role: .caption,
@@ -388,9 +382,9 @@ struct WorkbenchConnectionsView: View {
 
                         TableColumn(MicaStrings.localizedKey("traffic.connection_section_routing", language: language)) { row in
                             VStack(alignment: .leading, spacing: 1) {
-                                WorkbenchDataText(value: row.processNetworkText)
+                                WorkbenchDataText(value: reportedText([row.process, row.network]))
                                 WorkbenchDataText(
-                                    value: row.ruleRouteText,
+                                    value: reportedText([row.rule, row.route]),
                                     role: .caption,
                                     tone: .secondary
                                 )
@@ -427,7 +421,7 @@ struct WorkbenchConnectionsView: View {
                             HStack(spacing: MicaTheme.Spacing.space3) {
                                 WorkbenchDataPrimaryCell(
                                     title: row.host,
-                                    detail: row.stackedDetailText,
+                                    detail: Self.reportedParts([row.destination, row.rule, row.route]).dataNonEmpty,
                                     systemImage: model.scope == .active
                                         ? "point.3.connected.trianglepath.dotted"
                                         : "clock",
@@ -494,26 +488,39 @@ struct WorkbenchConnectionsView: View {
     }
 
     private func processCell(_ row: WorkbenchConnectionRow) -> some View {
-        let process = row.connection.metadata?.process?.dataNonEmpty
-            ?? row.connection.metadata?.processPath?.dataNonEmpty
-        return WorkbenchDataText(
-            value: process ?? MicaStrings.localizedKey(
-                "overview.config_not_reported",
-                language: language
-            ),
-            role: process == nil ? .caption : .label,
-            tone: process == nil ? .secondary : .primary
-        )
+        let name = row.connection.metadata?.process?.dataNonEmpty
+        let path = row.connection.metadata?.processPath?.dataNonEmpty
+        return VStack(alignment: .leading, spacing: 1) {
+            WorkbenchDataText(
+                value: name ?? path ?? MicaStrings.localizedKey(
+                    "overview.config_not_reported",
+                    language: language
+                )
+            )
+            if name != nil, let path, path != name {
+                WorkbenchDataText(value: path, role: .dataCaption, tone: .secondary)
+            }
+        }
     }
 
+    /// Joins only the parts the controller reported; the projection keeps
+    /// `-` placeholders for search and identity, not for display.
+    static func reportedParts(_ parts: [String]) -> String {
+        parts.filter { $0 != "-" }.joined(separator: " · ")
+    }
+
+    /// Joined reported parts, or the not-reported state when none exist.
+    private func reportedText(_ parts: [String]) -> String {
+        Self.reportedParts(parts).dataNonEmpty
+            ?? MicaStrings.localizedKey("overview.config_not_reported", language: language)
+    }
+
+    /// Host first, then only the reported destination and network parts.
     private func connectionIdentity(_ row: WorkbenchConnectionRow) -> some View {
         WorkbenchDataPrimaryCell(
             title: row.host,
-            detail: row.identityDetailText,
-            systemImage: model.scope == .active
-                ? "point.3.connected.trianglepath.dotted"
-                : "clock",
-            tint: model.scope == .active ? MicaTheme.accent : .secondary
+            detail: Self.reportedParts([row.destination, row.network]).dataNonEmpty,
+            systemImage: nil
         )
     }
 

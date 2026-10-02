@@ -87,7 +87,7 @@ const languageExpectations = {
         "traffic.connection_uid": "UID",
         "dashboard.no_matching_connections": "No Matching Connections",
       },
-      rules: { "dashboard.col_payload": "PAYLOAD" },
+      rules: { "dashboard.col_payload": "Payload" },
       sources: {
         "traffic.provider_kind": "Kind",
         "dashboard.no_matching_sources": "No Matching Sources",

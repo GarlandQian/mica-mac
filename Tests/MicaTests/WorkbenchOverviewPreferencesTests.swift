@@ -13,7 +13,7 @@ struct WorkbenchOverviewPreferencesTests {
         ])
         #expect(OverviewPreferences.default.visibleMetrics == Set(OverviewMetricID.allCases))
         #expect(OverviewPreferences.default.timelineWindow == .fiveMinutes)
-        #expect(OverviewPreferences.default.visibleOptionalModules.isEmpty)
+        #expect(OverviewPreferences.default.visibleOptionalModules == [.operationalSummaries, .networkInformation])
 
         let repaired = OverviewPreferences(
             visibleMetrics: [],
@@ -41,7 +41,7 @@ struct WorkbenchOverviewPreferencesTests {
         let restored = OverviewPreferencesStore(persistence: box.client)
         #expect(restored.preferences.timelineWindow == .threeMinutes)
         #expect(restored.preferences.visibleMetrics == [.upload, .activeConnections])
-        #expect(restored.preferences.visibleOptionalModules == [.instrumentRail])
+        #expect(restored.preferences.visibleOptionalModules == [.instrumentRail, .operationalSummaries, .networkInformation])
 
         let data = try #require(box.data)
         let envelope = try JSONDecoder().decode(
@@ -56,7 +56,7 @@ struct WorkbenchOverviewPreferencesTests {
     }
 
     @MainActor
-    @Test func supersededLayoutAndWrongSchemaResetWithoutMigration() {
+    @Test func supersededLayoutAndUnknownSchemaResetToDefault() {
         let legacy = Data(
             #"{"version":1,"globalRevision":9,"globalDefault":{"modules":[{"id":"telemetry","size":"full","isVisible":true}]},"controllerOverrides":[]}"#.utf8
         )
@@ -85,6 +85,56 @@ struct WorkbenchOverviewPreferencesTests {
             )
         )
         #expect(wrongSchemaStore.preferences == .default)
+    }
+
+    @MainActor
+    @Test func v1PreferencesKeepSavedChoicesAndGainV2DefaultModulesOnce() throws {
+        let box = OverviewPreferencesPersistenceBox()
+        try box.seed(JSONEncoder().encode(
+            WrongOverviewPreferencesEnvelope(
+                schema: "mica.overview.fixed-core.v1",
+                preferences: OverviewPreferences(
+                    visibleMetrics: [.download],
+                    timelineWindow: .oneMinute,
+                    visibleOptionalModules: [.instrumentRail]
+                )
+            )
+        ))
+
+        let migrated = OverviewPreferencesStore(persistence: box.client)
+        #expect(migrated.preferences.visibleMetrics == [.download])
+        #expect(migrated.preferences.timelineWindow == .oneMinute)
+        #expect(migrated.preferences.visibleOptionalModules == [
+            .instrumentRail, .operationalSummaries, .networkInformation,
+        ])
+        #expect(box.saveCount == 1)
+        let envelope = try JSONDecoder().decode(
+            OverviewPreferencesPersistenceEnvelope.self,
+            from: try #require(box.data)
+        )
+        #expect(envelope.schema == "mica.overview.fixed-core.v2")
+        #expect(envelope.preferences == migrated.preferences)
+
+        migrated.setOptionalModule(.networkInformation, isVisible: false)
+        let reopened = OverviewPreferencesStore(persistence: box.client)
+        #expect(reopened.preferences.visibleOptionalModules == [
+            .instrumentRail, .operationalSummaries,
+        ])
+        #expect(box.saveCount == 2)
+    }
+
+    @MainActor
+    @Test func currentSchemaRestoresWithoutRewriting() throws {
+        let box = OverviewPreferencesPersistenceBox()
+        try box.seed(JSONEncoder().encode(
+            OverviewPreferencesPersistenceEnvelope(
+                preferences: OverviewPreferences(visibleOptionalModules: [])
+            )
+        ))
+
+        let store = OverviewPreferencesStore(persistence: box.client)
+        #expect(store.preferences.visibleOptionalModules.isEmpty)
+        #expect(box.saveCount == 0)
     }
 
     @MainActor
@@ -322,6 +372,11 @@ private final class OverviewPreferencesPersistenceBox: @unchecked Sendable {
                 }
             }
         )
+    }
+
+    /// Stores pre-existing data without counting it as a store write.
+    func seed(_ data: Data) {
+        withLock { self.data = data }
     }
 
     private func withLock<T>(_ body: () -> T) -> T {
