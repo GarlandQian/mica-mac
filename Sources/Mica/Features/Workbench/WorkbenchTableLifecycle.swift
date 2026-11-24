@@ -20,10 +20,14 @@ final class WorkbenchNativeTableLifecycle {
     private var lastScrollGeometry: CGRect?
     private var scrollCorrections = 0
     private var liveScrollObservations: [NSObjectProtocol] = []
-    private var interaction = WorkbenchScrollInteractionState()
+    private var interaction: WorkbenchScrollInteractionState
     private var wheelIdleTask: Task<Void, Never>?
     private var wheelIdleGeneration: UInt64 = 0
     private var isCorrectingScroll = false
+
+    init(wheelIdleDelay: Duration = WorkbenchScrollInteractionState.wheelIdleDelay) {
+        self.interaction = WorkbenchScrollInteractionState(wheelIdleDelay: wheelIdleDelay)
+    }
 
     isolated deinit {
         if let frameObservation {

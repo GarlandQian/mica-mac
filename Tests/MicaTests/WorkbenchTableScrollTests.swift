@@ -120,7 +120,7 @@ final class WorkbenchTableScrollTests: XCTestCase {
 
     func testRealUnphasedWheelBurstCoalescesUntilTheLastTickIsIdle() async throws {
         let driver = TableScrollFixtureDriver(request: WorkbenchDataScrollRequest(id: "row-39"))
-        let fixture = makeFixture(driver: driver)
+        let fixture = makeFixture(driver: driver, wheelIdleDelay: .milliseconds(450))
         defer { tearDown(fixture) }
         let table = try await waitForTable(in: fixture.host)
         try await waitForVisibleRow(39, table: table, host: fixture.host, context: "wheel setup")
@@ -130,7 +130,7 @@ final class WorkbenchTableScrollTests: XCTestCase {
             try sendWheel(delta: 12, to: scroll)
             XCTAssertEqual(driver.scrollBegins, 1)
             XCTAssertEqual(driver.scrollEnds, 0)
-            try await Task.sleep(for: .milliseconds(40))
+            await Task.yield()
         }
         XCTAssertNotEqual(scroll.contentView.bounds.origin.y, initial,
                           "The production native table must really move; no scroll notifications are synthesized.")
@@ -214,16 +214,26 @@ final class WorkbenchTableScrollTests: XCTestCase {
     }
 
     private func waitForWheelEnd(_ driver: TableScrollFixtureDriver) async throws {
-        for _ in 0..<30 {
+        for _ in 0..<150 {
             if driver.scrollEnds > 0 { return }
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertEqual(driver.scrollEnds, 1, "A mouse-wheel burst must release deferred updates after idle.")
     }
 
-    private func makeFixture(driver: TableScrollFixtureDriver, includesSibling: Bool = false) -> (host: NSView, window: NSWindow) {
+    private func makeFixture(
+        driver: TableScrollFixtureDriver,
+        includesSibling: Bool = false,
+        wheelIdleDelay: Duration = WorkbenchScrollInteractionState.wheelIdleDelay
+    ) -> (host: NSView, window: NSWindow) {
         _ = NSApplication.shared
-        let host = NSHostingView(rootView: TableScrollFixture(driver: driver, includesSibling: includesSibling))
+        let host = NSHostingView(
+            rootView: TableScrollFixture(
+                driver: driver,
+                includesSibling: includesSibling,
+                wheelIdleDelay: wheelIdleDelay
+            )
+        )
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: includesSibling ? 640 : 440, height: 260),
             styleMask: [.titled],
@@ -295,6 +305,7 @@ private final class TableScrollFixtureDriver {
 private struct TableScrollFixture: View {
     let driver: TableScrollFixtureDriver
     var includesSibling = false
+    var wheelIdleDelay: Duration = WorkbenchScrollInteractionState.wheelIdleDelay
     private var rows: [TableScrollFixtureRow] {
         (0..<driver.rowCount).map { TableScrollFixtureRow(id: "row-\($0)") }
     }
@@ -320,6 +331,7 @@ private struct TableScrollFixture: View {
             restorationID: driver.restorationID,
             request: driver.request,
             anchor: .bottom,
+            wheelIdleDelay: wheelIdleDelay,
             interaction: interaction,
             rowIndex: { id in rows.firstIndex { $0.id == id } },
             rowID: { index in rows.indices.contains(index) ? rows[index].id : nil },

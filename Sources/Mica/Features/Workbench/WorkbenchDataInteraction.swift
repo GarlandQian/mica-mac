@@ -145,8 +145,13 @@ struct WorkbenchScrollInteractionState: Equatable {
 
     static let wheelIdleDelay = Duration.milliseconds(150)
 
+    let wheelIdleDelay: Duration
     private(set) var phase = Phase.idle
     private(set) var wheelIdleDeadline: ContinuousClock.Instant?
+
+    init(wheelIdleDelay: Duration = Self.wheelIdleDelay) {
+        self.wheelIdleDelay = wheelIdleDelay
+    }
 
     mutating func beginGesture() -> WorkbenchDataScrollTransition? {
         wheelIdleDeadline = nil
@@ -160,7 +165,7 @@ struct WorkbenchScrollInteractionState: Equatable {
         guard phase != .gesture else { return nil }
         let wasIdle = phase == .idle
         phase = .wheel
-        wheelIdleDeadline = now.advanced(by: Self.wheelIdleDelay)
+        wheelIdleDeadline = now.advanced(by: wheelIdleDelay)
         return wasIdle ? .began : nil
     }
 
@@ -278,7 +283,7 @@ struct WorkbenchDataTableViewport<Content: View>: View {
     @State private var anchorID: String?
     @State private var phaseState = WorkbenchDataScrollPhaseState()
     @State private var deliveryState = WorkbenchDataScrollDeliveryState()
-    @State private var tableLifecycle = WorkbenchNativeTableLifecycle()
+    @State private var tableLifecycle: WorkbenchNativeTableLifecycle
     @State private var readyTableID: ObjectIdentifier?
 
     init(
@@ -286,6 +291,7 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         restorationID: String?,
         request: WorkbenchDataScrollRequest? = nil,
         anchor: UnitPoint = .top,
+        wheelIdleDelay: Duration = WorkbenchScrollInteractionState.wheelIdleDelay,
         interaction: WorkbenchDataInteractionCoordinator,
         rowIndex: @escaping (String) -> Int?,
         rowID: @escaping (Int) -> String?,
@@ -307,6 +313,7 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         self.onReachedBottom = onReachedBottom
         self.onAnchorCommit = onAnchorCommit
         self.content = content()
+        _tableLifecycle = State(initialValue: WorkbenchNativeTableLifecycle(wheelIdleDelay: wheelIdleDelay))
     }
 
     var body: some View {
