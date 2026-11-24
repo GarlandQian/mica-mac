@@ -36,17 +36,28 @@ struct WorkbenchSourcesCatalogObserver: View {
     }
 
     func activate() {
-        workspaceStore.sourceRowResolver = { [weak model] id in model?.row(id: id) }
+        if let existing = model.resolverToken {
+            workspaceStore.clearSourceRowResolver(token: existing)
+        }
+        model.resolverToken = workspaceStore.registerSourceRowResolver { [weak model] id in model?.row(id: id) }
         let input = presentationInput
         restoreWorkspace(scope: input.scope)
         model.update(input)
         if let selectedRowID = model.selectedRowID {
             workspaceStore.selectInspector(.source(id: selectedRowID))
+        } else {
+            workspaceStore.update(controllerID: input.scope.controllerID, destination: .sources) {
+                $0.selectedItemID = nil
+            }
+            workspaceStore.clearInspectorSelection(ownedBy: .sources)
         }
     }
 
     func deactivate() {
-        workspaceStore.sourceRowResolver = nil
+        if let resolverToken = model.resolverToken {
+            workspaceStore.clearSourceRowResolver(token: resolverToken)
+            model.resolverToken = nil
+        }
         model.deactivate()
     }
 
@@ -96,6 +107,15 @@ struct WorkbenchLogsCatalogObserver: View {
             .onChange(of: presentationRequest) { _, request in
                 synchronize(request)
             }
+            .onChange(of: appModel.controllerLogLevel) { _, nextLevel in
+                guard model.isActive,
+                      presentationScope == model.scope,
+                      model.level != nextLevel else { return }
+                model.setLevel(nextLevel)
+                workspaceStore.update(controllerID: model.scope?.controllerID, destination: .logs) {
+                    $0.filters["level"] = nextLevel.rawValue
+                }
+            }
     }
 
     var presentationRequest: WorkbenchLogsPresentationRequest {
@@ -111,17 +131,37 @@ struct WorkbenchLogsCatalogObserver: View {
     }
 
     func activate() {
-        workspaceStore.logEntryResolver = { [weak model] id in model?.row(id: id) }
+        if let existing = model.resolverToken {
+            workspaceStore.clearLogEntryResolver(token: existing)
+        }
+        model.resolverToken = workspaceStore.registerLogEntryResolver { [weak model] id in model?.row(id: id) }
         let request = presentationRequest
         restoreWorkspace(scope: request.scope)
+        if let scope = LiveCommandScope(
+            controllerID: request.scope.controllerID,
+            generation: request.scope.generation
+        ),
+           let router = appModel.selectedRouter,
+           appModel.runtimeControllerKind(for: router) != .surgeCompatible,
+           appModel.controllerLogLevel != model.level {
+            appModel.setControllerLogLevel(model.level, scope: scope)
+        }
         model.update(catalog: appModel.logsCatalog, request: request)
         if let selectedRowID = model.selectedRowID {
             workspaceStore.selectInspector(.log(id: selectedRowID))
+        } else {
+            workspaceStore.update(controllerID: request.scope.controllerID, destination: .logs) {
+                $0.selectedItemID = nil
+            }
+            workspaceStore.clearInspectorSelection(ownedBy: .logs)
         }
     }
 
     func deactivate() {
-        workspaceStore.logEntryResolver = nil
+        if let resolverToken = model.resolverToken {
+            workspaceStore.clearLogEntryResolver(token: resolverToken)
+            model.resolverToken = nil
+        }
         model.deactivate()
     }
 

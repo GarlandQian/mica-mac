@@ -143,7 +143,11 @@ struct WorkbenchSourceTimestampCacheTests {
     private func originalDisplay(_ raw: String?, language: AppLanguage) -> String? {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
               !raw.hasPrefix("0001-"), !raw.hasPrefix("1970-") else { return nil }
-        guard let date = ISO8601DateFormatter().date(from: raw) else { return raw }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) else {
+            return raw
+        }
         return date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(language.resolvedLocale))
     }
 }

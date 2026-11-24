@@ -406,13 +406,13 @@ struct WorkbenchManagementProjectionTests {
             .nikkiMihomoCompatible,
             .openClashMihomoCompatible,
             .cmfaCompatible,
+            .surgeHTTPAPI,
         ] {
             #expect(controllerType.hasWorkbenchRuntimeOperations)
         }
 
         for controllerType in [
-            UnifiedControllerType.surgeHTTPAPI,
-            .singBoxCompatible,
+            UnifiedControllerType.singBoxCompatible,
             .stashCompatible,
             .stashCmfaCompatible,
             .smartProbe,
@@ -982,5 +982,56 @@ struct WorkbenchManagementProjectionTests {
             ],
             nextStep: "Refresh"
         )
+    }
+
+    @Test func surgeActionsExposeDNSFlushAndPauseDisablesCommands() {
+        let paused = WorkbenchActionsProjection.snapshot(
+            actionsInput(
+                router: controllerProfile(kind: .surgeCompatible),
+                controllerType: .surgeHTTPAPI,
+                state: .live,
+                capabilities: .surgeHTTPAPI,
+                runtimeRows: [
+                    DiagnosticsRuntimeOperationRow(
+                        id: "dns-flush",
+                        titleKey: "diagnostics.operation_dns_flush",
+                        detailKey: "diagnostics.operation_dns_flush_detail",
+                        sourceKey: "diagnostics.operation_source_dns",
+                        sourceRowID: "dns-flush",
+                        systemImage: "arrow.clockwise.circle",
+                        status: .supported,
+                        nextStepKey: "diagnostics.operation_next_ready",
+                        actionButtonKey: "diagnostics.run_dns_flush",
+                        requiresConfirmation: false,
+                        confirmationMessageKey: nil,
+                        isDestructive: false,
+                        evidence: ""
+                    ),
+                ],
+                canRefresh: false
+            )
+        )
+        let dns = paused.groups.flatMap(\.commands).first { $0.id == "dns-flush" }
+        #expect(dns != nil)
+        #expect(dns?.isEnabled == false)
+        #expect(dns?.actionButtonKey == "diagnostics.run_dns_flush")
+    }
+
+    @Test func autoDetectFailureStopsCheckingAndClearsAvailableAreasWhenOffline() {
+        let checkingHealthButFailedSession = ControllerHealthSnapshot.checking(
+            router: controllerProfile(kind: .autoDetect)
+        )
+        let failed = WorkbenchDiagnosticsProjection.snapshot(
+            diagnosticsInput(
+                router: controllerProfile(kind: .autoDetect),
+                controllerType: .smartProbe,
+                state: .failedBeforeFirstSnapshot("Offline"),
+                lastSuccessAt: Date(timeIntervalSince1970: 2_000_000_000),
+                health: checkingHealthButFailedSession,
+                capabilities: .mihomoCompatible
+            )
+        )
+        #expect(failed.overallState != .checking)
+        #expect(failed.availableAreas.isEmpty)
     }
 }

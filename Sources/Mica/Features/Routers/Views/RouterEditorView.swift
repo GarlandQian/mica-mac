@@ -8,6 +8,8 @@ struct RouterEditorView: View {
     @State var draft: RouterDraft
     @State private var initialDraft: RouterDraft
     @State var testState: TestState = .idle
+    @State var testTask: Task<Void, Never>?
+    @State var testRunID = UUID()
     @State var showsValidation = false
     @State private var isSaving = false
     @State private var saveError: String?
@@ -45,6 +47,7 @@ struct RouterEditorView: View {
         } content: {
             WorkbenchManagementFormCanvas {
                 controllerFormContent
+                    .disabled(isSaving)
 
                 if testState.shouldShow {
                     diagnosisSection
@@ -54,10 +57,32 @@ struct RouterEditorView: View {
         .navigationTitle(MicaStrings.localizedKey(title, language: appLanguage))
         .toolbarTitleDisplayMode(.inline)
         .onAppear { reportEditingState() }
-        .onChange(of: draft) { _, _ in reportEditingState() }
+        .onDisappear {
+            testTask?.cancel()
+            testTask = nil
+        }
+        .onChange(of: draft) { oldDraft, newDraft in
+            if !newDraft.secret.isEmpty, newDraft.clearStoredSecret {
+                draft.clearStoredSecret = false
+            }
+            if saveError != nil {
+                saveError = nil
+            }
+            if newDraft == initialDraft, showsDiscardConfirmation {
+                showsDiscardConfirmation = false
+            }
+            if hasConnectionParameterChange(from: oldDraft, to: newDraft) {
+                testTask?.cancel()
+                testTask = nil
+                testRunID = UUID()
+                if testState != .idle {
+                    testState = .idle
+                }
+            }
+            reportEditingState()
+        }
         .onChange(of: isSaving) { _, _ in reportEditingState() }
         .onChange(of: appLanguage.rawValue) { _, _ in reportEditingState() }
-        .onChange(of: draft.controllerKind) { _, _ in testState = .idle }
         .onChange(of: discardRequestID) { _, _ in
             guard !isSaving else { return }
             if isDirty {
@@ -198,8 +223,24 @@ struct RouterEditorView: View {
         onEditingStateChange(isDirty, isSaving)
     }
 
+    private func hasConnectionParameterChange(from lhs: RouterDraft, to rhs: RouterDraft) -> Bool {
+        lhs.controllerKind != rhs.controllerKind
+            || lhs.surgePlatform != rhs.surgePlatform
+            || lhs.scheme != rhs.scheme
+            || lhs.host != rhs.host
+            || lhs.portText != rhs.portText
+            || lhs.secret != rhs.secret
+            || lhs.clearStoredSecret != rhs.clearStoredSecret
+            || lhs.tlsPolicy != rhs.tlsPolicy
+    }
+
     private func requestClose() {
         guard !isSaving else { return }
+        if showsDiscardConfirmation {
+            showsDiscardConfirmation = false
+            onDiscardCancelled()
+            return
+        }
         if isDirty {
             showsDiscardConfirmation = true
         } else {
@@ -208,6 +249,7 @@ struct RouterEditorView: View {
     }
 
     private func saveController() {
+        showsDiscardConfirmation = false
         showsValidation = true
         guard validationError == nil else { return }
         guard !isSaving else { return }
@@ -260,8 +302,17 @@ enum TestState: Equatable {
 
     var foregroundStyle: Color {
         switch self {
-        case .idle, .testing: MicaTheme.textSecondary
-        case .report(let report): report.summary == .ready ? MicaTheme.statusOK : MicaTheme.statusError
+        case .idle, .testing:
+            MicaTheme.textSecondary
+        case .report(let report):
+            switch report.summary {
+            case .ready:
+                MicaTheme.statusOK
+            case .partial, .unknown, .checking:
+                MicaTheme.statusWarning
+            case .authFailed, .wrongTarget, .offline:
+                MicaTheme.statusError
+            }
         }
     }
 }

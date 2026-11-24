@@ -5,81 +5,84 @@ import SwiftUI
 
 /// Shared appearance, typography, and layout for the native workspace.
 ///
-/// macOS 27 owns the window's control layer: the toolbar, sidebar, and
-/// inspector are system Liquid Glass and are never painted by Mica. Content
-/// sits on the system window background and groups itself with the system
-/// fill hierarchy, so the workbench tracks Increase Contrast, Reduce
-/// Transparency, and the user's glass tint preference without custom colors.
+/// macOS 27 owns the window's glass control chrome (toolbar, sidebar, and
+/// inspector). Content sits on a calm layered canvas with crisp 1pt bordered
+/// surfaces, calibrated high-contrast status tones, and subtle light-mode
+/// elevation shadows.
 enum MicaTheme {
     // MARK: Color
 
-    /// Page fill: the system window background beneath the glass chrome.
-    static let canvas = Color(nsColor: .windowBackgroundColor)
-    /// Grouped panels and cards; matches the native grouped `Form` section
-    /// fill, one step deeper in dark mode where the base is darker.
-    static let surface = Color(micaLight: .quaternarySystemFill, dark: .tertiarySystemFill)
+    /// Page fill: cool light slate in Light mode, deep graphite in Dark mode.
+    static let canvas = Color(micaLight: rgb(0xF3F5F8), dark: rgb(0x13151A))
+    /// Primary elevated card surface.
+    static let surface = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x1C1F26))
+    /// Secondary recessed wells (directory sidebar, track pills, nested chips).
+    static let surfaceSecondary = Color(micaLight: rgb(0xEAECEF), dark: rgb(0x171A21))
+    /// Slightly lifted surface for active tiles or nested controls.
+    static let surfaceElevated = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x232730))
     /// Pointer hover on a grouped row or tile.
-    static let surfaceHover = Color(nsColor: .secondarySystemFill)
+    static let surfaceHover = Color(micaLight: rgba(0x0F172A, 0.045), dark: rgba(0xFFFFFF, 0.06))
+    /// Crisp 1pt border around cards and modules.
+    static let surfaceBorder = Color(micaLight: rgba(0x0F172A, 0.08), dark: rgba(0xFFFFFF, 0.085))
+    /// Higher-contrast border for Increase Contrast or emphasized containers.
+    static let surfaceBorderStrong = Color(micaLight: rgba(0x0F172A, 0.16), dark: rgba(0xFFFFFF, 0.16))
     /// System hairline; follows Increase Contrast.
     static let separator = Color(nsColor: .separatorColor)
 
-    /// System-compatible text ramps; both appearances resolve through the
-    /// system label colors so contrast tracks the user's accessibility settings.
+    /// Text ramps with guaranteed readability across light and dark surfaces.
     static let textPrimary = Color(nsColor: .labelColor)
     static let textSecondary = Color(nsColor: .secondaryLabelColor)
-    static let textTertiary = Color(nsColor: .tertiaryLabelColor)
+    static let textTertiary = Color(micaLight: rgba(0x475569, 0.78), dark: rgba(0x94A3B8, 0.78))
 
     /// Follow the user's macOS accent preference for selection and commands.
     static let accent = Color(nsColor: .controlAccentColor)
 
     enum Chart {
-        static let upload = Color(nsColor: .systemTeal)
-        static let download = Color(nsColor: .systemBlue)
-        static let connections = Color(nsColor: .systemOrange)
+        static let upload = Color(micaLight: rgb(0x0891B2), dark: rgb(0x2DD4BF))
+        static let download = Color(micaLight: rgb(0x2563EB), dark: rgb(0x60A5FA))
+        static let connections = Color(micaLight: rgb(0xEA580C), dark: rgb(0xFB923C))
+        static let memory = Color(micaLight: rgb(0x7C3AED), dark: rgb(0xA78BFA))
     }
 
     enum Topology {
-        /// The grouped `surface` resolved over `canvas`. The route canvas is
-        /// an opaque layer, so it cannot composite a translucent system fill.
-        static let panelSurface = Color(micaLight: rgb(0xF7F7F7), dark: rgb(0x292929))
-        /// Opaque so cards paint over every route beneath them.
-        static let nodeSurface = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x363638))
-        static let headerSurface = Color(micaLight: rgb(0xF0F0F0), dark: rgb(0x2F2F2F))
+        /// Opaque route canvas background matching `surface`.
+        static let panelSurface = Color(micaLight: rgb(0xFFFFFF), dark: rgb(0x191C22))
+        /// Opaque node card surface so cards cleanly occlude edges beneath them.
+        static let nodeSurface = Color(micaLight: rgb(0xF8FAFC), dark: rgb(0x232730))
+        static let headerSurface = Color(micaLight: rgb(0xF1F4F8), dark: rgb(0x1E222A))
     }
 
     /// Fixed miniature window colors for the Settings appearance tiles; each
     /// tile depicts its appearance regardless of the current one.
     enum AppearancePreview {
-        static let lightWindow = Color(nsColor: rgb(0xFFFFFF))
-        static let lightSidebar = Color(nsColor: rgb(0xE9E9EB))
-        static let lightLine = Color(nsColor: rgb(0xD1D1D6))
-        static let darkWindow = Color(nsColor: rgb(0x1E1E1E))
-        static let darkSidebar = Color(nsColor: rgb(0x323234))
-        static let darkLine = Color(nsColor: rgb(0x48484A))
+        static let lightWindow = Color(nsColor: rgb(0xF3F5F8))
+        static let lightSidebar = Color(nsColor: rgb(0xE6E9EF))
+        static let lightLine = Color(nsColor: rgb(0xCBD5E1))
+        static let darkWindow = Color(nsColor: rgb(0x13151A))
+        static let darkSidebar = Color(nsColor: rgb(0x1F232C))
+        static let darkLine = Color(nsColor: rgb(0x334155))
     }
 
-    /// Controller-reported status ONLY; system equivalents keep both
-    /// appearances and increase-contrast adaptations for free.
-    static let statusOK = Color(nsColor: .systemGreen)
-    static let statusWarning = Color(nsColor: .systemOrange)
-    static let statusError = Color(nsColor: .systemRed)
+    /// Calibrated high-contrast status tones meeting WCAG AA even at 11pt.
+    static let statusOK = Color(micaLight: rgb(0x15803D), dark: rgb(0x34D399))
+    static let statusWarning = Color(micaLight: rgb(0xC2410C), dark: rgb(0xFBBF24))
+    static let statusError = Color(micaLight: rgb(0xDC2626), dark: rgb(0xF87171))
+    static let statusInfo = Color(micaLight: rgb(0x2563EB), dark: rgb(0x60A5FA))
 
-    /// Muted category colors distinguish routing stages from live status.
+    /// Category tints distinguish routing stages from live health status.
     enum ColumnTint {
-        /// Sources: muted slate blue.
-        static let source = Color(micaLight: rgb(0x5B7089), dark: rgb(0x7E93B0))
-        /// Matched rules: muted warm sand.
-        static let rule = Color(micaLight: rgb(0x9A7B4F), dark: rgb(0xC4A876))
-        /// Proxy chain hops: muted violet.
-        static let policyHop = Color(micaLight: rgb(0x7A68AC), dark: rgb(0xA495D6))
-        /// Chain exits: muted dusty rose.
-        static let finalOutbound = Color(micaLight: rgb(0xA85F74), dark: rgb(0xCE8499))
+        /// Sources: cool steel blue.
+        static let source = Color(micaLight: rgb(0x3B6291), dark: rgb(0x60A5FA))
+        /// Matched rules: warm amber.
+        static let rule = Color(micaLight: rgb(0xB45309), dark: rgb(0xFBBF24))
+        /// Proxy chain hops: soft violet.
+        static let policyHop = Color(micaLight: rgb(0x6D28D9), dark: rgb(0xA78BFA))
+        /// Chain exits: vibrant rose.
+        static let finalOutbound = Color(micaLight: rgb(0xBE185D), dark: rgb(0xF472B6))
     }
 
-    /// Non-selected edges while a trajectory is active: an explicit alpha-baked
-    /// neutral (tertiaryLabelColor's own ~26% alpha made these invisible in
-    /// light mode).
-    static let edgeDimmed = Color(micaLight: rgba(0x14181D, 0.16), dark: rgba(0xE8ECF1, 0.14))
+    /// Non-selected edges while a trajectory is active.
+    static let edgeDimmed = Color(micaLight: rgba(0x1E293B, 0.16), dark: rgba(0xE2E8F0, 0.16))
 
     private static func rgb(_ hex: UInt32) -> NSColor {
         rgba(hex, 1)
@@ -111,9 +114,7 @@ extension Color {
 // MARK: - Status
 
 extension MicaTheme {
-    /// Semantic status for controller-reported state. Colors come only from the
-    /// status tokens; `neutral` reuses the tertiary text ramp for unknown or
-    /// inactive state without introducing a new color token.
+    /// Semantic status for controller-reported state.
     enum Status: Sendable, Equatable {
         case ok
         case warning
@@ -134,12 +135,6 @@ extension MicaTheme {
 // MARK: - Typography
 
 extension MicaTheme {
-    /// UI roles render SF Pro at 11/12/13/15/17 with
-    /// semibold titles plus 22/28 hero values. `data*` roles render SF Mono
-    /// (`Font.system(design: .monospaced)`) with tabular numerals and are the only roles
-    /// allowed for live data (latency, rates, IPs, ports, counts, timestamps).
-    ///
-    /// Every role respects the user's font-scale preference.
     enum TextRole: Sendable, Equatable {
         case caption
         case label
@@ -184,14 +179,10 @@ extension MicaTheme {
         }
     }
 
-    /// Scaled point size for a role under the user's font-scale preference.
     static func pointSize(for role: TextRole, scale: AppFontScale) -> CGFloat {
         scale.pointSize(for: role.basePointSize)
     }
 
-    /// Resolved font for a role. Non-View callers (Canvas/NSView rendering)
-    /// pass the `AppFontScale` they already carry; SwiftUI callers should
-    /// prefer `micaThemeFont`, which reads the scale from the environment.
     static func font(
         for role: TextRole,
         scale: AppFontScale = .comfortable,
@@ -216,7 +207,6 @@ private struct MicaThemeFontModifier: ViewModifier {
     func body(content: Content) -> some View {
         let scaled = content.font(MicaTheme.font(for: role, scale: fontScale, weight: weight))
         if role.isMonospaced {
-            // Tabular numerals everywhere live data appears (design.md §2).
             scaled.monospacedDigit()
         } else {
             scaled
@@ -242,34 +232,23 @@ extension MicaTheme {
         static let space4: CGFloat = 16
         static let space5: CGFloat = 24
 
-        /// Panel padding stays within 12-16pt.
         static let panelPaddingCompact: CGFloat = space3
         static let panelPadding: CGFloat = space4
     }
 
-    /// Continuous corners sized for macOS 27 window geometry. Nested shapes
-    /// use `ConcentricRectangle` inside a `micaCard` container instead of
-    /// picking a smaller literal radius.
     enum Shape {
-        /// Cards and bounded content regions.
         static let panelRadius: CGFloat = 12
-        /// Rows and tiles that stand alone inside a scrolling list.
         static let rowRadius: CGFloat = 8
-        /// Hairlines separate adjacent content; elevation belongs to glass.
         static let hairline: CGFloat = 1
     }
 
     enum Metrics {
-        /// Compact rows retain room for keyboard focus and selection.
         static let dataRowHeightMin: CGFloat = 22
         static let dataRowHeightMax: CGFloat = 28
 
-        /// Compact pointer-control bounds.
         static let iconControlSize: CGFloat = 28
         static let moduleRadius: CGFloat = 10
-        /// Minimum height for standalone controls.
         static let controlMinHeight: CGFloat = 28
-        /// Commands can grow vertically when controls wrap.
         static let commandBarHeight: CGFloat = 40
         static let chromeHorizontalPadding: CGFloat = 12
 
@@ -281,15 +260,14 @@ extension MicaTheme {
             width < wideThreshold ? compactPagePadding : regularPagePadding
         }
 
-        static let statusBarHeight: CGFloat = 28
-        /// Inspector widths remain independent of the data workspace.
+        static let statusBarHeight: CGFloat = 30
         static let inspectorMin: CGFloat = 300
         static let inspectorIdeal: CGFloat = 360
         static let inspectorMax: CGFloat = 480
         static let formLabelWidth: CGFloat = 176
         static let formControlMax: CGFloat = 360
-        static let sidebarMin: CGFloat = 188
-        static let sidebarIdeal: CGFloat = 216
+        static let sidebarMin: CGFloat = 196
+        static let sidebarIdeal: CGFloat = 220
         static let sidebarMax: CGFloat = 280
     }
 }
@@ -297,10 +275,6 @@ extension MicaTheme {
 // MARK: - Motion
 
 extension MicaTheme {
-    /// State-change motion only: the system's critically damped springs at
-    /// 120-200ms, matching Liquid Glass controls. No idle loops exist in this
-    /// system; callers must gate every animation on
-    /// `accessibilityReduceMotion` (use `micaStateChangeAnimation`).
     enum Motion {
         static let press = Animation.snappy(duration: 0.12)
         static let stateChange = Animation.smooth(duration: 0.16)
@@ -320,8 +294,6 @@ private struct MicaStateChangeAnimationModifier<Value: Equatable>: ViewModifier 
 }
 
 extension View {
-    /// Animates a state change with a MicaTheme motion token unless the user
-    /// prefers reduced motion, in which case the change applies instantly.
     func micaStateChangeAnimation<Value: Equatable>(
         _ animation: Animation? = MicaTheme.Motion.stateChange,
         value: Value
@@ -332,24 +304,87 @@ extension View {
 
 // MARK: - Surfaces
 
+private struct MicaCardModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    let fill: Color
+    let cornerRadius: CGFloat
+    let bordered: Bool
+    let elevated: Bool
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let borderColor = contrast == .increased
+            ? MicaTheme.surfaceBorderStrong
+            : MicaTheme.surfaceBorder
+
+        content
+            .background(fill, in: shape)
+            .overlay {
+                if bordered {
+                    shape.strokeBorder(borderColor, lineWidth: contrast == .increased ? 1.25 : 1)
+                }
+            }
+            .shadow(
+                color: (elevated && colorScheme == .light) ? Color.black.opacity(0.05) : .clear,
+                radius: 8,
+                x: 0,
+                y: 2
+            )
+            .containerShape(shape)
+    }
+}
+
+private struct MicaSoftPillModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let tint: Color
+
+    func body(content: Content) -> some View {
+        let fillOpacity = colorScheme == .dark ? 0.16 : 0.10
+        let strokeOpacity = colorScheme == .dark ? 0.28 : 0.20
+
+        content
+            .background(tint.opacity(fillOpacity), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(tint.opacity(strokeOpacity), lineWidth: 1)
+            }
+    }
+}
+
 extension View {
-    /// Grouped content card: a system-fill panel with continuous corners and
-    /// no border, like a native grouped `Form` section. The card also becomes
-    /// the container shape, so nested `ConcentricRectangle` fills stay
-    /// concentric with it at any padding.
+    /// Grouped content card with crisp hairline border and subtle light-mode elevation.
     func micaCard(
+        _ fill: Color = MicaTheme.surface,
+        cornerRadius: CGFloat = MicaTheme.Shape.panelRadius,
+        bordered: Bool = true,
+        elevated: Bool = false
+    ) -> some View {
+        let appliesChrome = fill != .clear
+        return modifier(
+            MicaCardModifier(
+                fill: fill,
+                cornerRadius: cornerRadius,
+                bordered: bordered && appliesChrome,
+                elevated: elevated && appliesChrome
+            )
+        )
+    }
+
+    /// Elevated top-level Bento card with subtle drop shadow in Light mode.
+    func micaElevatedCard(
         _ fill: Color = MicaTheme.surface,
         cornerRadius: CGFloat = MicaTheme.Shape.panelRadius
     ) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        return background(fill, in: shape)
-            .containerShape(shape)
+        micaCard(fill, cornerRadius: cornerRadius, bordered: true, elevated: true)
     }
 
-    /// Liquid Glass for Mica's own floating control layer: transient previews
-    /// and overlays that hover above content. Business data surfaces never
-    /// use glass; the system glass itself handles Reduce Transparency and
-    /// Increase Contrast.
+    /// Soft-tinted semantic capsule pill with matching hairline stroke.
+    func micaSoftPill(_ tint: Color) -> some View {
+        modifier(MicaSoftPillModifier(tint: tint))
+    }
+
+    /// Liquid Glass for Mica's transient floating previews and overlays.
     func micaFloatingGlass(
         cornerRadius: CGFloat = MicaTheme.Shape.panelRadius
     ) -> some View {

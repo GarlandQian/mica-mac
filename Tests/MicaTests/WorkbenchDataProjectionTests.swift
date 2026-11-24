@@ -552,7 +552,7 @@ struct WorkbenchDataProjectionTests {
         #expect(WorkbenchDataSearch.contains("mÜnchen", in: "München Edge"))
         #expect(WorkbenchDataSearch.contains("σίσυφος", in: "Σίσυφος"))
         #expect(WorkbenchDataSearch.contains("東京", in: "東京节点"))
-        #expect(!WorkbenchDataSearch.contains("munchen", in: "München Edge"))
+        #expect(WorkbenchDataSearch.contains("munchen", in: "München Edge"))
     }
 
     @Test func endpointStateDistinguishesUnavailableLoadingEmptyFilteredAndStale() {
@@ -755,8 +755,8 @@ struct WorkbenchDataProjectionTests {
         #expect(rows[0].identityDetailText == "[2001:db8::1]:443 · tcp / HTTPS")
         #expect(rows[0].processNetworkText == "Browser · tcp / HTTPS")
         #expect(rows[0].rulePayloadText == "DOMAIN · full.example.internal")
-        #expect(rows[0].ruleRouteText == "DOMAIN · Proxy → DIRECT")
-        #expect(rows[0].stackedDetailText == "[2001:db8::1]:443 · DOMAIN · Proxy → DIRECT")
+        #expect(rows[0].ruleRouteText == "DOMAIN · DIRECT → Proxy")
+        #expect(rows[0].stackedDetailText == "[2001:db8::1]:443 · DOMAIN · DIRECT → Proxy")
         #expect(rows[0].timestampText == "2026-07-27T10:00:00Z")
         #expect(rows[0].uploadDisplayText == "10 B")
         #expect(rows[0].uploadSummaryText == "↑ 10 B")
@@ -1770,7 +1770,7 @@ struct WorkbenchDataProjectionTests {
                 from: [
                     ConnectionSnapshot(
                         id: "connection",
-                        chains: ["Policy A", "Node A"],
+                        chains: ["Node A", "Policy A"],
                         providerChains: ["Provider A"],
                         rule: "DOMAIN",
                         rulePayload: "example.com",
@@ -1843,6 +1843,21 @@ struct WorkbenchDataProjectionTests {
         )
         #expect(nextRevision.count(for: rule) == 0)
         #expect(cache.rebuildCount == 2)
+
+        let suffixRule = RuleViewState(
+            id: "suffix-rule",
+            type: "DOMAIN-SUFFIX",
+            payload: "example.com",
+            proxy: "Proxy"
+        )
+        let exactType = cache.resolve(
+            connections: [ConnectionSnapshot(id: "two", rule: "DOMAIN-SUFFIX", rulePayload: "example.com")],
+            controllerID: controllerID,
+            generation: generation,
+            revision: 6
+        )
+        #expect(exactType.count(for: suffixRule) == 1)
+        #expect(exactType.count(for: rule) == 0)
     }
 
     @Test func ruleProjectionCacheRebuildsConnectionHitsOnlyForStructureRevision() {
@@ -3000,7 +3015,7 @@ struct WorkbenchDataProjectionTests {
     @Test func dataFormattingKeepsFullAddressesRoutesAndStructuredValues() {
         #expect(WorkbenchDataFormat.address("2001:db8::10", port: "443") == "[2001:db8::10]:443")
         #expect(WorkbenchDataFormat.address("controller.example", port: "9090") == "controller.example:9090")
-        #expect(WorkbenchDataFormat.chain(["Proxy A", "", "DIRECT"]) == "Proxy A → DIRECT")
+        #expect(WorkbenchDataFormat.chain(["Proxy A", "", "DIRECT"]) == "DIRECT → Proxy A")
         #expect(
             WorkbenchDataFormat.json([
                 "node": .string("Node A"),
@@ -3009,7 +3024,7 @@ struct WorkbenchDataProjectionTests {
         )
         #expect(WorkbenchDataFormat.bytes(0) == "0 B")
         #expect(WorkbenchDataFormat.rate(0, language: .english) == "0 B/s")
-        #expect(WorkbenchDataFormat.rate(0, language: .simplifiedChinese) == "0 B/s")
+        #expect(WorkbenchDataFormat.rate(0, language: .simplifiedChinese) == "0 B/秒")
         #expect(WorkbenchDataFormat.reportedTimestamp(nil) == nil)
         #expect(WorkbenchDataFormat.reportedTimestamp("0001-01-01T00:00:00Z") == nil)
         #expect(WorkbenchDataFormat.reportedTimestamp("1970-01-01T00:00:00Z") == nil)

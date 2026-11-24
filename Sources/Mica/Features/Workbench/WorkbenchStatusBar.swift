@@ -164,140 +164,145 @@ struct WorkbenchOperationOutcomePresentation: Equatable {
 
 struct WorkbenchBottomChrome: View {
     @Environment(AppModel.self) private var appModel
+    var onOpenDiagnostics: (() -> Void)? = nil
 
     var body: some View {
-        WorkbenchStatusBar(operationState: appModel.operationState)
+        WorkbenchStatusBar(
+            operationState: appModel.operationState,
+            onOpenDiagnostics: onOpenDiagnostics
+        )
     }
 }
 
 private struct WorkbenchStatusBar: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     let operationState: OperationState?
+    let onOpenDiagnostics: (() -> Void)?
 
     var body: some View {
         let status = sessionStatus
 
-        ViewThatFits(in: .horizontal) {
-            statusRow(status: status, showsTimestamp: true)
-                .fixedSize(horizontal: true, vertical: false)
-            statusRow(status: status, showsTimestamp: false)
-                .fixedSize(horizontal: true, vertical: false)
-            compactStatusRow(status: status)
+        HStack(spacing: MicaTheme.Spacing.space3) {
+            sessionIdentity(status)
+                .layoutPriority(1)
+
+            if let displayableTime = workbenchDisplayableDate(status.timestamp) {
+                timestampLabel(displayableTime)
+                    .layoutPriority(0)
+            }
+
+            if let outcome = operationOutcome {
+                operationPill(outcome)
+                    .layoutPriority(2)
+            }
+
+            Spacer(minLength: MicaTheme.Spacing.space2)
+
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                WorkbenchStatusBarModeControl()
+                WorkbenchStatusBarTrafficTicker()
+            }
+            .layoutPriority(1)
         }
         .micaThemeFont(.caption)
         .frame(
             maxWidth: .infinity,
             minHeight: MicaTheme.Metrics.statusBarHeight,
+            maxHeight: MicaTheme.Metrics.statusBarHeight,
             alignment: .leading
         )
         .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
-        .background(MicaTheme.canvas)
+        .background(MicaTheme.surfaceSecondary)
         .overlay(alignment: .top) { MicaHairlineSeparator() }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func statusRow(
-        status: WorkbenchSessionStatus,
-        showsTimestamp: Bool
-    ) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space3) {
-            activityIdentity(status: status, compact: false)
-
-            if showsTimestamp, let timestamp = status.timestamp {
-                statusDivider
-                timestampLabel(timestamp)
-            }
-        }
-    }
-
-    private func compactStatusRow(status: WorkbenchSessionStatus) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space3) {
-            activityIdentity(status: status, compact: true)
-                .layoutPriority(2)
-
-            Spacer(minLength: 0)
+        .task(id: operationState) {
+            guard let activeState = operationState, activeState.kind == .success else { return }
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled, appModel.operationState == activeState else { return }
+            appModel.operationState = nil
         }
     }
 
     @ViewBuilder
-    private func activityIdentity(
-        status: WorkbenchSessionStatus,
-        compact: Bool
-    ) -> some View {
-        if let operationOutcome {
-            operationIdentity(operationOutcome, compact: compact)
-        } else {
-            sessionIdentity(status)
-        }
-    }
-
     private func sessionIdentity(_ status: WorkbenchSessionStatus) -> some View {
-        Label {
+        HStack(spacing: MicaTheme.Spacing.space2) {
+            if status.isWorking {
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 12, height: 12)
+            } else {
+                Image(systemName: status.symbol)
+                    .foregroundStyle(status.tint)
+                    .accessibilityHidden(true)
+            }
+
             Text(verbatim: status.summary)
-                .foregroundStyle(.primary)
+                .foregroundStyle(MicaTheme.textPrimary)
                 .fontWeight(.medium)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .textSelection(.enabled)
-        } icon: {
-            Image(systemName: status.symbol)
-                .foregroundStyle(status.tint)
-                .accessibilityHidden(true)
         }
         .help(status.summary)
     }
 
-    private func operationIdentity(
-        _ presentation: WorkbenchOperationOutcomePresentation,
-        compact: Bool
+    @ViewBuilder
+    private func operationPill(
+        _ presentation: WorkbenchOperationOutcomePresentation
     ) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
+        let tint = operationTint(presentation.tone)
+        let opensDiagnostics = (presentation.tone == .failure || presentation.tone == .partial)
+            && onOpenDiagnostics != nil
+
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            if opensDiagnostics, let onOpenDiagnostics {
+                Button {
+                    onOpenDiagnostics()
+                } label: {
+                    operationPillLabel(presentation, tint: tint)
+                }
+                .buttonStyle(.plain)
+            } else {
+                operationPillLabel(presentation, tint: tint)
+            }
+
+            Button {
+                appModel.operationState = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.textSecondary)
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(MicaStrings.localizedKey("action.close", language: language))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .micaSoftPill(tint)
+        .help(operationHelp(presentation))
+    }
+
+    private func operationPillLabel(
+        _ presentation: WorkbenchOperationOutcomePresentation,
+        tint: Color
+    ) -> some View {
+        HStack(spacing: MicaTheme.Spacing.space1) {
             Image(systemName: presentation.symbolName)
-                .foregroundStyle(operationTint(presentation.tone))
+                .foregroundStyle(tint)
                 .accessibilityHidden(true)
 
-            Text(
-                MicaStrings.localizedKey(
-                    presentation.titleKey,
-                    language: language
-                )
-            )
-            .fontWeight(.semibold)
+            Text(MicaStrings.localizedKey(presentation.titleKey, language: language))
+                .fontWeight(.semibold)
+                .foregroundStyle(tint)
 
             Text(verbatim: presentation.message)
-                .foregroundStyle(.primary)
+                .foregroundStyle(MicaTheme.textPrimary)
                 .fontWeight(.medium)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .textSelection(.enabled)
-
-            if !compact, let context = presentation.context {
-                statusDivider
-
-                Text(verbatim: context)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .textSelection(.enabled)
-            }
-
-            if !compact, let nextStep = presentation.nextStep {
-                statusDivider
-
-                Label {
-                    Text(verbatim: nextStep)
-                        .lineLimit(1)
-                        .textSelection(.enabled)
-                } icon: {
-                    Image(systemName: MicaSymbols.Data.nextStep)
-                        .accessibilityHidden(true)
-                }
-                .foregroundStyle(.secondary)
-            }
         }
-        .help(operationHelp(presentation))
     }
 
     private func operationTint(
@@ -344,20 +349,15 @@ private struct WorkbenchStatusBar: View {
         return lines.joined(separator: "\n")
     }
 
-    private var statusDivider: some View {
-        MicaHairlineSeparator(axis: .vertical)
-            .frame(height: 14)
-    }
-
     private func timestampLabel(_ timestamp: Date) -> some View {
         Label {
             Text(timestamp, format: .dateTime.hour().minute().second())
-                .micaThemeFont(.dataLabel)
+                .micaThemeFont(.dataCaption)
         } icon: {
             Image(systemName: "clock")
                 .accessibilityHidden(true)
         }
-        .foregroundStyle(MicaTheme.textSecondary)
+        .foregroundStyle(MicaTheme.textTertiary)
         .fixedSize(horizontal: true, vertical: false)
     }
 
@@ -368,14 +368,15 @@ private struct WorkbenchStatusBar: View {
     private var sessionStatus: WorkbenchSessionStatus {
         let session = appModel.controllerSessionPresentation
         let state = session.state
-        let lastSuccessAt = session.lastSuccessAt
+        let lastSuccessAt = workbenchDisplayableDate(session.lastSuccessAt)
 
         if let operation = operationState, operation.kind == .working {
             return WorkbenchSessionStatus(
                 summary: operation.message,
                 symbol: "arrow.clockwise",
                 tint: MicaTheme.accent,
-                timestamp: lastSuccessAt
+                timestamp: lastSuccessAt,
+                isWorking: true
             )
         }
 
@@ -388,7 +389,8 @@ private struct WorkbenchStatusBar: View {
                 ),
                 symbol: "pause.circle.fill",
                 tint: MicaTheme.statusWarning,
-                timestamp: controls.presentationPausedAt
+                timestamp: workbenchDisplayableDate(controls.presentationPausedAt),
+                isWorking: false
             )
         }
 
@@ -412,7 +414,8 @@ private struct WorkbenchStatusBar: View {
                 summary: message,
                 symbol: "arrow.triangle.2.circlepath",
                 tint: MicaTheme.statusWarning,
-                timestamp: lastSuccessAt
+                timestamp: lastSuccessAt,
+                isWorking: false
             )
         case .live:
             return makeSessionStatus(
@@ -426,21 +429,24 @@ private struct WorkbenchStatusBar: View {
                 summary: message,
                 symbol: "exclamationmark.triangle.fill",
                 tint: MicaTheme.statusWarning,
-                timestamp: lastSuccessAt
+                timestamp: lastSuccessAt,
+                isWorking: false
             )
         case .failedBeforeFirstSnapshot(let message):
             return WorkbenchSessionStatus(
                 summary: message,
                 symbol: "xmark.octagon.fill",
                 tint: MicaTheme.statusError,
-                timestamp: nil
+                timestamp: nil,
+                isWorking: false
             )
         case .failed(let message):
             return WorkbenchSessionStatus(
                 summary: message,
                 symbol: "xmark.octagon.fill",
                 tint: MicaTheme.statusError,
-                timestamp: lastSuccessAt
+                timestamp: lastSuccessAt,
+                isWorking: false
             )
         case .stopped:
             return makeSessionStatus(
@@ -462,7 +468,8 @@ private struct WorkbenchStatusBar: View {
             summary: state.label(language: language),
             symbol: symbol,
             tint: tint,
-            timestamp: lastSuccessAt
+            timestamp: lastSuccessAt,
+            isWorking: false
         )
     }
 }
@@ -472,4 +479,123 @@ private struct WorkbenchSessionStatus {
     let symbol: String
     let tint: Color
     let timestamp: Date?
+    let isWorking: Bool
+}
+
+private struct WorkbenchStatusBarModeControl: View {
+    @Environment(AppModel.self) private var appModel
+    @Environment(\.micaAppLanguage) private var language
+
+    var body: some View {
+        let options = availableModeOptions
+        if appModel.selectedRouter != nil, !options.isEmpty {
+            let currentMode = appModel.controllerMetadata.mode
+            let canSwitch = canSwitchMode
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        guard !modesMatch(option, currentMode),
+                              let scope = LiveCommandScope(
+                                controllerID: appModel.selectedRouterID,
+                                generation: appModel.controllerSessionPresentation.generation
+                              ) else { return }
+                        appModel.setMode(option, scope: scope)
+                    } label: {
+                        Label(
+                            MicaStrings.displayMode(option, language: language),
+                            systemImage: modesMatch(option, currentMode) ? "checkmark" : "arrow.triangle.branch"
+                        )
+                    }
+                    .disabled(modesMatch(option, currentMode))
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .micaThemeFont(.caption, weight: .medium)
+                        .foregroundStyle(MicaTheme.accent)
+                    Text(verbatim: MicaStrings.displayMode(currentMode, language: language))
+                        .micaThemeFont(.caption, weight: .medium)
+                        .foregroundStyle(MicaTheme.textPrimary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .micaThemeFont(.caption, weight: .semibold)
+                        .foregroundStyle(MicaTheme.textTertiary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(MicaTheme.surface, in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(MicaTheme.surfaceBorder, lineWidth: 1)
+                }
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .disabled(!canSwitch)
+            .opacity(canSwitch ? 1 : 0.6)
+            .help(MicaStrings.localizedKey("dashboard.mode", language: language))
+        }
+    }
+
+    private var availableModeOptions: [String] {
+        var seen = Set<String>()
+        return appModel.controllerMetadata.config.modeOptions.filter { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            return seen.insert(trimmed.lowercased()).inserted
+        }
+    }
+
+    private var canSwitchMode: Bool {
+        guard let router = appModel.selectedRouter else { return false }
+        let modeAction = appModel.modeChangeAction(for: router)
+        return appModel.controllerSessionPresentation.state.allowsLiveCommands
+            && appModel.supportsUnifiedAction(modeAction)
+            && !appModel.changingMode
+            && !appModel.hasSurgeOperationInFlight
+    }
+
+    private func modesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
+}
+
+private struct WorkbenchStatusBarTrafficTicker: View {
+    @Environment(AppModel.self) private var appModel
+
+    var body: some View {
+        let session = appModel.controllerSessionPresentation
+        if appModel.selectedRouter != nil,
+           appModel.selectedUnifiedCapabilities.traffic,
+           session.state.allowsLiveCommands {
+            let rate = appModel.liveTrafficRate
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.up")
+                        .micaThemeFont(.caption, weight: .semibold)
+                        .foregroundStyle(MicaTheme.Chart.upload)
+                    Text(verbatim: OverviewFormat.rate(rate.upload))
+                        .micaThemeFont(.dataCaption, weight: .medium)
+                        .foregroundStyle(MicaTheme.textSecondary)
+                }
+
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.down")
+                        .micaThemeFont(.caption, weight: .semibold)
+                        .foregroundStyle(MicaTheme.Chart.download)
+                    Text(verbatim: OverviewFormat.rate(rate.download))
+                        .micaThemeFont(.dataCaption, weight: .medium)
+                        .foregroundStyle(MicaTheme.textSecondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(MicaTheme.surface.opacity(0.75), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(MicaTheme.surfaceBorder, lineWidth: 1)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
 }

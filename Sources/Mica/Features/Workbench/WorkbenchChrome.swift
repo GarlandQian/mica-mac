@@ -41,7 +41,8 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// Menu shortcuts remain independent of sidebar grouping.
+    /// Menu shortcuts mirror the primary workbench tabs; all 10 destinations
+    /// remain reachable via sidebarCases (⌘1–⌘0).
     static let workbenchTabCases: [Self] = [
         .overview, .proxies, .connections, .logs, .rules, .sources,
     ]
@@ -106,10 +107,13 @@ enum WorkbenchDestination: String, CaseIterable, Identifiable, Sendable {
         case .overview: "1"
         case .proxies: "2"
         case .connections: "3"
-        case .logs: "4"
-        case .rules: "5"
-        case .sources: "6"
-        case .controllers, .configuration, .actions, .diagnostics: nil
+        case .rules: "4"
+        case .sources: "5"
+        case .logs: "6"
+        case .diagnostics: "7"
+        case .controllers: "8"
+        case .configuration: "9"
+        case .actions: "0"
         }
     }
 
@@ -198,7 +202,7 @@ struct WorkbenchRootView: View {
             }
             // Reserve actual layout space: native Tables can extend beneath
             // safe-area overlays and otherwise hide their last complete row.
-            WorkbenchBottomChrome()
+            WorkbenchBottomChrome(onOpenDiagnostics: { destination = .diagnostics })
         }
             .navigationTitle(
                 MicaStrings.localizedKey(destination.titleKey, language: language)
@@ -210,7 +214,6 @@ struct WorkbenchRootView: View {
                     isInspectorPresented: inspectorPresentation
                 )
             }
-            .focusedValue(\.micaFocusedWorkbenchDestination, $destination)
             .background {
                 WorkbenchRootLifecycleObserver(destination: destination)
             }

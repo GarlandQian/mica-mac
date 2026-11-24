@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MicaCore
 import SwiftUI
@@ -5,15 +6,30 @@ import SwiftUI
 // MARK: - Shared data-page views
 
 extension View {
-    func micaWorkbenchTable(accessibilityLabel: String) -> some View {
+    func micaWorkbenchTable(accessibilityLabel: String, lines: Int = 2) -> some View {
+        modifier(WorkbenchTableStyleModifier(accessibilityLabel: accessibilityLabel, lines: lines))
+    }
+}
+
+private struct WorkbenchTableStyleModifier: ViewModifier {
+    @Environment(\.micaAppFontScale) private var fontScale
+
+    let accessibilityLabel: String
+    let lines: Int
+
+    func body(content: Content) -> some View {
         // Inset rows with continuous selection capsules, as in macOS 27
         // content lists; the page fill stays continuous beneath the rows.
-        tableStyle(.inset)
+        content
+            .tableStyle(.inset)
             .alternatingRowBackgrounds(.disabled)
             .scrollContentBackground(.hidden)
             .background(MicaTheme.canvas)
             .tint(MicaTheme.accent)
-            .environment(\.defaultMinListRowHeight, WorkbenchDataRowGeometry.height)
+            .environment(
+                \.defaultMinListRowHeight,
+                WorkbenchDataRowGeometry.height(for: fontScale, lines: lines)
+            )
             .accessibilityLabel(accessibilityLabel)
     }
 }
@@ -196,22 +212,17 @@ struct WorkbenchDataActivityIndicator: View {
     let titleKey: String
 
     var body: some View {
-        Group {
-            if isActive {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(
-                        MicaStrings.localizedKey(titleKey, language: language)
-                    )
-            } else {
-                Color.clear
-                    .accessibilityHidden(true)
-            }
+        if isActive {
+            ProgressView()
+                .controlSize(.small)
+                .frame(
+                    width: MicaTheme.Metrics.iconControlSize,
+                    height: MicaTheme.Metrics.controlMinHeight
+                )
+                .accessibilityLabel(
+                    MicaStrings.localizedKey(titleKey, language: language)
+                )
         }
-        .frame(
-            width: MicaTheme.Metrics.iconControlSize,
-            height: MicaTheme.Metrics.controlMinHeight
-        )
     }
 }
 
@@ -254,6 +265,7 @@ struct WorkbenchDataBrowserScaffold<Commands: View, Supplementary: View, Content
 
 struct WorkbenchDataPrimaryCell: View {
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.micaAppFontScale) private var fontScale
 
     let title: String
     var detail: String?
@@ -284,7 +296,8 @@ struct WorkbenchDataPrimaryCell: View {
                     )
                     .foregroundStyle(isUnreported ? .tertiary : .primary)
                     .lineLimit(1)
-                    .textSelection(.enabled)
+                    .truncationMode(.tail)
+                    .help(title)
                     .accessibilityLabel(Text(verbatim: title))
 
                 if let detail = detail?.dataNonEmpty {
@@ -292,15 +305,15 @@ struct WorkbenchDataPrimaryCell: View {
                         .micaThemeFont(detailIsMonospaced ? .dataCaption : .caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .textSelection(.enabled)
+                        .truncationMode(.tail)
+                        .help(detail)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale),
             alignment: .leading
         )
         .accessibilityElement(children: .combine)
@@ -331,9 +344,8 @@ struct WorkbenchDataText: View {
             .foregroundStyle(isUnreported ? .tertiary : tone)
             .lineLimit(maximumLineCount)
             .truncationMode(.tail)
-            .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: alignment)
-            .help(isUnreported ? value : "")
+            .help(value)
             .accessibilityLabel(Text(verbatim: value))
     }
 }
@@ -364,8 +376,19 @@ struct WorkbenchDataInlineConfirmation: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaTheme.Spacing.space3) { confirmationContent }
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) { confirmationContent }
+            HStack(spacing: MicaTheme.Spacing.space3) {
+                messageLabel
+                Spacer(minLength: MicaTheme.Spacing.space2)
+                actionButtons
+            }
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                messageLabel
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    Spacer(minLength: 0)
+                    actionButtons
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
         .padding(.vertical, MicaTheme.Spacing.space2)
@@ -375,20 +398,22 @@ struct WorkbenchDataInlineConfirmation: View {
         .onExitCommand(perform: cancel)
     }
 
-    @ViewBuilder
-    private var confirmationContent: some View {
+    private var messageLabel: some View {
         Label {
             Text(verbatim: message)
                 .micaThemeFont(.label)
+                .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(MicaTheme.statusError)
         }
+    }
 
-        Spacer(minLength: MicaTheme.Spacing.space2)
-
+    @ViewBuilder
+    private var actionButtons: some View {
         Button(MicaStrings.localizedKey("action.cancel", language: language), action: cancel)
+            .controlSize(.small)
             .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
         Button(
@@ -398,12 +423,13 @@ struct WorkbenchDataInlineConfirmation: View {
         )
         .buttonStyle(.borderedProminent)
         .tint(MicaTheme.statusError)
+        .controlSize(.small)
         .disabled(!isConfirmEnabled)
         .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
     }
 }
 
-struct WorkbenchDataInspectorShell<Content: View>: View {
+struct WorkbenchDataInspectorShell<Actions: View, Content: View>: View {
     @Environment(\.micaAppLanguage) private var language
 
     let title: String
@@ -411,6 +437,7 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
     var statusText: String?
     var statusTint: Color = .secondary
     let close: () -> Void
+    private let actions: Actions
     private let content: Content
 
     init(
@@ -419,6 +446,7 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
         statusText: String? = nil,
         statusTint: Color = .secondary,
         close: @escaping () -> Void,
+        @ViewBuilder actions: () -> Actions,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
@@ -426,22 +454,44 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
         self.statusText = statusText
         self.statusTint = statusTint
         self.close = close
+        self.actions = actions()
         self.content = content()
+    }
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        statusText: String? = nil,
+        statusTint: Color = .secondary,
+        close: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) where Actions == EmptyView {
+        self.init(
+            title: title,
+            subtitle: subtitle,
+            statusText: statusText,
+            statusTint: statusTint,
+            close: close,
+            actions: { EmptyView() },
+            content: content
+        )
     }
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
+            LazyVStack(alignment: .leading, spacing: MicaTheme.Spacing.space3) {
                 HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
                     VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
                         Text(verbatim: title)
                             .micaThemeFont(.title3)
+                            .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
 
                         if let subtitle = subtitle?.dataNonEmpty {
                             Text(verbatim: subtitle)
                                 .micaThemeFont(.dataCaption)
                                 .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .textSelection(.enabled)
                         }
 
@@ -454,6 +504,7 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
 
                     Button(action: close) {
                         Image(systemName: "xmark")
+                            .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
                     }
                     .buttonStyle(.borderless)
@@ -461,10 +512,15 @@ struct WorkbenchDataInspectorShell<Content: View>: View {
                         minWidth: MicaTheme.Metrics.iconControlSize,
                         minHeight: MicaTheme.Metrics.iconControlSize
                     )
+                    .help(
+                        MicaStrings.localizedKey("dashboard.close_inspector", language: language)
+                    )
                     .accessibilityLabel(
                         MicaStrings.localizedKey("dashboard.close_inspector", language: language)
                     )
                 }
+
+                actions
 
                 content
             }
@@ -490,9 +546,14 @@ struct WorkbenchDataInspectorSection<Content: View>: View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
             Text(MicaStrings.localizedKey(titleKey, language: language))
                 .micaThemeFont(.label, weight: .semibold)
-                .foregroundStyle(.primary)
+                .foregroundStyle(MicaTheme.textPrimary)
                 .accessibilityAddTraits(.isHeader)
-            content
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                content
+            }
+            .padding(MicaTheme.Spacing.space3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .micaCard(cornerRadius: MicaTheme.Shape.rowRadius)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -500,29 +561,60 @@ struct WorkbenchDataInspectorSection<Content: View>: View {
 
 struct WorkbenchDataInspectorField: View {
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.micaAppFontScale) private var fontScale
+    @State private var isHovered = false
+    @State private var copiedRecently = false
 
     let titleKey: String
     let value: String?
     var monospaced = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
+        let reported = value?.dataNonEmpty
+        let labelWidth = min(148, max(96, ceil(108 * fontScale.multiplier)))
+
+        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
             Text(MicaStrings.localizedKey(titleKey, language: language))
                 .micaThemeFont(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 112, alignment: .leading)
+                .foregroundStyle(MicaTheme.textSecondary)
+                .frame(width: labelWidth, alignment: .leading)
 
-            Text(
-                verbatim: value?.dataNonEmpty
-                    ?? MicaStrings.localizedKey("overview.config_not_reported", language: language)
-            )
-            .micaThemeFont(monospaced ? .dataLabel : .label)
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .textSelection(.enabled)
+            HStack(alignment: .firstTextBaseline, spacing: MicaTheme.Spacing.space1) {
+                Text(
+                    verbatim: reported
+                        ?? MicaStrings.localizedKey("overview.config_not_reported", language: language)
+                )
+                .micaThemeFont(monospaced ? .dataLabel : .label)
+                .foregroundStyle(reported == nil ? MicaTheme.textTertiary : MicaTheme.textPrimary)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let reported {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(reported, forType: .string)
+                        copiedRecently = true
+                    } label: {
+                        Image(systemName: copiedRecently ? "checkmark" : "doc.on.doc")
+                            .micaThemeFont(.caption)
+                            .foregroundStyle(copiedRecently ? MicaTheme.statusOK : MicaTheme.textTertiary)
+                    }
+                    .buttonStyle(.borderless)
+                    .opacity(isHovered || copiedRecently ? 1 : 0)
+                    .allowsHitTesting(isHovered || copiedRecently)
+                    .help(MicaStrings.localizedKey("action.copy_value", language: language))
+                    .accessibilityLabel(MicaStrings.localizedKey("action.copy", language: language))
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onHover { isHovered = $0 }
+        .onChange(of: value) { _, _ in
+            copiedRecently = false
+        }
     }
 }
 
@@ -555,10 +647,11 @@ struct WorkbenchDataInspectorValueList: View {
             let names = unreported
                 .map { MicaStrings.localizedKey($0.titleKey, language: language) }
                 .joined(separator: " · ")
-            (Text(verbatim: notReported + "  ").fontWeight(.medium) + Text(verbatim: names))
+            Text("\(Text(verbatim: notReported).fontWeight(.medium))  \(Text(verbatim: names))")
                 .micaThemeFont(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(MicaTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(Text(verbatim: "\(notReported): \(names)"))
         }

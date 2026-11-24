@@ -52,6 +52,40 @@
         }
       }
     },
+    "action.clear_search": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Search"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除搜索"
+          }
+        }
+      }
+    },
+    "action.close": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        }
+      }
+    },
     "action.close_all": {
       "extractionState": "manual",
       "localizations": {
@@ -99,6 +133,176 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭该组"
+          }
+        }
+      }
+    },
+    "action.copy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝"
+          }
+        }
+      }
+    },
+    "action.copy_destination": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Destination"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝目标地址"
+          }
+        }
+      }
+    },
+    "action.copy_full_log": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Full Log"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝完整日志"
+          }
+        }
+      }
+    },
+    "action.copy_host": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Host"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝主机"
+          }
+        }
+      }
+    },
+    "action.copy_name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝名称"
+          }
+        }
+      }
+    },
+    "action.copy_payload": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Payload"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝载荷"
+          }
+        }
+      }
+    },
+    "action.copy_process": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Process"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝进程"
+          }
+        }
+      }
+    },
+    "action.copy_rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝规则"
+          }
+        }
+      }
+    },
+    "action.copy_test_url": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Test URL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝测速 URL"
+          }
+        }
+      }
+    },
+    "action.copy_value": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Value"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝值"
           }
         }
       }
@@ -154,6 +358,40 @@
         }
       }
     },
+    "action.disable_rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disable Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停用规则"
+          }
+        }
+      }
+    },
+    "action.dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        }
+      }
+    },
     "action.dns_flush": {
       "extractionState": "manual",
       "localizations": {
@@ -201,6 +439,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "编辑控制器"
+          }
+        }
+      }
+    },
+    "action.enable_rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用规则"
           }
         }
       }
@@ -490,6 +745,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "重试测试"
+          }
+        }
+      }
+    },
+    "action.revert_port": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revert Port"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复端口"
           }
         }
       }
@@ -796,6 +1068,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "测试延迟"
+          }
+        }
+      }
+    },
+    "action.undo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销"
           }
         }
       }
@@ -4944,6 +5233,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "不支持配置读取"
+          }
+        }
+      }
+    },
+    "configuration.validation_port_range": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter 0 to disable or a port between 1 and 65535."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入 0 可关闭端口，或填写 1 到 65535。"
           }
         }
       }
@@ -14162,6 +14468,23 @@
         }
       }
     },
+    "editor.remove_secret": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除密钥"
+          }
+        }
+      }
+    },
     "editor.replace_secret": {
       "extractionState": "manual",
       "localizations": {
@@ -14328,6 +14651,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "为空"
+          }
+        }
+      }
+    },
+    "editor.secret_will_be_removed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The saved secret will be removed from Keychain when you save."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存后将从钥匙串中移除已存密钥。"
           }
         }
       }
@@ -14617,6 +14957,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "TLS"
+          }
+        }
+      }
+    },
+    "editor.tls_https_only_note": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TLS verification applies only to HTTPS connections."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TLS 验证仅在使用 HTTPS 连接时生效。"
           }
         }
       }
@@ -24311,6 +24668,40 @@
         }
       }
     },
+    "overview.latency_all_healthy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All reported nodes are responding within normal latency."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有已上报节点延迟正常。"
+          }
+        }
+      }
+    },
+    "overview.latency_all_healthy_detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No high-latency outliers or failed checks detected."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未发现高延迟异常节点或测速失败项。"
+          }
+        }
+      }
+    },
     "overview.latency_distribution": {
       "extractionState": "manual",
       "localizations": {
@@ -26453,6 +26844,23 @@
         }
       }
     },
+    "routing.collapse_details": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Details"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起详情"
+          }
+        }
+      }
+    },
     "routing.collapse_group_directory": {
       "extractionState": "manual",
       "localizations": {
@@ -26568,6 +26976,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "固定选择"
+          }
+        }
+      }
+    },
+    "routing.grid_layout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grid"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网格"
           }
         }
       }
@@ -27150,6 +27575,23 @@
         }
       }
     },
+    "routing.history_stats %@ %@ %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Min %@ · Avg %@ · Max %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最低 %@ · 均值 %@ · 最高 %@"
+          }
+        }
+      }
+    },
     "routing.history_summary %lld %@ %@": {
       "extractionState": "manual",
       "localizations": {
@@ -27180,6 +27622,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "图标地址"
+          }
+        }
+      }
+    },
+    "routing.inspect_details": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspect Details"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看详情"
           }
         }
       }
@@ -27248,6 +27707,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "还有更多节点"
+          }
+        }
+      }
+    },
+    "routing.list_layout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "List"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "列表"
           }
         }
       }
@@ -29173,6 +29649,23 @@
         }
       }
     },
+    "routing.rule_enabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enabled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已启用"
+          }
+        }
+      }
+    },
     "routing.rule_match_count %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -29407,6 +29900,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "测速"
+          }
+        }
+      }
+    },
+    "routing.test_mean_delay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mean latency"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平均延迟"
           }
         }
       }
@@ -33236,6 +33746,23 @@
         }
       }
     },
+    "traffic.closed_time": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭时间"
+          }
+        }
+      }
+    },
     "traffic.connection_accumulated %@": {
       "extractionState": "manual",
       "localizations": {
@@ -34069,6 +34596,91 @@
         }
       }
     },
+    "traffic.filter_by_level": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by Level"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按级别筛选"
+          }
+        }
+      }
+    },
+    "traffic.filter_by_policy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by Policy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按策略筛选"
+          }
+        }
+      }
+    },
+    "traffic.filter_by_process": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by Process"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按进程筛选"
+          }
+        }
+      }
+    },
+    "traffic.filter_by_rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按规则筛选"
+          }
+        }
+      }
+    },
+    "traffic.filter_by_type": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by Type"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按类型筛选"
+          }
+        }
+      }
+    },
     "traffic.follow_bottom": {
       "extractionState": "manual",
       "localizations": {
@@ -34834,6 +35446,23 @@
         }
       }
     },
+    "traffic.open_matching_rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Matching Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前往匹配规则"
+          }
+        }
+      }
+    },
     "traffic.open_target_policy": {
       "extractionState": "manual",
       "localizations": {
@@ -35055,6 +35684,91 @@
         }
       }
     },
+    "traffic.provider_health_enabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto Check"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动检测"
+          }
+        }
+      }
+    },
+    "traffic.provider_health_expected_status": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expected Status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "期望状态码"
+          }
+        }
+      }
+    },
+    "traffic.provider_health_interval": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interval"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测间隔"
+          }
+        }
+      }
+    },
+    "traffic.provider_health_lazy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lazy Check"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按需检测"
+          }
+        }
+      }
+    },
+    "traffic.provider_health_timeout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Timeout"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超时时间"
+          }
+        }
+      }
+    },
     "traffic.provider_items": {
       "extractionState": "manual",
       "localizations": {
@@ -35136,6 +35850,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "此来源为只读，无法更新。"
+          }
+        }
+      }
+    },
+    "traffic.provider_sub_download": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloaded"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已用下行"
+          }
+        }
+      }
+    },
+    "traffic.provider_sub_expire": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expires"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "到期时间"
+          }
+        }
+      }
+    },
+    "traffic.provider_sub_total": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total Quota"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "总流量"
+          }
+        }
+      }
+    },
+    "traffic.provider_sub_upload": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploaded"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已用上行"
           }
         }
       }

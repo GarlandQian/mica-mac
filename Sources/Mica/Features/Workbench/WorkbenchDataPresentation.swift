@@ -85,12 +85,12 @@ enum WorkbenchDataStateResolver {
 
         if sourceCount == 0 {
             if !isSupported { return .unsupported }
-            if sessionState == .connecting {
+            if sessionState == .connecting || streamState == .connecting {
                 return .loading
             }
-            switch streamState {
-            case .idle, .connecting: return .loading
-            default: break
+            if streamState == .idle {
+                if let sessionMessage { return .failed(sessionMessage) }
+                return .empty
             }
             if let staleMessage { return .failed(staleMessage) }
             return .empty
@@ -179,7 +179,19 @@ enum WorkbenchDataInspectorProjection {
 }
 
 enum WorkbenchDataFormat {
-    private static let iso8601DateFormatter = Mutex(ISO8601DateFormatter())
+    private static let iso8601DateFormatter: Mutex<ISO8601DateFormatter> = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return Mutex(formatter)
+    }()
+
+    private static let iso8601FallbackFormatter = Mutex(ISO8601DateFormatter())
+
+    private static let sortedJSONEncoder: Mutex<JSONEncoder> = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return Mutex(encoder)
+    }()
 
     struct MetricsFormatter {
         let language: AppLanguage
@@ -203,7 +215,7 @@ enum WorkbenchDataFormat {
 
         func rate(_ value: Int?) -> String? {
             guard let value else { return nil }
-            guard value > 0 else { return "0 B/s" }
+            guard value > 0 else { return "0 B\(rateSuffix)" }
             guard let bytes = bytes(value) else { return nil }
             return bytes + rateSuffix
         }
@@ -235,12 +247,25 @@ enum WorkbenchDataFormat {
             unitIndex += 1
         }
 
-        let scaled = rawValue / divisor
+        var scaled = rawValue / divisor
         if unitIndex == 1 {
-            return "\(Int(scaled.rounded())) \(units[unitIndex])"
+            let rounded = Int(scaled.rounded())
+            if rounded >= 1_024, unitIndex < units.count - 1 {
+                divisor *= 1_024
+                unitIndex += 1
+                scaled = rawValue / divisor
+            } else {
+                return "\(rounded) \(units[unitIndex])"
+            }
         }
 
-        let tenths = Int((scaled * 10).rounded())
+        var tenths = Int((scaled * 10).rounded())
+        if tenths >= 10_240, unitIndex < units.count - 1 {
+            divisor *= 1_024
+            unitIndex += 1
+            scaled = rawValue / divisor
+            tenths = Int((scaled * 10).rounded())
+        }
         let whole = tenths / 10
         let decimal = tenths % 10
         let number = decimal == 0 ? "\(whole)" : "\(whole).\(decimal)"
@@ -252,7 +277,8 @@ enum WorkbenchDataFormat {
         let port = port?.dataNonEmpty
         switch (host, port) {
         case let (.some(host), .some(port)):
-            return host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+            let needsBrackets = host.contains(":") && !host.hasPrefix("[") && !host.hasSuffix("]")
+            return needsBrackets ? "[\(host)]:\(port)" : "\(host):\(port)"
         case let (.some(host), .none):
             return host
         case let (.none, .some(port)):
@@ -262,18 +288,22 @@ enum WorkbenchDataFormat {
         }
     }
 
+    /// Controller connection chains list the final outbound node first and the
+    /// outermost entry policy group last. Reverse to display decision order.
     static func chain(_ values: [String]?) -> String? {
         values?
             .compactMap(\.dataNonEmpty)
+            .reversed()
             .joined(separator: " → ")
             .dataNonEmpty
     }
 
     static func json(_ values: [String: MihomoJSONValue]) -> String? {
         guard !values.isEmpty else { return nil }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(values) else { return nil }
+        let data = sortedJSONEncoder.withLock {
+            try? $0.encode(values)
+        }
+        guard let data else { return nil }
         return String(data: data, encoding: .utf8)?.dataNonEmpty
     }
 
@@ -313,10 +343,24 @@ enum WorkbenchDataFormat {
     }
 
     static func parseProviderTimestamp(_ raw: String) -> ProviderTimestamp {
-        let date = iso8601DateFormatter.withLock {
-            $0.date(from: raw)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let seconds = Double(trimmed), seconds.isFinite, seconds >= 31_536_000 {
+            return .date(Date(timeIntervalSince1970: seconds))
         }
-        return date.map(ProviderTimestamp.date) ?? .verbatim(raw)
+        if let date = iso8601DateFormatter.withLock({ $0.date(from: trimmed) }) {
+            return .date(date)
+        }
+        if let date = iso8601FallbackFormatter.withLock({ $0.date(from: trimmed) }) {
+            return .date(date)
+        }
+        // Go RFC 3339 nanoseconds carry more than 3 fractional digits.
+        if let range = trimmed.range(of: #"\.\d+"#, options: .regularExpression) {
+            let normalized = trimmed.replacingCharacters(in: range, with: "")
+            if let date = iso8601FallbackFormatter.withLock({ $0.date(from: normalized) }) {
+                return .date(date)
+            }
+        }
+        return .verbatim(raw)
     }
 
     static func providerTimestampStyle(language: AppLanguage) -> Date.FormatStyle {
@@ -327,6 +371,9 @@ enum WorkbenchDataFormat {
     static func reportedTimestamp(_ raw: String?) -> String? {
         guard let raw = raw?.dataNonEmpty else { return nil }
         guard !raw.hasPrefix("0001-"), !raw.hasPrefix("1970-") else { return nil }
+        if let numeric = Double(raw), numeric.isFinite, numeric < 31_536_000 {
+            return nil
+        }
         return raw
     }
 
@@ -351,10 +398,15 @@ enum WorkbenchDataFormat {
 
 enum WorkbenchDataSearch {
     static func contains(_ query: String, in searchText: String) -> Bool {
-        (searchText as NSString).range(
-            of: query,
-            options: [.caseInsensitive]
-        ).location != NSNotFound
+        let tokens = query
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+        guard !tokens.isEmpty else { return true }
+        let options: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        let searchable = searchText as NSString
+        return tokens.allSatisfy { token in
+            searchable.range(of: token, options: options).location != NSNotFound
+        }
     }
 }
 
@@ -816,7 +868,8 @@ enum WorkbenchDataSelection {
         _ selection: String?,
         previousRows: [Row],
         nextVisibleRows: [Row],
-        identityFamily: (Row) -> String
+        identityFamily: (Row) -> String,
+        matchesPrevious: ((Row, Row) -> Bool)? = nil
     ) -> String? where Row.ID == String {
         guard let selection else {
             return nil
@@ -836,9 +889,10 @@ enum WorkbenchDataSelection {
 
         let previousIDs = previousFamilyRows.map(\.id)
         let nextIDs = nextFamilyRows.map(\.id)
+        let isSameRow = matchesPrevious ?? { $0 == $1 }
         guard previousIDs == nextIDs,
               let exact = nextFamilyRows.first(where: { $0.id == selection }),
-              exact == previous else {
+              isSameRow(exact, previous) else {
             return nil
         }
         return selection

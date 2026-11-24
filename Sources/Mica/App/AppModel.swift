@@ -1784,6 +1784,11 @@ final class AppModel {
         }
     }
 
+    func dismissProviderUpdateAllProgress() {
+        guard let progress = providerUpdateAllProgress, !progress.isRunning else { return }
+        providerUpdateAllProgress = nil
+    }
+
     func updateProxyProvider(_ provider: ProxyProviderViewState, scope: LiveCommandScope) {
         guard matchesCurrentCommandScope(scope) else { return }
         let actionTitle = TrialCommandAction.providerUpdate.title(language: presentationLanguage)

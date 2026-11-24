@@ -4,11 +4,11 @@ import Foundation
 
 @MainActor
 final class AppPreferencesStore: ObservableObject {
-    static let languageKey = "appLanguage"
-    static let appearanceKey = "appAppearance"
-    static let fontScaleKey = "appFontScale"
-    static let globalGroupVisibilityKey = "globalGroupVisibility"
-    static let showsMenuBarExtraKey = "showsMenuBarExtra"
+    nonisolated static let languageKey = "appLanguage"
+    nonisolated static let appearanceKey = "appAppearance"
+    nonisolated static let fontScaleKey = "appFontScale"
+    nonisolated static let globalGroupVisibilityKey = "globalGroupVisibility"
+    nonisolated static let showsMenuBarExtraKey = "showsMenuBarExtra"
 
     @Published var language: AppLanguage {
         didSet {
@@ -40,6 +40,8 @@ final class AppPreferencesStore: ObservableObject {
     /// keeps the live session running after the last window closes.
     @Published var showsMenuBarExtra: Bool {
         didSet {
+            pendingMenuBarInsertion?.cancel()
+            pendingMenuBarInsertion = nil
             guard defaults.object(forKey: Self.showsMenuBarExtraKey) as? Bool != showsMenuBarExtra else {
                 return
             }
@@ -48,6 +50,22 @@ final class AppPreferencesStore: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    private var pendingMenuBarInsertion: Task<Void, Never>?
+
+    /// MenuBarExtra can write its binding while SwiftUI is updating the scene,
+    /// including writing the current value. Never publish back into that update.
+    func requestMenuBarExtraInsertion(_ isInserted: Bool) {
+        pendingMenuBarInsertion?.cancel()
+        pendingMenuBarInsertion = nil
+        guard showsMenuBarExtra != isInserted else { return }
+
+        pendingMenuBarInsertion = Task { @MainActor [weak self] in
+            guard !Task.isCancelled, let self else { return }
+            self.pendingMenuBarInsertion = nil
+            guard self.showsMenuBarExtra != isInserted else { return }
+            self.showsMenuBarExtra = isInserted
+        }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

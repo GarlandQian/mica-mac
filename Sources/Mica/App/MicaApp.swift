@@ -70,7 +70,7 @@ struct MicaApp: App {
             CommandGroup(after: .sidebar) {
                 Divider()
 
-                ForEach(WorkbenchDestination.workbenchTabCases) { destination in
+                ForEach(WorkbenchDestination.sidebarCases) { destination in
                     Button {
                         focusedArea?.wrappedValue = destination
                     } label: {
@@ -87,7 +87,7 @@ struct MicaApp: App {
                 } label: {
                     Label(menuLocalized("command.menu_test_connection"), systemImage: MicaSymbols.Command.test)
                 }
-                .disabled(!appModel.canTestSelectedRouter)
+                .disabled(focusedArea == nil || !appModel.canTestSelectedRouter)
 
                 Button {
                     appModel.refreshSelectedRouter()
@@ -95,7 +95,7 @@ struct MicaApp: App {
                     Label(menuLocalized("command.menu_refresh_data"), systemImage: MicaSymbols.Command.refresh)
                 }
                 .keyboardShortcut("r", modifiers: [.command])
-                .disabled(!appModel.canRefreshSelectedRouter)
+                .disabled(focusedArea == nil || !appModel.canRefreshSelectedRouter)
 
                 Divider()
 
@@ -109,7 +109,7 @@ struct MicaApp: App {
                             : MicaSymbols.Operation.pause
                     )
                 }
-                .disabled(!appModel.canTogglePresentationPause)
+                .disabled(focusedArea == nil || !appModel.canTogglePresentationPause)
 
                 Divider()
 
@@ -127,6 +127,7 @@ struct MicaApp: App {
                 } label: {
                     Label(menuLocalized("command.menu_copy_diagnostics_report"), systemImage: MicaSymbols.Command.copy)
                 }
+                .disabled(appModel.selectedRouter == nil)
             }
         }
 
@@ -142,18 +143,21 @@ struct MicaApp: App {
                 )
                 .micaWindowChrome()
                 .frame(
-                    minWidth: 680,
-                    idealWidth: 860,
+                    minWidth: 540,
+                    idealWidth: 660,
                     maxWidth: .infinity,
-                    minHeight: 560,
-                    idealHeight: 680,
+                    minHeight: 440,
+                    idealHeight: 500,
                     maxHeight: .infinity
                 )
         }
-        .defaultSize(width: 880, height: 700)
+        .defaultSize(width: 660, height: 500)
         .windowResizability(.contentMinSize)
 
-        MenuBarExtra(isInserted: $preferences.showsMenuBarExtra) {
+        MenuBarExtra(isInserted: Binding(
+            get: { preferences.showsMenuBarExtra },
+            set: { preferences.requestMenuBarExtraInsertion($0) }
+        )) {
             MicaMenuBarContent()
                 .environment(appModel)
                 .environmentObject(preferences)
@@ -161,7 +165,8 @@ struct MicaApp: App {
         } label: {
             MicaMenuBarLabel()
                 .environment(appModel)
-                .micaAppPreferences(language: appLanguage, appearance: appAppearance, fontScale: appFontScale)
+                .environment(\.micaAppLanguage, appLanguage)
+                .environment(\.micaAppFontScale, appFontScale)
         }
         .menuBarExtraStyle(.menu)
     }
@@ -171,7 +176,7 @@ struct MicaApp: App {
     }
 
     private func menuLocalized(_ key: String) -> String {
-        MicaStrings.localizedKey(key, language: AppLanguage.menuBarLanguage)
+        MicaStrings.localizedKey(key, language: preferences.language)
     }
 }
 
@@ -209,17 +214,10 @@ private extension View {
             .micaAppPreferences(language: language, appearance: appearance, fontScale: fontScale)
             .onAppear {
                 appearance.applyToApplication()
-            }
-            .onChange(of: appearance.rawValue) { _, _ in
-                appearance.applyToApplication()
-            }
-            .onChange(of: language.rawValue) { _, _ in
-                Bundle.setMicaLocalizationLanguage(MicaStrings.resolvedLanguageCode(for: language))
                 appModel.applyPresentationLanguage(language)
             }
-            .onAppear {
-                Bundle.setMicaLocalizationLanguage(MicaStrings.resolvedLanguageCode(for: language))
-                appModel.applyPresentationLanguage(language)
+            .onChange(of: language) { _, newLanguage in
+                appModel.applyPresentationLanguage(newLanguage)
             }
     }
 }
@@ -229,8 +227,15 @@ private final class MicaAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
 
         DispatchQueue.main.async {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate()
+            let workbenchWindow = NSApplication.shared.windows.first {
+                $0.styleMask.contains(.titled)
+            }
+            workbenchWindow?.makeKeyAndOrderFront(nil)
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainWindowCloseGuard.confirmApplicationTermination(for: sender)
     }
 }

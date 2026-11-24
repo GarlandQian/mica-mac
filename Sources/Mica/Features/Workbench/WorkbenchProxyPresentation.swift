@@ -166,7 +166,9 @@ struct ProxyNodeRowProjection: Identifiable, Equatable {
     }
 
     var isSlow: Bool {
-        ProxyNodeHealthState.grade(for: delay) == .slow
+        guard let delay, delay > 0 else { return false }
+        let grade = ProxyNodeHealthState.grade(for: delay)
+        return grade == .slow || (alive == true && delay >= 180)
     }
 }
 
@@ -199,7 +201,7 @@ enum ProxyNodeHealthState: String, CaseIterable, Equatable, Hashable, Sendable {
             case .slow:
                 return .degraded
             case .timeout:
-                return .unavailable
+                return alive == true ? .degraded : .unavailable
             }
         }
         return alive == true ? .healthy : .unknown
@@ -1166,11 +1168,17 @@ enum ProxyProjection {
             )
         }
 
+        var hasMarkedControllerSelection = false
         let baseRows = memberOccurrences(in: occurrence.group).map { member in
             let detail = occurrence.group.detail(for: member.name)
             let reportedDelay = occurrence.group.delays[member.name]
                 ?? detail?.latestHistoryDelay
             let displayDelay = reportedDelay.flatMap { $0 > 0 ? $0 : nil }
+            let isSelected = !hasMarkedControllerSelection
+                && occurrence.group.selected == member.name
+            if isSelected {
+                hasMarkedControllerSelection = true
+            }
             return ProxyNodeRowProjection(
                 id: member.id,
                 name: member.name,
@@ -1186,7 +1194,7 @@ enum ProxyProjection {
                     delay: reportedDelay
                 ),
                 usageRank: occurrence.group.usageRank(for: member.name),
-                isControllerSelected: occurrence.group.selected == member.name
+                isControllerSelected: isSelected
             )
         }
         let latencyScale = ProxyLatencyScale(
@@ -1514,8 +1522,10 @@ enum ProxyProjection {
     }
 
     static func groupSearchText(for group: ProxyGroupViewState) -> String {
-        // Directory search never silently filters or activates a member.
-        [group.id, group.type].map(ProxySearchText.normalize).joined(separator: " ")
+        ([group.id, group.type, group.selected] + group.options)
+            .map(ProxySearchText.normalize)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private static func occurrences(

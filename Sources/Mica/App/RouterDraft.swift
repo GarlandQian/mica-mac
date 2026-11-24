@@ -11,6 +11,7 @@ struct RouterDraft: Identifiable, Equatable {
     var portText: String
     var secret: String
     var hasStoredSecret: Bool
+    var clearStoredSecret: Bool
     var tlsPolicy: TLSValidationPolicy
 
     init(
@@ -23,6 +24,7 @@ struct RouterDraft: Identifiable, Equatable {
         portText: String = "9090",
         secret: String = "",
         hasStoredSecret: Bool = false,
+        clearStoredSecret: Bool = false,
         tlsPolicy: TLSValidationPolicy = .system
     ) {
         self.id = id
@@ -34,6 +36,7 @@ struct RouterDraft: Identifiable, Equatable {
         self.portText = portText
         self.secret = secret
         self.hasStoredSecret = hasStoredSecret
+        self.clearStoredSecret = clearStoredSecret
         self.tlsPolicy = tlsPolicy
     }
 
@@ -48,12 +51,17 @@ struct RouterDraft: Identifiable, Equatable {
             portText: "\(profile.port)",
             secret: secret,
             hasStoredSecret: hasStoredSecret,
+            clearStoredSecret: false,
             tlsPolicy: profile.tlsPolicy
         )
     }
 
     var shouldSaveSecret: Bool {
         !secret.isEmpty
+    }
+
+    var hasEffectiveSecret: Bool {
+        shouldSaveSecret || (hasStoredSecret && !clearStoredSecret)
     }
 
     var controllerURLLabel: String {
@@ -94,46 +102,54 @@ struct RouterDraft: Identifiable, Equatable {
     }
 
     func secretCheckLabel(language: AppLanguage) -> String {
-        shouldSaveSecret || hasStoredSecret
+        hasEffectiveSecret
             ? MicaStrings.localized("editor.secret_configured", language: language)
             : MicaStrings.localized("editor.secret_empty", language: language)
     }
 
     var secretCheckState: ConnectionCheckState {
-        shouldSaveSecret || hasStoredSecret ? .ready : .warning
+        hasEffectiveSecret ? .ready : .warning
     }
 
     var validationError: String? {
         validationError(language: MicaStrings.appLanguage)
     }
 
-    func validationError(language: AppLanguage) -> String? {
+    func nameValidationError(language: AppLanguage) -> String? {
         if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return MicaStrings.localized("editor.validation_name_required", language: language)
         }
+        return nil
+    }
 
-        if host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    func hostValidationError(language: AppLanguage) -> String? {
+        let hostValue = normalizedHost
+        if hostValue.isEmpty {
             return MicaStrings.localized("editor.validation_host_required", language: language)
         }
-
-        guard let port = Int(normalizedPortText), (1...65_535).contains(port) else {
-            return MicaStrings.localized("editor.validation_port_range", language: language)
-        }
-
-        let hostValue = normalizedHost
         if hostValue.contains("://") {
             return MicaStrings.localized("editor.validation_host_scheme", language: language)
         }
-
         if hostValue.contains("/") {
             return MicaStrings.localized("editor.validation_host_path", language: language)
         }
-
         if hostValue.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
             return MicaStrings.localized("editor.validation_host_spaces", language: language)
         }
-
         return nil
+    }
+
+    func portValidationError(language: AppLanguage) -> String? {
+        guard let port = Int(normalizedPortText), (1...65_535).contains(port) else {
+            return MicaStrings.localized("editor.validation_port_range", language: language)
+        }
+        return nil
+    }
+
+    func validationError(language: AppLanguage) -> String? {
+        nameValidationError(language: language)
+            ?? hostValidationError(language: language)
+            ?? portValidationError(language: language)
     }
 
     var profile: RouterProfile {
@@ -143,7 +159,7 @@ struct RouterDraft: Identifiable, Equatable {
             scheme: scheme,
             host: normalizedHost,
             port: Int(normalizedPortText) ?? 9090,
-            secretReference: hasStoredSecret || shouldSaveSecret ? "keychain:\(id.uuidString)" : nil,
+            secretReference: hasEffectiveSecret ? "keychain:\(id.uuidString)" : nil,
             tlsPolicy: tlsPolicy,
             controllerKind: controllerKind,
             surgePlatform: surgePlatform

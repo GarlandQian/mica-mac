@@ -100,4 +100,38 @@ struct WorkbenchProxyNodeDetailCompositionTests {
         #expect(ProxyNodeTimeFormat.display(field: field("metadata.time", "2026-05-29T04:26:40Z"), locale: locale) == nil)
         #expect(ProxyNodeTimeFormat.display(field: field("test-time", "2026-05-29T04:26:40Z"), locale: locale) != nil)
     }
+
+    @Test func URLTestTimesUseTheLocalClockWithoutRawNanoseconds() throws {
+        let raw = "2026-10-08T12:17:01.179876313Z"
+        let timeZone = try #require(TimeZone(identifier: "Asia/Shanghai"))
+        let display = try #require(ProxyNodeTimeFormat.display(
+            time: raw,
+            locale: Locale(identifier: "zh_CN"),
+            timeZone: timeZone,
+            compact: true
+        ))
+        #expect(display.contains("10月8日"))
+        #expect(display.contains("20:17:01"))
+        #expect(!display.contains("179876313"))
+        #expect(!display.contains("T"))
+        #expect(!display.contains("Z"))
+    }
+
+    @Test func URLTestsKeepTheirSectionEvenWithoutOrdinaryFields() {
+        let result = ProxyURLTestResult(
+            url: "https://test.example.invalid/generate_204",
+            alive: true,
+            history: [],
+            additionalFields: []
+        )
+        let composition = ProxyNodeDetailComposition(snapshot: snapshot([
+            OverviewPolicyInspectionSection(
+                id: "testing", titleKey: "routing.node_section_testing",
+                fields: [], urlTests: [result]
+            ),
+        ]))
+        #expect(!composition.isEmpty)
+        #expect(composition.sections.map(\.id) == ["testing"])
+        #expect(composition.sections.first?.urlTests == [result])
+    }
 }

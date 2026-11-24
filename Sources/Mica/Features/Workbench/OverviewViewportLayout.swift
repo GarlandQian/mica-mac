@@ -12,7 +12,7 @@ struct OverviewViewportLayout: Equatable {
         // Trends occupy one row. When three charts cannot fit, a shared plot
         // follows the selected readout rather than pushing a third chart below.
         metricColumns = width / CGFloat(count) >= 280 ? count : 1
-        metricPlotHeight = min(max(height * 0.10, 56), 92)
+        metricPlotHeight = min(max(height * 0.12, 72), 104)
         // This is the overview's maximum canvas budget; sparse maps use their
         // natural height. Short windows keep room for the trend below, while
         // dense maps scroll inside their bounded canvas.

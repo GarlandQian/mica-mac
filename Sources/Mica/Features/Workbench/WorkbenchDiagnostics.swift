@@ -67,40 +67,42 @@ struct WorkbenchDiagnosticsView: View {
         _ snapshot: WorkbenchDiagnosticsSnapshot?
     ) -> some View {
         if let snapshot {
-            WorkbenchDiagnosticsCanvas { contentWidth in
+            VStack(spacing: 0) {
                 if let retainedFailureMessage {
                     WorkbenchStaleNotice(message: retainedFailureMessage)
                 }
 
-                WorkbenchDiagnosticsVerdictHeader(
-                    snapshot: snapshot,
-                    canRecheck: diagnosticsActionAvailability.isEnabled(.refresh),
-                    onRecheck: { perform(.refresh) }
-                )
-
-                if !snapshot.issues.isEmpty {
-                    WorkbenchDiagnosticsIssueWorkspace(
-                        issues: snapshot.issues,
-                        usesSplitLayout: contentWidth >= 900,
-                        selectedIssueID: $selectedIssueID,
-                        isActionEnabled: diagnosticsActionAvailability.isEnabled,
-                        onAction: perform
+                WorkbenchDiagnosticsCanvas { contentWidth in
+                    WorkbenchDiagnosticsVerdictHeader(
+                        snapshot: snapshot,
+                        canRecheck: diagnosticsActionAvailability.isEnabled(.refresh),
+                        onRecheck: { perform(.refresh) }
                     )
-                }
 
-                if !snapshot.availableAreas.isEmpty {
-                    WorkbenchDiagnosticsAvailableAreas(
-                        areas: snapshot.availableAreas
-                    ) { destination in
-                        self.destination = destination
+                    if !snapshot.issues.isEmpty {
+                        WorkbenchDiagnosticsIssueWorkspace(
+                            issues: snapshot.issues,
+                            usesSplitLayout: contentWidth >= 900,
+                            selectedIssueID: $selectedIssueID,
+                            isActionEnabled: diagnosticsActionAvailability.isEnabled,
+                            onAction: perform
+                        )
                     }
-                }
 
-                if !snapshot.technicalGroups.isEmpty {
-                    WorkbenchDiagnosticsTechnicalDetails(
-                        groups: snapshot.technicalGroups,
-                        isExpanded: $technicalDetailsExpanded
-                    )
+                    if !snapshot.availableAreas.isEmpty {
+                        WorkbenchDiagnosticsAvailableAreas(
+                            areas: snapshot.availableAreas
+                        ) { destination in
+                            self.destination = destination
+                        }
+                    }
+
+                    if !snapshot.technicalGroups.isEmpty {
+                        WorkbenchDiagnosticsTechnicalDetails(
+                            groups: snapshot.technicalGroups,
+                            isExpanded: $technicalDetailsExpanded
+                        )
+                    }
                 }
             }
         } else {
@@ -134,7 +136,7 @@ struct WorkbenchDiagnosticsView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(snapshot == nil || appModel.diagnosticsReportSections.isEmpty)
+            .disabled(snapshot == nil)
         }
     }
 

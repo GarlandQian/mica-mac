@@ -494,7 +494,7 @@ enum ConnectionTopologyBuilder {
         let type = firstNonEmpty(connection.rule)
         let payload = firstNonEmpty(connection.rulePayload)
         guard let type else { return payload }
-        guard let payload, !type.localizedCaseInsensitiveContains(payload) else { return type }
+        guard let payload, type.caseInsensitiveCompare(payload) != .orderedSame else { return type }
         return "\(type): \(payload)"
     }
 

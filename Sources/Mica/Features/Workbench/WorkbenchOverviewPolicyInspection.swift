@@ -85,6 +85,13 @@ struct OverviewPolicyInspectionIndex: Equatable {
                 occurrenceID: occurrenceID,
                 isControllerSelected: true
             )
+            if !group.selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !group.options.contains(group.selected) {
+                membersByOccurrenceID[occurrenceID, default: [:]][
+                    group.selected,
+                    default: []
+                ].append(selectedMember)
+            }
             let inspection = OverviewPolicyGroupInspection(
                 name: group.id,
                 occurrenceID: occurrenceID,
@@ -113,6 +120,21 @@ struct OverviewPolicyInspectionIndex: Equatable {
         }
         if let members = membersByName[name] {
             return members.count == 1 ? .member(members[0]) : .ambiguous
+        }
+        return .missing
+    }
+
+    func resolveCanonical(name: String) -> OverviewPolicyInspectionResolution {
+        if let groups = groupsByName[name] {
+            return groups.count == 1 ? .group(groups[0]) : .ambiguous
+        }
+        if let members = membersByName[name] {
+            if members.count == 1 {
+                return .member(members[0])
+            }
+            if let canonical = members.first(where: \.isControllerSelected) ?? members.first {
+                return .member(canonical)
+            }
         }
         return .missing
     }
@@ -181,12 +203,15 @@ final class OverviewPolicyInspectionCache {
 struct OverviewPolicyInspectionField: Identifiable, Equatable {
     enum Label: Equatable {
         case localized(String)
+        case localizedWithSuffix(String, String)
         case verbatim(String)
 
         func resolved(language: AppLanguage) -> String {
             switch self {
             case .localized(let key):
                 MicaStrings.localizedKey(key, language: language)
+            case .localizedWithSuffix(let key, let suffix):
+                "\(MicaStrings.localizedKey(key, language: language)) · \(suffix)"
             case .verbatim(let value):
                 value
             }
@@ -221,6 +246,7 @@ struct OverviewPolicyInspectionSection: Identifiable, Equatable {
     let id: String
     let titleKey: String
     let fields: [OverviewPolicyInspectionField]
+    var urlTests: [ProxyURLTestResult] = []
 }
 
 struct OverviewPolicyInspectionSnapshot: Equatable {
@@ -417,7 +443,7 @@ enum OverviewPolicyInspectionProjection {
     ) -> [OverviewPolicyInspectionField] {
         var fields: [OverviewPolicyInspectionField] = []
         appendAvailability(member.detail?.alive, language: language, to: &fields)
-        appendLatency(member.delay, id: "latency", to: &fields)
+        appendLatency(member.delay, id: "latency", language: language, to: &fields)
         guard let detail = member.detail else {
             append(
                 id: "rank",
@@ -514,6 +540,7 @@ enum OverviewPolicyInspectionProjection {
             detail.latestHistoryDelay,
             id: "test-delay",
             titleKey: "overview.hud.test_delay",
+            language: language,
             to: &testing
         )
         append(
@@ -545,13 +572,14 @@ enum OverviewPolicyInspectionProjection {
             monospaced: true,
             to: &testing
         )
-        testing.append(contentsOf: protocolDetails.testingFields)
-        appendSection(
-            id: "testing",
-            titleKey: "routing.node_section_testing",
-            fields: testing,
-            to: &sections
-        )
+        if !testing.isEmpty || !protocolDetails.urlTests.isEmpty {
+            sections.append(OverviewPolicyInspectionSection(
+                id: "testing",
+                titleKey: "routing.node_section_testing",
+                fields: testing,
+                urlTests: protocolDetails.urlTests
+            ))
+        }
 
         appendSection(
             id: "reported-fields",
@@ -585,6 +613,7 @@ enum OverviewPolicyInspectionProjection {
         _ delay: Int?,
         id: String,
         titleKey: String = "overview.hud.latency",
+        language: AppLanguage,
         to fields: inout [OverviewPolicyInspectionField]
     ) {
         guard let delay else { return }
@@ -592,8 +621,10 @@ enum OverviewPolicyInspectionProjection {
             OverviewPolicyInspectionField(
                 id: id,
                 label: .localized(titleKey),
-                value: OverviewFormat.latency(delay),
-                tone: delay > 0 ? latencyTone(delay) : .neutral,
+                value: delay > 0
+                    ? OverviewFormat.latency(delay)
+                    : MicaStrings.localizedKey("latency.timeout", language: language),
+                tone: delay > 0 ? latencyTone(delay) : .failure,
                 monospaced: true
             )
         )
@@ -758,19 +789,30 @@ struct WorkbenchPolicyInspectorView: View {
                     language: language
                 )
             }
+            guard case .group(let group) = policyIndex.resolve(groupOccurrenceID: occurrenceID),
+                  group.name == groupName else {
+                return nil
+            }
             return OverviewPolicyInspectionProjection.snapshot(
                 groupOccurrenceID: occurrenceID,
                 nodeName: nil,
                 policyIndex: policyIndex,
                 language: language
             )
-        case .proxyNode(_, let occurrenceID, let nodeName):
+        case .proxyNode(let groupName, let occurrenceID, let nodeName):
             guard let occurrenceID else {
                 return OverviewPolicyInspectionProjection.snapshot(
                     name: nodeName,
                     policyIndex: policyIndex,
                     language: language
                 )
+            }
+            guard case .member(let member) = policyIndex.resolve(
+                groupOccurrenceID: occurrenceID,
+                nodeName: nodeName
+            ),
+                  member.groupName == groupName else {
+                return nil
             }
             return OverviewPolicyInspectionProjection.snapshot(
                 groupOccurrenceID: occurrenceID,
@@ -840,6 +882,9 @@ struct WorkbenchPolicyInspectorView: View {
                 ForEach(section.fields) { field in
                     fieldRow(field)
                 }
+                ForEach(section.urlTests) { result in
+                    ProxyURLTestDetails(result: result)
+                }
             }
         }
     }
@@ -848,45 +893,51 @@ struct WorkbenchPolicyInspectorView: View {
         WorkbenchPolicyInspectionFieldRow(field: field)
     }
 
+    @ViewBuilder
     private var actionSection: some View {
-        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            MicaHairlineSeparator()
-            if proxyNavigationTarget != nil {
-                Button(action: openProxies) {
-                    Label(
-                        MicaStrings.localizedKey(
-                            WorkbenchDestination.proxies.titleKey,
-                            language: language
-                        ),
-                        systemImage: WorkbenchDestination.proxies.symbolName
-                    )
+        let proxyTarget = proxyNavigationTarget
+        let path = singlePath
+        if proxyTarget != nil || path != nil {
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                MicaHairlineSeparator()
+                if proxyTarget != nil {
+                    Button(action: openProxies) {
+                        Label(
+                            MicaStrings.localizedKey(
+                                WorkbenchDestination.proxies.titleKey,
+                                language: language
+                            ),
+                            systemImage: WorkbenchDestination.proxies.symbolName
+                        )
+                    }
+                }
+                if let path {
+                    Button { openPath(path) } label: {
+                        Label(
+                            MicaStrings.localizedKey(
+                                WorkbenchDestination.connections.titleKey,
+                                language: language
+                            ),
+                            systemImage: "arrow.right"
+                        )
+                    }
                 }
             }
-            if let singlePath {
-                Button { openPath(singlePath) } label: {
-                    Label(
-                        MicaStrings.localizedKey(
-                            WorkbenchDestination.connections.titleKey,
-                            language: language
-                        ),
-                        systemImage: "arrow.right"
-                    )
-                }
-            }
+            .controlSize(.small)
         }
-        .controlSize(.small)
     }
 
     /// HUD-era eligibility preserved: Open Connections appears only when the
     /// live topology highlight resolves to exactly one path for the pinned
-    /// selection.
+    /// selection and the captured structure revision still matches.
     private var singlePath: ConnectionTopology.PathRecord? {
         guard destination == .overview,
               let controllerID = appModel.selectedRouterID,
               let runtime = overviewRuntime.registry.existingTopologyRuntime(
                   controllerID: controllerID,
                   generation: appModel.controllerSessionPresentation.generation
-              ) else {
+              ),
+              runtime.presentation?.request.revision == appModel.connectionsStructureRevision else {
             return nil
         }
         let interaction = runtime.interaction.snapshot
@@ -899,7 +950,7 @@ struct WorkbenchPolicyInspectorView: View {
         )
         guard OverviewPolicyInspectionProjection.matches(
             selection: selection,
-            resolution: policyIndex.resolve(name: node.name)
+            resolution: policyIndex.resolveCanonical(name: node.name)
         ) else { return nil }
         let paths = interaction.highlight.paths
         return paths.count == 1 ? paths.first : nil
@@ -919,12 +970,13 @@ struct WorkbenchPolicyInspectorView: View {
             catalog: appModel.policyGroupCatalog
         )
         switch selection {
-        case .proxyNode(_, let groupOccurrenceID, let nodeName):
+        case .proxyNode(let groupName, let groupOccurrenceID, let nodeName):
             guard let groupOccurrenceID,
-                  case .member = policyIndex.resolve(
+                  case .member(let member) = policyIndex.resolve(
                       groupOccurrenceID: groupOccurrenceID,
                       nodeName: nodeName
-                  ) else {
+                  ),
+                  member.groupName == groupName else {
                 return nil
             }
             return ProxyProjection.navigationSelection(
@@ -955,16 +1007,23 @@ struct WorkbenchPolicyInspectorView: View {
     }
 
     private func openPath(_ path: ConnectionTopology.PathRecord) {
-        if let controllerID = appModel.selectedRouterID {
-            workspaceStore.stageConnectionNavigation(
-                WorkbenchConnectionNavigationSelection(
-                    controllerID: controllerID,
-                    generation: appModel.controllerSessionPresentation.generation,
-                    sourceIndex: path.sourceIndex,
-                    reportedConnectionID: path.reportedConnectionID
-                )
-            )
+        guard let controllerID = appModel.selectedRouterID else { return }
+        let generation = appModel.controllerSessionPresentation.generation
+        guard let runtime = overviewRuntime.registry.existingTopologyRuntime(
+            controllerID: controllerID,
+            generation: generation
+        ),
+              runtime.presentation?.request.revision == appModel.connectionsStructureRevision else {
+            return
         }
+        workspaceStore.stageConnectionNavigation(
+            WorkbenchConnectionNavigationSelection(
+                controllerID: controllerID,
+                generation: generation,
+                sourceIndex: path.sourceIndex,
+                reportedConnectionID: path.reportedConnectionID
+            )
+        )
         destination = .connections
     }
 }
@@ -1037,14 +1096,18 @@ struct WorkbenchPolicyInspectionFieldRow: View {
 /// revealed, and never announcing a secret VoiceOver has not been asked for.
 struct PolicyInspectionFieldValue: View {
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.locale) private var locale
 
     let field: OverviewPolicyInspectionField
     let isRevealed: Bool
     var displayValue: String? = nil
 
     var body: some View {
-        Text(verbatim: displayValue.map { hidesValue ? field.displayValue() : $0 }
-            ?? field.displayValue(revealingSensitiveValue: isRevealed))
+        let formattedValue = displayValue ?? ProxyNodeTimeFormat.display(field: field, locale: locale)
+        let visibleValue = hidesValue ? field.displayValue()
+            : formattedValue ?? field.displayValue(revealingSensitiveValue: isRevealed)
+
+        Text(verbatim: visibleValue)
             .micaThemeFont(
                 field.monospaced ? .dataCaption : .caption,
                 weight: .medium
@@ -1052,10 +1115,11 @@ struct PolicyInspectionFieldValue: View {
             .foregroundStyle(field.tone.tint)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
+            .help(formattedValue != nil && !hidesValue ? field.value : "")
             .accessibilityLabel(
                 hidesValue
                     ? MicaStrings.localizedKey("routing.node_parameter_hidden", language: language)
-                    : field.value
+                    : visibleValue
             )
     }
 

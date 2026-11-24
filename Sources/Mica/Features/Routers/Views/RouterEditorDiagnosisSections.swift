@@ -24,7 +24,7 @@ extension RouterEditorView {
     }
 
     var localizedSecretCheckLabel: String {
-        draft.shouldSaveSecret || draft.hasStoredSecret
+        draft.hasEffectiveSecret
             ? MicaStrings.localized("editor.secret_configured", language: appLanguage)
             : MicaStrings.localized("editor.secret_empty", language: appLanguage)
     }
@@ -111,10 +111,16 @@ extension RouterEditorView {
     func testConnection() {
         showsValidation = true
         guard validationError == nil else { return }
+        testTask?.cancel()
+        let snapshot = draft
+        let runID = UUID()
+        testRunID = runID
         testState = .testing
-        Task {
-            let report = await appModel.testConnection(draft: draft)
+        testTask = Task {
+            let report = await appModel.testConnection(draft: snapshot)
+            guard !Task.isCancelled, testRunID == runID else { return }
             testState = .report(report)
+            testTask = nil
         }
     }
 
@@ -123,13 +129,7 @@ extension RouterEditorView {
     }
 
     private func localizedReportStepValue(_ step: ConnectionCheckStep) -> String {
-        switch step.id {
-        case "url": localizedVisibleControllerTargetLabel
-        case "tls": localizedTLSCheckLabel
-        case "secret": localizedSecretCheckLabel
-        case "controller-type": draft.controllerKind.micaLabel(language: appLanguage)
-        default: MicaStrings.relocalizedText(step.value, language: appLanguage)
-        }
+        MicaStrings.relocalizedText(step.value, language: appLanguage)
     }
 
     private func previewRow(_ titleKey: String, value: String, monospaced: Bool = false) -> some View {

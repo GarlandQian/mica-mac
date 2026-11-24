@@ -1110,7 +1110,7 @@ struct ProxyNodeViewState: Identifiable, Equatable {
             testURL: testURL,
             icon: icon,
             transportNames: transportNames,
-            additionalMetadataText: additionalMetadataText
+            additionalMetadata: additionalMetadata
         )
     }
 
@@ -1181,6 +1181,36 @@ struct ProxyNodeViewState: Identifiable, Equatable {
         testURL: String?,
         icon: String?,
         transportNames: [String],
+        additionalMetadata: [String: MihomoJSONValue]
+    ) -> String {
+        let sanitizedValues = sanitizedSearchValues(in: additionalMetadata)
+        return ProxySearchText.normalize(
+            (
+                [
+                    name,
+                    type,
+                    providerName,
+                    interfaceName,
+                    fixed,
+                    testURL,
+                    icon,
+                    transportNames.joined(separator: " "),
+                ].compactMap { $0?.nilIfEmpty }
+                + sanitizedValues
+            )
+            .joined(separator: " ")
+        )
+    }
+
+    private static func searchableText(
+        name: String,
+        type: String,
+        providerName: String?,
+        interfaceName: String?,
+        fixed: String?,
+        testURL: String?,
+        icon: String?,
+        transportNames: [String],
         additionalMetadataText: String?
     ) -> String {
         ProxySearchText.normalize(
@@ -1198,6 +1228,75 @@ struct ProxyNodeViewState: Identifiable, Equatable {
             .compactMap { $0?.nilIfEmpty }
             .joined(separator: " ")
         )
+    }
+
+    private static func sanitizedSearchValues(
+        in metadata: [String: MihomoJSONValue]
+    ) -> [String] {
+        var values: [String] = []
+        for (key, value) in metadata.sorted(by: { $0.key < $1.key }) {
+            let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
+            guard !isSensitiveSearchKey(normalized) else { continue }
+            appendSearchableLeafValues(value, into: &values)
+        }
+        return values
+    }
+
+    private static func isSensitiveSearchKey(_ normalized: String) -> Bool {
+        let exact: Set<String> = [
+            "password", "passwords", "passwd", "pass", "passphrase", "secret", "secrets",
+            "obfspassword", "auth", "authstr", "authkey", "authorization",
+            "proxyauthorization", "authentication", "cookie", "setcookie", "credential",
+            "credentials", "token", "accesstoken", "refreshtoken", "apikey",
+            "xapikey", "xauthtoken", "privatekey", "privatekeypassword",
+            "privatekeypassphrase", "clientkey", "presharedkey", "psk", "uuid", "key",
+            "shadowtlspassword", "restlspassword", "bearer",
+        ]
+        if exact.contains(normalized) { return true }
+        return normalized.hasSuffix("password")
+            || normalized.hasSuffix("passwd")
+            || normalized.hasSuffix("passphrase")
+            || normalized.hasSuffix("secret")
+            || normalized.hasSuffix("token")
+            || normalized.hasSuffix("apikey")
+            || normalized.hasSuffix("privatekey")
+            || normalized.hasSuffix("clientkey")
+            || normalized.hasSuffix("sharedkey")
+            || normalized.hasPrefix("xauth")
+            || normalized.hasPrefix("xtoken")
+    }
+
+    private static func appendSearchableLeafValues(
+        _ value: MihomoJSONValue,
+        into values: inout [String]
+    ) {
+        switch value {
+        case .string(let text):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { values.append(trimmed) }
+        case .number(let number):
+            if number.isFinite {
+                if let integer = Int64(exactly: number) {
+                    values.append(String(integer))
+                } else {
+                    values.append(String(number))
+                }
+            }
+        case .bool:
+            break
+        case .array(let array):
+            for child in array {
+                appendSearchableLeafValues(child, into: &values)
+            }
+        case .object(let object):
+            for (key, child) in object.sorted(by: { $0.key < $1.key }) {
+                let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
+                guard !isSensitiveSearchKey(normalized) else { continue }
+                appendSearchableLeafValues(child, into: &values)
+            }
+        case .null:
+            break
+        }
     }
 
     var latestHistoryDelay: Int? {

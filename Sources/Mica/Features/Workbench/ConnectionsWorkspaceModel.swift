@@ -40,6 +40,7 @@ final class ConnectionsWorkspaceModel {
             scrollRequest = nil
             deferredInput = nil
             presentedConfiguration = nil
+            cancelMetricSort()
             accessibilityCursor.reset()
         }
     }
@@ -49,6 +50,8 @@ final class ConnectionsWorkspaceModel {
     @ObservationIgnored private var deferredInput: ConnectionsWorkspaceInput?
     @ObservationIgnored private var deferredReconcilesSelection = true
     @ObservationIgnored private var presentedConfiguration: PresentationConfiguration?
+    @ObservationIgnored private var metricSortCadence = WorkbenchConnectionMetricSortCadence()
+    @ObservationIgnored private var metricSortTask: Task<Void, Never>?
 
     private struct PresentationConfiguration: Equatable {
         let scope: ConnectionSessionTab
@@ -79,6 +82,7 @@ final class ConnectionsWorkspaceModel {
             cache.reset()
             closeIntent = nil
             scrollRequest = nil
+            cancelMetricSort()
             accessibilityCursor.reset()
             tableInteraction = WorkbenchDataInteractionCoordinator()
             navigationDirectory = WorkbenchConnectionNavigationDirectory()
@@ -99,6 +103,7 @@ final class ConnectionsWorkspaceModel {
     func deactivate() {
         isActive = false
         deferredInput = nil
+        cancelMetricSort()
         tableInteraction.apply(.ended)
     }
 
@@ -147,7 +152,7 @@ final class ConnectionsWorkspaceModel {
             closeIntent = nil
         }
 
-        let previousRows = allRows
+        let previousVisibleRows = rows
         let previousSelection = selectedRowID
         let previousStaticCount = cache.staticProjectionCount
         cache.project(
@@ -161,14 +166,22 @@ final class ConnectionsWorkspaceModel {
             sortOrder: sortOrder,
             language: input.language,
             change: input.catalog.lastChange,
+            deferMetricSorting: !forcePresentation,
             isActive: isActive
         )
+        if cache.hasDeferredMetricSort {
+            metricSortCadence.schedule()
+            scheduleDeferredMetricSort(identity: input.identity)
+        } else {
+            cancelMetricSort()
+        }
         if reconcileSelection {
             selectedRowID = WorkbenchDataSelection.reconciled(
                 previousSelection,
-                previousRows: previousRows,
+                previousRows: previousVisibleRows,
                 nextVisibleRows: rows,
-                identityFamily: \.identityFamily
+                identityFamily: \.identityFamily,
+                matchesPrevious: { $0.matchesStructuralIdentity(of: $1) }
             )
         }
         if cache.staticProjectionCount != previousStaticCount {
@@ -299,9 +312,13 @@ final class ConnectionsWorkspaceModel {
     }
 
     func finishDeferredPresentation(identity: WorkbenchSessionIdentity) {
-        guard isActive, self.identity == identity, !tableInteraction.isUserScrolling,
-              let input = deferredInput else { return }
-        update(input, reconcileSelection: deferredReconcilesSelection)
+        guard isActive, self.identity == identity, !tableInteraction.isUserScrolling else { return }
+        if let input = deferredInput {
+            update(input, reconcileSelection: deferredReconcilesSelection, forcePresentation: true)
+        } else if cache.hasDeferredMetricSort, cache.commitDeferredMetricSort() {
+            cancelMetricSort()
+            reconcileAccessibilityWindow(revealing: selectedRowID)
+        }
     }
 
     func reconcileAccessibilityWindow(revealing selectionID: String? = nil) {
@@ -331,11 +348,13 @@ final class ConnectionsWorkspaceModel {
             case "process": return KeyPathComparator(\WorkbenchConnectionRow.process, order: order)
             case "upload": return KeyPathComparator(\WorkbenchConnectionRow.upload, order: order)
             case "download": return KeyPathComparator(\WorkbenchConnectionRow.download, order: order)
+            case "uploadSpeed": return KeyPathComparator(\WorkbenchConnectionRow.uploadSpeed, order: order)
+            case "downloadSpeed": return KeyPathComparator(\WorkbenchConnectionRow.downloadSpeed, order: order)
+            case "timestamp": return KeyPathComparator(\WorkbenchConnectionRow.timestampSortKey, order: order)
             default: return nil
             }
         }
     }
-
 
     static func workspaceSort(
         _ comparator: KeyPathComparator<WorkbenchConnectionRow>
@@ -349,6 +368,12 @@ final class ConnectionsWorkspaceModel {
             field = "upload"
         } else if comparator.keyPath == \WorkbenchConnectionRow.download {
             field = "download"
+        } else if comparator.keyPath == \WorkbenchConnectionRow.uploadSpeed {
+            field = "uploadSpeed"
+        } else if comparator.keyPath == \WorkbenchConnectionRow.downloadSpeed {
+            field = "downloadSpeed"
+        } else if comparator.keyPath == \WorkbenchConnectionRow.timestampSortKey {
+            field = "timestamp"
         } else {
             return nil
         }
@@ -358,5 +383,26 @@ final class ConnectionsWorkspaceModel {
         )
     }
 
+    private func scheduleDeferredMetricSort(identity: WorkbenchSessionIdentity) {
+        guard metricSortTask == nil else { return }
+        let interval = WorkbenchConnectionMetricSortCadence.maximumDeferral
+        metricSortTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(interval))
+            guard !Task.isCancelled,
+                  let self,
+                  self.isActive,
+                  self.identity == identity else { return }
+            self.metricSortTask = nil
+            guard !self.tableInteraction.isUserScrolling,
+                  self.metricSortCadence.consume(),
+                  self.cache.commitDeferredMetricSort() else { return }
+            self.reconcileAccessibilityWindow(revealing: self.selectedRowID)
+        }
+    }
 
+    private func cancelMetricSort() {
+        metricSortTask?.cancel()
+        metricSortTask = nil
+        metricSortCadence.cancel()
+    }
 }

@@ -29,6 +29,8 @@ final class WorkbenchSourcesModel {
     @ObservationIgnored private var presentedInput: WorkbenchSourcesPresentationInput?
     @ObservationIgnored private var presentedConfiguration: PresentationConfiguration?
     @ObservationIgnored private var hasDeferredPresentation = false
+    @ObservationIgnored private var visiblePositions: [String: Int] = [:]
+    @ObservationIgnored var resolverToken: UUID?
     @ObservationIgnored private(set) var isActive = false
 
     private struct PresentationConfiguration: Equatable {
@@ -70,6 +72,7 @@ final class WorkbenchSourcesModel {
             presentedInput = nil
             presentedConfiguration = nil
             accessibilityCursor.reset()
+            visiblePositions = [:]
             rowRevision &+= 1
         }
         latestInput = presentedInput
@@ -131,6 +134,10 @@ final class WorkbenchSourcesModel {
         return cache.row(id: id)
     }
 
+    func visibleIndex(id: String) -> Int? {
+        visiblePositions[id]
+    }
+
     func handleAccessibility(_ intent: WorkbenchTableAccessibilityIntent) {
         guard isActive, intent.scope == scope else { return }
         switch intent {
@@ -139,7 +146,7 @@ final class WorkbenchSourcesModel {
         case .movePage(let lowerBound, _):
             accessibilityCursor.move(to: lowerBound, orderedIDs: rows.map(\.id))
         case .setSort(let field, let ascending, _):
-            guard ["name", "type", "itemCount"].contains(field) else { return }
+            guard ["name", "type", "itemCount", "updatedAtSortKey"].contains(field) else { return }
             setSortOrder(Self.sortOrder(from: [
                 WorkbenchWorkspaceSort(field: field, ascending: ascending),
             ]))
@@ -153,6 +160,7 @@ final class WorkbenchSourcesModel {
             ("name", "dashboard.col_provider"),
             ("type", "dashboard.col_provider_type"),
             ("itemCount", "traffic.provider_items"),
+            ("updatedAtSortKey", "traffic.updated_at"),
         ].map { field, titleKey in
             let stored = workspaceSort.first { $0.field == field }
             return WorkbenchAccessibilitySortOption(
@@ -174,7 +182,7 @@ final class WorkbenchSourcesModel {
         hasDeferredPresentation = false
         presentedInput = input
         presentedConfiguration = configuration(for: input)
-        let previousRows = cache.allRows
+        let previousVisibleRows = rows
         let changed = cache.project(
             update: sourceChanged ? .source : .visibleOnly,
             sources: input.sources,
@@ -187,13 +195,22 @@ final class WorkbenchSourcesModel {
             sourceCount = cache.allRows.count
             updatableSourceCount = cache.updatableSourceCount
             rows = cache.visibleRows
+            visiblePositions = Dictionary(
+                uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) }
+            )
             rowRevision &+= 1
         }
         selectedRowID = WorkbenchDataSelection.reconciled(
             selectedRowID,
-            previousRows: previousRows,
+            previousRows: previousVisibleRows,
             nextVisibleRows: rows,
-            identityFamily: \.identityFamily
+            identityFamily: \.identityFamily,
+            matchesPrevious: {
+                $0.identityFamily == $1.identityFamily
+                    && $0.source.kind == $1.source.kind
+                    && $0.source.name == $1.source.name
+                    && $0.source.type == $1.source.type
+            }
         )
         reconcileAccessibilityWindow(revealing: selectedRowID)
     }
@@ -211,6 +228,7 @@ final class WorkbenchSourcesModel {
             case "name": return KeyPathComparator(\WorkbenchSourceRow.name, order: order)
             case "type": return KeyPathComparator(\WorkbenchSourceRow.type, order: order)
             case "itemCount": return KeyPathComparator(\WorkbenchSourceRow.itemCount, order: order)
+            case "updatedAtSortKey": return KeyPathComparator(\WorkbenchSourceRow.updatedAtSortKey, order: order)
             default: return nil
             }
         }
@@ -226,6 +244,8 @@ final class WorkbenchSourcesModel {
             field = "type"
         } else if comparator.keyPath == \WorkbenchSourceRow.itemCount {
             field = "itemCount"
+        } else if comparator.keyPath == \WorkbenchSourceRow.updatedAtSortKey {
+            field = "updatedAtSortKey"
         } else {
             return nil
         }

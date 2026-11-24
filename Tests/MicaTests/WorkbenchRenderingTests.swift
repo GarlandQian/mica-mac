@@ -8,6 +8,97 @@ import XCTest
 
 @MainActor
 final class WorkbenchRenderingTests: XCTestCase {
+    func testOfflineURLTestDetails() async throws {
+        guard ProcessInfo.processInfo.environment["MICA_RENDER_URL_TESTS"] == "1" else {
+            throw XCTSkip("Set MICA_RENDER_URL_TESTS=1 to render grouped node test results.")
+        }
+        let output = try renderingOutputDirectory()
+        NSApplication.shared.finishLaunching()
+        let history: [MihomoJSONValue] = (0..<10).map { index in
+            .object([
+                "time": .string(String(format: "2026-10-08T12:%02d:01.179876313Z", index * 5)),
+                "delay": .number(Double(42 + index)),
+            ])
+        }
+        let detail = ProxyNodeViewState(snapshot: ProxySnapshot(
+            name: "Offline node", type: "Shadowsocks", metadata: [
+                "extra": .object([
+                    "https://www.gstatic.com/generate_204": .object([
+                        "alive": .bool(true), "history": .array(history),
+                    ]),
+                    "https://test.example.invalid/generate_204": .object([
+                        "alive": .bool(false),
+                        "history": .array([.object([
+                            "time": .string("2026-10-08T12:17:01.179876313Z"),
+                            "delay": .number(0),
+                        ])]),
+                    ]),
+                ]),
+            ]
+        ))
+        let results = ProxyProtocolInspectionProjection.project(detail: detail).urlTests
+        let snapshot = OverviewPolicyInspectionSnapshot(
+            kind: .policyMember, title: detail.name, subtitle: nil,
+            sections: [OverviewPolicyInspectionSection(
+                id: "testing", titleKey: "routing.node_section_testing", fields: [], urlTests: results
+            )]
+        )
+        for scheme in [ColorScheme.light, .dark] {
+            let appearance = try XCTUnwrap(NSAppearance(named: scheme == .dark ? .darkAqua : .aqua))
+            let root = ScrollView { ProxyInlineNodeDetails(snapshot: snapshot) }
+                .micaAppPreferences(language: .simplifiedChinese, appearance: scheme == .dark ? .dark : .light, fontScale: .comfortable)
+                .environment(\.colorScheme, scheme)
+                .frame(width: 440, height: 420)
+            let host = NSHostingView(rootView: AnyView(root))
+            host.appearance = appearance
+            let window = NSWindow(
+                contentRect: CGRect(x: 0, y: 0, width: 440, height: 420),
+                styleMask: [.titled], backing: .buffered, defer: false
+            )
+            window.isReleasedWhenClosed = false
+            window.appearance = appearance
+            window.contentView = host
+            window.makeKeyAndOrderFront(nil)
+            defer {
+                window.orderOut(nil)
+                window.contentView = nil
+                window.close()
+            }
+            for _ in 0..<10 {
+                host.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            let bitmap = try captureOwnedWindow(window)
+            assertNonblank(bitmap)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            try png.write(to: output.appendingPathComponent("url-tests-\(scheme == .dark ? "dark" : "light").png"), options: .atomic)
+
+            // Render the same production disclosure in its expanded state;
+            // the test-owned hosting view does not expose virtual AX children.
+            host.rootView = AnyView(ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(results) { result in
+                        ProxyURLTestDetails(result: result, initiallyShowsHistory: true)
+                    }
+                }
+                .padding(24)
+            }
+            .micaAppPreferences(language: .simplifiedChinese, appearance: scheme == .dark ? .dark : .light, fontScale: .comfortable)
+            .environment(\.colorScheme, scheme)
+            .frame(width: 440, height: 420))
+            for _ in 0..<10 {
+                host.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            let expanded = try captureOwnedWindow(window)
+            assertNonblank(expanded)
+            let expandedPNG = try XCTUnwrap(expanded.representation(using: .png, properties: [:]))
+            try expandedPNG.write(to: output.appendingPathComponent("url-tests-expanded-\(scheme == .dark ? "dark" : "light").png"), options: .atomic)
+        }
+    }
+
     func testOfflineWorkbenchAtSupportedWindowSizes() async throws {
         let output = try renderingOutputDirectory()
         let previousApplication = NSWorkspace.shared.frontmostApplication

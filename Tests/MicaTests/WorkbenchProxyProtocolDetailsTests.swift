@@ -425,11 +425,15 @@ struct WorkbenchProxyProtocolDetailsTests {
         #expect(!snapshot.sections.contains { $0.id == "protocol" })
         #expect(projection.runtimeFields.map(\.reportedKey) == ["id", "routing-mark", "dialer-proxy"])
         #expect(projection.runtimeFields.map(\.value) == ["node-runtime-id", "0", "Upstream"])
-        #expect(projection.testingFields.map(\.value) == ["false", "0", "2026-09-01T12:00:01Z"])
+        #expect(projection.urlTests == [ProxyURLTestResult(
+            url: "https://test.example.invalid/generate_204",
+            alive: false,
+            history: [ProxyURLTestSample(id: 0, time: "2026-09-01T12:00:01Z", delay: 0, meanDelay: nil)],
+            additionalFields: []
+        )])
         #expect(projection.additionalFields.isEmpty)
         #expect(snapshot.sections.first { $0.id == "transport" }?.fields.count == 6)
-        #expect(snapshot.sections.first { $0.id == "testing" }?.fields.suffix(3)
-            == projection.testingFields[...])
+        #expect(snapshot.sections.first { $0.id == "testing" }?.urlTests == projection.urlTests)
         #expect(snapshot.fields.first { $0.id == "provider" }?.value == "Primary")
         #expect(snapshot.fields.first { $0.id == "interface" }?.value == "en0")
         #expect(Set(snapshot.fields.map(\.id)).count == snapshot.fields.count)
@@ -462,7 +466,7 @@ struct WorkbenchProxyProtocolDetailsTests {
             ]),
         ]))
         #expect(projection.parameters.isEmpty)
-        #expect(projection.testingFields.isEmpty)
+        #expect(projection.urlTests.isEmpty)
         #expect(projection.additionalFields.count == 4)
         let sensitive = projection.additionalFields.filter(\.isSensitive)
         #expect(Set(sensitive.compactMap(\.reportedKey)) == ["extra.password", "extra.auth.user"])

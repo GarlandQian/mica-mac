@@ -29,6 +29,7 @@ struct WorkbenchActionsView: View {
     let onEditController: (RouterProfile) -> Void
 
     @State private var pendingConfirmation: WorkbenchRuntimeConfirmation?
+    @FocusState private var focusedConfirmationID: String?
 
     var body: some View {
         let snapshot = actionsSnapshot
@@ -82,7 +83,7 @@ struct WorkbenchActionsView: View {
             case .checking, .recovery, .unsupported:
                 recoveryCanvas(snapshot: snapshot, router: router)
             case .ready, .partial:
-                commandCanvas(snapshot: snapshot, router: router)
+                commandCanvas(snapshot: snapshot)
             }
         } else {
             WorkbenchStateView(
@@ -134,7 +135,7 @@ struct WorkbenchActionsView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
-                    recoverySummary(snapshot: snapshot, router: router)
+                    recoverySummary(snapshot: snapshot)
                     targetSection(snapshot: snapshot, router: router)
                     recoveryActions(snapshot: snapshot, router: router)
                     if !snapshot.relatedDestinations.isEmpty {
@@ -151,8 +152,7 @@ struct WorkbenchActionsView: View {
     }
 
     private func recoverySummary(
-        snapshot: WorkbenchActionsSnapshot,
-        router: RouterProfile
+        snapshot: WorkbenchActionsSnapshot
     ) -> some View {
         HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
             Group {
@@ -303,7 +303,31 @@ struct WorkbenchActionsView: View {
         snapshot: WorkbenchActionsSnapshot,
         router: RouterProfile
     ) -> some View {
-        if let primaryIntent = snapshot.recovery?.primaryIntent {
+        let isTesting = appModel.isTestingSelectedRouter
+        if snapshot.recovery?.primaryIntent == .testConnection
+            || (snapshot.availability != .checking && isTesting) {
+            Button {
+                perform(.testConnection)
+            } label: {
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    if isTesting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: MicaSymbols.Command.test)
+                    }
+                    Text(
+                        MicaStrings.localizedKey(
+                            isTesting ? "editor.testing" : "action.test",
+                            language: language
+                        )
+                    )
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!appModel.canTestSelectedRouter || isTesting)
+        } else if let primaryIntent = snapshot.recovery?.primaryIntent {
             Button {
                 perform(primaryIntent)
             } label: {
@@ -340,35 +364,36 @@ struct WorkbenchActionsView: View {
     }
 
     private func commandCanvas(
-        snapshot: WorkbenchActionsSnapshot,
-        router: RouterProfile
+        snapshot: WorkbenchActionsSnapshot
     ) -> some View {
-        GeometryReader { geometry in
-            let availableWidth = geometry.size.width
-                - MicaTheme.Metrics.pagePadding(for: geometry.size.width) * 2
-            let layout = WorkbenchActionsLayoutDecision.resolve(
-                commandCount: snapshot.commandCount,
-                availableWidth: availableWidth
-            )
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
-                    if let retainedFailureMessage {
-                        WorkbenchStaleNotice(message: retainedFailureMessage)
-                    }
-
-                    commandWorkspace(snapshot: snapshot, columns: layout.columns)
-
-                    if !snapshot.relatedDestinations.isEmpty {
-                        relatedWorkspaces(snapshot.relatedDestinations)
-                    }
-                }
-                .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
-                .padding(.vertical, MicaTheme.Spacing.space4)
-                .frame(maxWidth: layout.maximumContentWidth, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        VStack(spacing: 0) {
+            if let retainedFailureMessage {
+                WorkbenchStaleNotice(message: retainedFailureMessage)
             }
-            .micaObserveScrollPerformance()
+
+            GeometryReader { geometry in
+                let availableWidth = geometry.size.width
+                    - MicaTheme.Metrics.pagePadding(for: geometry.size.width) * 2
+                let layout = WorkbenchActionsLayoutDecision.resolve(
+                    commandCount: snapshot.commandCount,
+                    availableWidth: availableWidth
+                )
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
+                        commandWorkspace(snapshot: snapshot, columns: layout.columns)
+
+                        if !snapshot.relatedDestinations.isEmpty {
+                            relatedWorkspaces(snapshot.relatedDestinations)
+                        }
+                    }
+                    .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
+                    .padding(.vertical, MicaTheme.Spacing.space4)
+                    .frame(maxWidth: layout.maximumContentWidth, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .micaObserveScrollPerformance()
+            }
         }
     }
 
@@ -377,11 +402,7 @@ struct WorkbenchActionsView: View {
         snapshot: WorkbenchActionsSnapshot,
         columns: Int
     ) -> some View {
-        // Ordinary groups first; lifecycle commands close the page.
-        let ordered = snapshot.groups.filter { $0.group != .lifecycle }
-            + snapshot.groups.filter { $0.group == .lifecycle }
-
-        ForEach(ordered) { group in
+        ForEach(snapshot.groups) { group in
             commandGroup(group, columns: columns)
         }
     }
@@ -462,6 +483,12 @@ struct WorkbenchActionsView: View {
                     .micaThemeFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let evidence = command.evidence?.managementNonEmpty {
+                    Text(verbatim: evidence)
+                        .micaThemeFont(.dataCaption)
+                        .foregroundStyle(MicaTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -486,13 +513,15 @@ struct WorkbenchActionsView: View {
                         generation: appModel.controllerSessionPresentation.generation,
                         operationID: command.id
                     )
+                    focusedConfirmationID = command.id
                 } else {
                     perform(command.intent)
                 }
             } label: {
                 Label(
                     MicaStrings.localizedKey(
-                        command.requiresConfirmation ? "actions.run_confirming" : "actions.run",
+                        command.actionButtonKey
+                            ?? (command.requiresConfirmation ? "actions.run_confirming" : "actions.run"),
                         language: language
                     ),
                     systemImage: command.requiresConfirmation ? "exclamationmark.triangle" : "play.fill"
@@ -545,58 +574,56 @@ struct WorkbenchActionsView: View {
     private func inlineConfirmation(
         _ command: WorkbenchActionCommand
     ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: MicaTheme.Spacing.space3) {
-                confirmationContent(command)
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+            Label {
+                Text(
+                    MicaStrings.localizedKey(
+                        command.confirmationMessageKey ?? "diagnostics.confirm_runtime_message",
+                        language: language
+                    )
+                )
+                .micaThemeFont(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(MicaTheme.statusWarning)
             }
-            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                confirmationContent(command)
+
+            HStack(spacing: MicaTheme.Spacing.space2) {
+                Spacer(minLength: 0)
+
+                Button(MicaStrings.localizedKey("action.cancel", language: language)) {
+                    pendingConfirmation = nil
+                    focusedConfirmationID = nil
+                }
+                .controlSize(.small)
+                .focused($focusedConfirmationID, equals: command.id)
+
+                Button(
+                    MicaStrings.localizedKey(command.actionButtonKey ?? command.titleKey, language: language),
+                    role: .destructive
+                ) {
+                    guard let pendingConfirmation,
+                          pendingConfirmation.operationID == command.id,
+                          isCurrent(pendingConfirmation) else {
+                        self.pendingConfirmation = nil
+                        focusedConfirmationID = nil
+                        return
+                    }
+                    self.pendingConfirmation = nil
+                    focusedConfirmationID = nil
+                    perform(command.intent)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(MicaTheme.statusError)
+                .controlSize(.small)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onExitCommand {
             pendingConfirmation = nil
+            focusedConfirmationID = nil
         }
-    }
-
-    @ViewBuilder
-    private func confirmationContent(
-        _ command: WorkbenchActionCommand
-    ) -> some View {
-        Label {
-            Text(
-                MicaStrings.localizedKey(
-                    command.confirmationMessageKey ?? "diagnostics.confirm_runtime_message",
-                    language: language
-                )
-            )
-            .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(MicaTheme.statusWarning)
-        }
-
-        Spacer(minLength: MicaTheme.Spacing.space2)
-
-        Button(MicaStrings.localizedKey("action.cancel", language: language)) {
-            pendingConfirmation = nil
-        }
-
-        Button(
-            MicaStrings.localizedKey(command.titleKey, language: language),
-            role: .destructive
-        ) {
-            guard let pendingConfirmation,
-                  pendingConfirmation.operationID == command.id,
-                  isCurrent(pendingConfirmation) else {
-                self.pendingConfirmation = nil
-                return
-            }
-            self.pendingConfirmation = nil
-            perform(command.intent)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(MicaTheme.statusError)
     }
 
     private func perform(_ intent: WorkbenchActionsIntent) {
@@ -630,7 +657,7 @@ struct WorkbenchActionsView: View {
     private func isRunning(_ command: WorkbenchActionCommand) -> Bool {
         switch command.intent {
         case .testConnection:
-            appModel.connectionState == .connecting
+            appModel.isTestingSelectedRouter || appModel.connectionState == .connecting
         case .refresh:
             appModel.isRefreshingDashboard
         case .direct(.reloadRules):

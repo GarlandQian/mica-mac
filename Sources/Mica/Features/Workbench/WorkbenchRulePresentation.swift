@@ -151,9 +151,10 @@ struct WorkbenchRuleConnectionIndex: Equatable {
             let payload = connection.rulePayload?.dataNonEmpty
 
             if let payload {
-                payloads[payload, default: 0] += 1
                 if let type {
                     exact[ExactKey(type: type, payload: payload), default: 0] += 1
+                } else {
+                    payloads[payload, default: 0] += 1
                 }
             } else if let type {
                 typesWithoutPayload[type, default: 0] += 1
@@ -163,9 +164,8 @@ struct WorkbenchRuleConnectionIndex: Equatable {
 
     func count(for rule: RuleViewState) -> Int {
         if let payload = rule.payload.dataNonEmpty {
-            if let type = rule.type.dataNonEmpty,
-               let exactCount = exact[ExactKey(type: type, payload: payload)] {
-                return exactCount
+            if let type = rule.type.dataNonEmpty {
+                return exact[ExactKey(type: type, payload: payload)] ?? payloads[payload] ?? 0
             }
             return payloads[payload] ?? 0
         }
@@ -441,12 +441,13 @@ enum WorkbenchRuleInspectorResolver {
         payload: String,
         in rows: [WorkbenchRuleRow]
     ) -> WorkbenchRuleRow? {
-        guard type.dataNonEmpty != nil, payload.dataNonEmpty != nil else {
+        guard type.dataNonEmpty != nil else {
             return nil
         }
 
+        let normalizedPayload = payload.dataNonEmpty
         let matches = rows.filter {
-            $0.rule.type == type && $0.rule.payload == payload
+            $0.rule.type == type && ($0.rule.payload.dataNonEmpty ?? "") == (normalizedPayload ?? "")
         }
         return matches.count == 1 ? matches[0] : nil
     }

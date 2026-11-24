@@ -208,13 +208,19 @@ final class OverviewTopologyPresentationCache {
         let diagramIndex = request.displayMode == .overview
             ? graphPresentation.summaryIndex : graphPresentation.index
         let orderedColumns: [[ConnectionTopology.Node]]
-        if let cached = graphPresentation.ordering[request.displayMode] {
+        if request.displayMode == .overview {
+            orderedColumns = diagram.columns.map(\.nodes)
+        } else if let cached = graphPresentation.ordering[request.displayMode] {
             orderedColumns = cached
         } else {
-            orderedColumns = try await OverviewTopologyOrdering.prepare(in: diagram)
-            orderingPreparationCount += 1
-            graphPresentation.ordering[request.displayMode] = orderedColumns
-            graph = graphPresentation
+            let prepared = try await OverviewTopologyOrdering.prepare(in: diagram)
+            try Task.checkCancellation()
+            if self.graph?.request == graphPresentation.request {
+                orderingPreparationCount += 1
+                graphPresentation.ordering[request.displayMode] = prepared
+                graph = graphPresentation
+            }
+            orderedColumns = prepared
         }
         statistics.layoutBuildCount += 1
         let layout = try await OverviewTopologyLayoutBuilder.buildCancellable(
@@ -335,6 +341,7 @@ final class OverviewTopologyInteractionState {
     private(set) var snapshot = OverviewTopologyInteractionSnapshot.empty
 
     @ObservationIgnored private var hoveredSelection: OverviewTopologySelection?
+    @ObservationIgnored private var hoveredBandID: Int?
     @ObservationIgnored private var pinnedSelection: OverviewTopologySelection?
     @ObservationIgnored private var structure: OverviewTopologyStructureRequest?
     @ObservationIgnored private var index: OverviewTopologyIndex?
@@ -354,6 +361,9 @@ final class OverviewTopologyInteractionState {
         hoveredSelection = hoveredSelection.flatMap { selection in
             index.contains(selection) ? selection : nil
         }
+        if hoveredSelection == nil {
+            hoveredBandID = nil
+        }
         pinnedSelection = pinnedSelection.flatMap { selection in
             index.contains(selection) ? selection : nil
         }
@@ -362,6 +372,7 @@ final class OverviewTopologyInteractionState {
 
     func reset() {
         hoveredSelection = nil
+        hoveredBandID = nil
         pinnedSelection = nil
         structure = nil
         index = nil
@@ -369,14 +380,26 @@ final class OverviewTopologyInteractionState {
         snapshot = .empty
     }
 
-    func setHoveredSelection(_ selection: OverviewTopologySelection?) {
-        guard hoveredSelection != selection else { return }
-        hoveredSelection = selection
+    func setHoveredSelection(_ selection: OverviewTopologySelection?, bandID: Int? = nil) {
+        if let selection {
+            hoveredBandID = bandID
+            guard hoveredSelection != selection else { return }
+            hoveredSelection = selection
+            publishSnapshot()
+            return
+        }
+        if let bandID, let activeBandID = hoveredBandID, activeBandID != bandID {
+            return
+        }
+        hoveredBandID = nil
+        guard hoveredSelection != nil else { return }
+        hoveredSelection = nil
         publishSnapshot()
     }
 
     func togglePinnedSelection(_ selection: OverviewTopologySelection?) {
         hoveredSelection = nil
+        hoveredBandID = nil
         pinnedSelection = pinnedSelection == selection ? nil : selection
         publishSnapshot()
     }
@@ -388,6 +411,7 @@ final class OverviewTopologyInteractionState {
     func clearSelection() {
         guard hoveredSelection != nil || pinnedSelection != nil else { return }
         hoveredSelection = nil
+        hoveredBandID = nil
         pinnedSelection = nil
         publishSnapshot()
     }
@@ -736,12 +760,16 @@ struct OverviewTopologyLayout: Sendable {
         let shape: Shape
 
         func contains(_ point: CGPoint) -> Bool {
+            matchedDistanceSquared(to: point) != nil
+        }
+
+        func matchedDistanceSquared(to point: CGPoint) -> CGFloat? {
             switch shape {
             case .rectangle(let rect):
-                rect.contains(point)
+                return rect.contains(point) ? 0 : nil
             case .segment(let start, let end, let tolerance):
-                Self.squaredDistance(from: point, toSegmentFrom: start, to: end)
-                    <= tolerance * tolerance
+                let distanceSquared = Self.squaredDistance(from: point, toSegmentFrom: start, to: end)
+                return distanceSquared <= tolerance * tolerance ? distanceSquared : nil
             }
         }
 
@@ -803,20 +831,43 @@ struct OverviewTopologyLayout: Sendable {
         }
 
         var shapeCheckCount = 0
+        var bestEdge: (selection: OverviewTopologySelection, distanceSquared: CGFloat)?
         for target in targets.reversed() {
             shapeCheckCount += 1
-            if target.contains(point) {
-                return (
-                    target.selection,
-                    HitTestOperationCounts(
-                        indexedTargetCount: targets.count,
-                        shapeCheckCount: shapeCheckCount
+            switch target.shape {
+            case .rectangle:
+                if target.contains(point) {
+                    if let bestEdge {
+                        return (
+                            bestEdge.selection,
+                            HitTestOperationCounts(
+                                indexedTargetCount: targets.count,
+                                shapeCheckCount: shapeCheckCount
+                            )
+                        )
+                    }
+                    return (
+                        target.selection,
+                        HitTestOperationCounts(
+                            indexedTargetCount: targets.count,
+                            shapeCheckCount: shapeCheckCount
+                        )
                     )
-                )
+                }
+            case .segment:
+                if let distanceSquared = target.matchedDistanceSquared(to: point) {
+                    if let currentBest = bestEdge {
+                        if distanceSquared < currentBest.distanceSquared {
+                            bestEdge = (target.selection, distanceSquared)
+                        }
+                    } else {
+                        bestEdge = (target.selection, distanceSquared)
+                    }
+                }
             }
         }
         return (
-            nil,
+            bestEdge?.selection,
             HitTestOperationCounts(
                 indexedTargetCount: targets.count,
                 shapeCheckCount: shapeCheckCount
@@ -885,24 +936,51 @@ enum OverviewTopologyViewportTargetResolver {
             )
         case .edge(let edgeID):
             guard let edge = index.edge(id: edgeID),
-                  let centerX = edgeCenterX(edge, layout: layout) else {
+                  let source = layout.nodeGeometry(id: edge.sourceID),
+                  let target = layout.nodeGeometry(id: edge.targetID) else {
                 return nil
             }
-            let sourceY = layout.nodeGeometry(id: edge.sourceID)?.rect.midY
-            let targetY = layout.nodeGeometry(id: edge.targetID)?.rect.midY
-            let centerY = sourceY.flatMap { sourceY in targetY.map { (sourceY + $0) / 2 } }
-            return OverviewTopologyViewportTarget(id: .edge(edgeID), centerX: centerX, centerY: centerY)
+            return OverviewTopologyViewportTarget(
+                id: .edge(edgeID),
+                centerX: (source.rect.midX + target.rect.midX) / 2,
+                centerY: (source.rect.midY + target.rect.midY) / 2
+            )
         case .path(let pathID):
-            guard let path = index.path(id: pathID),
-                  let centerX = pathCenterX(path, index: index, layout: layout) else {
+            guard let path = index.path(id: pathID) else {
                 return nil
             }
-            let anchorStage = path.stages.first { stage in
+            if let policyStage = path.stages.first(where: { stage in
                 if case .policyHop = stage.columnID { return true }
                 return false
-            } ?? path.stages.first
-            let centerY = anchorStage.flatMap { layout.nodeGeometry(id: $0.nodeID)?.rect.midY }
-            return OverviewTopologyViewportTarget(id: .path(pathID), centerX: centerX, centerY: centerY)
+            }), let geometry = layout.nodeGeometry(id: policyStage.nodeID) {
+                return OverviewTopologyViewportTarget(
+                    id: .path(pathID),
+                    centerX: geometry.rect.midX,
+                    centerY: geometry.rect.midY
+                )
+            }
+            if !path.edgeIDs.isEmpty {
+                let centralEdgeID = path.edgeIDs[path.edgeIDs.count / 2]
+                if let edge = index.edge(id: centralEdgeID),
+                   let source = layout.nodeGeometry(id: edge.sourceID),
+                   let target = layout.nodeGeometry(id: edge.targetID) {
+                    return OverviewTopologyViewportTarget(
+                        id: .path(pathID),
+                        centerX: (source.rect.midX + target.rect.midX) / 2,
+                        centerY: (source.rect.midY + target.rect.midY) / 2
+                    )
+                }
+            }
+            guard !path.stages.isEmpty else { return nil }
+            let centralStage = path.stages[path.stages.count / 2]
+            guard let geometry = layout.nodeGeometry(id: centralStage.nodeID) else {
+                return nil
+            }
+            return OverviewTopologyViewportTarget(
+                id: .path(pathID),
+                centerX: geometry.rect.midX,
+                centerY: geometry.rect.midY
+            )
         }
     }
 
@@ -952,42 +1030,6 @@ enum OverviewTopologyViewportTargetResolver {
         let offset = min(max(centerY - visibleRect.height / 2, 0), max(contentHeight - visibleRect.height, 0))
         return abs(offset - visibleRect.minY) > 0.5 ? offset : nil
     }
-
-    private static func pathCenterX(
-        _ path: ConnectionTopology.PathRecord,
-        index: OverviewTopologyIndex,
-        layout: OverviewTopologyLayout
-    ) -> CGFloat? {
-        if let policyStage = path.stages.first(where: { stage in
-            if case .policyHop = stage.columnID { return true }
-            return false
-        }), let geometry = layout.nodeGeometry(id: policyStage.nodeID) {
-            return geometry.rect.midX
-        }
-
-        if !path.edgeIDs.isEmpty {
-            let centralEdgeID = path.edgeIDs[path.edgeIDs.count / 2]
-            if let edge = index.edge(id: centralEdgeID),
-               let centerX = edgeCenterX(edge, layout: layout) {
-                return centerX
-            }
-        }
-
-        guard !path.stages.isEmpty else { return nil }
-        let centralStage = path.stages[path.stages.count / 2]
-        return layout.nodeGeometry(id: centralStage.nodeID)?.rect.midX
-    }
-
-    private static func edgeCenterX(
-        _ edge: ConnectionTopology.Edge,
-        layout: OverviewTopologyLayout
-    ) -> CGFloat? {
-        guard let source = layout.nodeGeometry(id: edge.sourceID),
-              let target = layout.nodeGeometry(id: edge.targetID) else {
-            return nil
-        }
-        return (source.rect.midX + target.rect.midX) / 2
-    }
 }
 
 enum OverviewTopologyFlowScale {
@@ -999,8 +1041,8 @@ enum OverviewTopologyFlowScale {
     }
 
     static func nodeHeight(forConnectionCount connectionCount: Int) -> CGFloat {
-        let projected = 32 + CGFloat(log10(Double(max(connectionCount, 0)) + 1) * 3)
-        return min(max(projected, 36), 44)
+        let projected = 36 + CGFloat(log10(Double(max(connectionCount, 0)) + 1) * 3)
+        return min(max(projected, 40), 48)
     }
 
     static func edgeWidth(forConnectionCount connectionCount: Int) -> CGFloat {
@@ -1153,9 +1195,11 @@ enum OverviewTopologyLayoutBuilder {
             + minimumColumnStep * columnIntervalCount
         let preferredGraphWidth = sideInset * 2 + routeNodeWidth
             + preferredMaximumColumnStep * columnIntervalCount
-        let graphWidth = fitsOverviewWidth ? fittedWidth : columnCount > 1
-            ? min(max(fittedWidth, minimumGraphWidth), preferredGraphWidth)
-            : fittedWidth
+        let graphWidth = fitsOverviewWidth
+            ? fittedWidth
+            : columnCount > 1
+                ? min(max(fittedWidth, minimumGraphWidth), preferredGraphWidth)
+                : fittedWidth
         let usableColumnSpan = max(
             graphWidth - sideInset * 2 - routeNodeWidth,
             0
@@ -1193,12 +1237,26 @@ enum OverviewTopologyLayoutBuilder {
                     width: routeNodeWidth,
                     height: nodeHeight
                 )
-                let labelRect = CGRect(
-                    x: rect.minX + 34,
-                    y: rect.midY - 14,
-                    width: routeNodeWidth - 48,
-                    height: 28
-                )
+                let labelHeight = min(32, max(rect.height - 4, 1))
+                let labelRect: CGRect = if routeNodeWidth >= 72 {
+                    CGRect(
+                        x: rect.minX + 34,
+                        y: rect.midY - labelHeight / 2,
+                        width: routeNodeWidth - 48,
+                        height: labelHeight
+                    )
+                } else {
+                    {
+                        let lead = min(8, rect.width * 0.12)
+                        let trail = min(6, rect.width * 0.1)
+                        return CGRect(
+                            x: rect.minX + lead,
+                            y: rect.midY - labelHeight / 2,
+                            width: max(rect.width - lead - trail, 1),
+                            height: labelHeight
+                        )
+                    }()
+                }
                 let interactiveContentRect = rect
                 let hitRect = interactiveContentRect.insetBy(
                     dx: -max(
@@ -1596,7 +1654,10 @@ enum OverviewTopologyLayoutBuilder {
         control2: CGPoint,
         tolerance: CGFloat
     ) -> [OverviewTopologyLayout.EdgeHitSegment] {
-        let segmentCount = edgeHitSubdivisionCount
+        let segmentCount = max(
+            edgeHitSubdivisionCount,
+            Int(ceil(abs(target.x - source.x) / 48))
+        )
         var result: [OverviewTopologyLayout.EdgeHitSegment] = []
         result.reserveCapacity(segmentCount)
         var previous = source
@@ -1896,7 +1957,7 @@ enum OverviewTopologyNodeStatus {
         policyIndex: OverviewPolicyInspectionIndex
     ) -> MicaTheme.Status {
         let delay: Int?
-        switch policyIndex.resolve(name: name) {
+        switch policyIndex.resolveCanonical(name: name) {
         case .group(let group):
             delay = group.selectedMember.delay
         case .member(let member):
@@ -1904,7 +1965,8 @@ enum OverviewTopologyNodeStatus {
         case .ambiguous, .missing:
             delay = nil
         }
-        guard let delay, delay > 0 else { return .neutral }
+        guard let delay else { return .neutral }
+        if delay <= 0 { return .error }
         switch LatencyHealthGrade.allCases.first(where: { $0.includes(delay: delay) }) {
         case .fast?, .normal?:
             return .ok

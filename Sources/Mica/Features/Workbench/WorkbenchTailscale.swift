@@ -135,7 +135,10 @@ private struct WorkbenchTailscaleEndpointView: View {
 
                 if !exitNodeCandidates.isEmpty {
                     Divider()
-                    WorkbenchFormRow("tailscale.exit_node_candidates") {
+                    WorkbenchFormRow(
+                        "tailscale.exit_node_candidates",
+                        isBusy: isUpdatingExitNode
+                    ) {
                         Picker(
                             MicaStrings.localizedKey(
                                 "tailscale.exit_node_candidates",
@@ -157,7 +160,7 @@ private struct WorkbenchTailscaleEndpointView: View {
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
-                        .disabled(appModel.isBusy)
+                        .disabled(isBusyOrInactive)
                     }
                 } else if let peer = endpoint.exitNode {
                     Divider()
@@ -206,10 +209,14 @@ private struct WorkbenchTailscaleEndpointView: View {
             }
         }
         .onChange(of: endpoint.exitNode?.stableID) { _, next in
-            if pendingExitNodeID == next { pendingExitNodeID = nil }
+            if pendingExitNodeID == (next ?? "") {
+                pendingExitNodeID = nil
+            }
         }
-        .onChange(of: appModel.runningRuntimeOperationID) { _, next in
-            if next == nil { pendingExitNodeID = nil }
+        .onChange(of: appModel.operationState?.kind) { _, kind in
+            if kind == .error {
+                pendingExitNodeID = nil
+            }
         }
         .onChange(of: appModel.selectedRouterID) { _, next in
             if next != controllerID {
@@ -229,16 +236,31 @@ private struct WorkbenchTailscaleEndpointView: View {
     private var logoutControls: some View {
         if confirmsLogout {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: MicaTheme.Spacing.space2) { logoutConfirmationContent }
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    logoutWarningLabel
+                    Spacer(minLength: MicaTheme.Spacing.space2)
+                    logoutActionButtons
+                }
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                    logoutConfirmationContent
+                    logoutWarningLabel
+                    HStack(spacing: MicaTheme.Spacing.space2) {
+                        Spacer(minLength: 0)
+                        logoutActionButtons
+                    }
                 }
             }
+            .onExitCommand {
+                confirmsLogout = false
+            }
         } else {
-            HStack {
+            HStack(spacing: MicaTheme.Spacing.space2) {
                 Spacer(minLength: 0)
+                if isLoggingOut {
+                    ProgressView()
+                        .controlSize(.small)
+                }
                 Button {
-                    if isCurrentSession { confirmsLogout = true }
+                    if !isBusyOrInactive { confirmsLogout = true }
                 } label: {
                     Label(
                         MicaStrings.localizedKey("tailscale.logout", language: language),
@@ -247,18 +269,20 @@ private struct WorkbenchTailscaleEndpointView: View {
                     .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
                 }
                 .buttonStyle(.bordered)
-                .disabled(appModel.isBusy)
+                .disabled(isBusyOrInactive)
             }
         }
     }
 
-    @ViewBuilder
-    private var logoutConfirmationContent: some View {
+    private var logoutWarningLabel: some View {
         Text(MicaStrings.localizedKey("tailscale.logout", language: language))
+            .micaThemeFont(.label, weight: .medium)
             .foregroundStyle(MicaTheme.statusError)
+            .fixedSize(horizontal: false, vertical: true)
+    }
 
-        Spacer(minLength: MicaTheme.Spacing.space2)
-
+    @ViewBuilder
+    private var logoutActionButtons: some View {
         Button(MicaStrings.localizedKey("action.cancel", language: language)) {
             confirmsLogout = false
         }
@@ -269,13 +293,25 @@ private struct WorkbenchTailscaleEndpointView: View {
             role: .destructive
         ) {
             confirmsLogout = false
-            guard isCurrentSession else { return }
+            guard !isBusyOrInactive else { return }
             appModel.logoutSingBoxTailscale(endpointTag: endpoint.endpointTag)
         }
         .buttonStyle(.borderedProminent)
         .tint(MicaTheme.statusError)
-        .disabled(appModel.isBusy)
+        .disabled(isBusyOrInactive)
         .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+    }
+
+    private var isUpdatingExitNode: Bool {
+        appModel.runningRuntimeOperationID == TrialCommandAction.singBoxTailscaleExitNode.rawValue
+    }
+
+    private var isLoggingOut: Bool {
+        appModel.runningRuntimeOperationID == TrialCommandAction.singBoxTailscaleLogout.rawValue
+    }
+
+    private var isBusyOrInactive: Bool {
+        appModel.isBusy || !isCurrentSession
     }
 
     private var endpointTitle: String {
@@ -288,15 +324,18 @@ private struct WorkbenchTailscaleEndpointView: View {
         Binding(
             get: { pendingExitNodeID ?? endpoint.exitNode?.stableID ?? "" },
             set: { next in
-                guard isCurrentSession else { return }
-                guard next != (pendingExitNodeID ?? endpoint.exitNode?.stableID ?? "") else {
-                    return
-                }
+                guard !isBusyOrInactive,
+                      appModel.runningRuntimeOperationID == nil else { return }
+                let current = pendingExitNodeID ?? endpoint.exitNode?.stableID ?? ""
+                guard next != current else { return }
                 pendingExitNodeID = next
                 appModel.setSingBoxTailscaleExitNode(
                     endpointTag: endpoint.endpointTag,
                     stableID: next
                 )
+                if appModel.runningRuntimeOperationID == nil {
+                    pendingExitNodeID = nil
+                }
             }
         )
     }
@@ -422,7 +461,8 @@ private struct WorkbenchTailscaleEndpointView: View {
     private var authenticationLinkURL: URL? {
         guard let value = endpoint.authenticationURL.managementNonEmpty,
               let url = URL(string: value),
-              url.scheme?.isEmpty == false else {
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
             return nil
         }
         return url
@@ -453,12 +493,31 @@ private struct WorkbenchTailscalePeerDetails: View {
             row("tailscale.can_be_exit_node", booleanLabel(peer.canBeExitNode))
             row("tailscale.received_bytes", byteString(peer.receivedBytes))
             row("tailscale.transmitted_bytes", byteString(peer.transmittedBytes))
-            row("tailscale.key_expiry", String(peer.keyExpiry))
+            timestampRow("tailscale.key_expiry", timestamp: peer.keyExpiry)
             row("tailscale.stable_id", peer.stableID)
             row("tailscale.expired", booleanLabel(peer.expired))
             row("tailscale.ssh_host_keys", peer.sshHostKeys.joined(separator: "\n"))
             row("tailscale.sharee_node", booleanLabel(peer.isShareeNode))
-            row("tailscale.last_seen", String(peer.lastSeen))
+            timestampRow("tailscale.last_seen", timestamp: peer.lastSeen)
+        }
+    }
+
+    private func timestampRow(_ titleKey: String, timestamp: Int64) -> some View {
+        let displayDate = timestamp >= 31_536_000
+            ? Date(timeIntervalSince1970: TimeInterval(timestamp))
+            : nil
+        return WorkbenchFormRow(titleKey) {
+            WorkbenchFormValue(
+                value: displayDate.map {
+                    $0.formatted(
+                        Date.FormatStyle(date: .abbreviated, time: .shortened)
+                            .locale(language.resolvedLocale)
+                    )
+                } ?? MicaStrings.localizedKey("overview.config_not_reported", language: language),
+                monospaced: true,
+                placeholder: displayDate == nil
+            )
+            .help(timestamp > 0 ? String(timestamp) : "")
         }
     }
 

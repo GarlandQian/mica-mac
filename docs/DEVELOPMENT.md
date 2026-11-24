@@ -172,6 +172,12 @@ Settings content in English/Chinese and light/dark appearance. Likewise
 `MICA_RENDER_EDITOR=1` with `WorkbenchRenderingTests/testOfflineControllerEditor`
 captures the controller editor for an offline profile at two sizes.
 
+Set `MICA_RENDER_URL_TESTS=1` and filter to
+`WorkbenchRenderingTests/testOfflineURLTestDetails` to render node test results
+in a narrow detail card, with multiple URLs, a timeout, and ten history samples.
+This uses the same disposable output directory and isolated window as the other
+rendering tests.
+
 Set `MICA_RENDER_SURFACE=topology` for the production topology alone. Add
 `MICA_RENDER_TOPOLOGY_DENSE=1` for shared multi-stage routes, or `stress` for
 1,000 connections across 66 nodes and 600 edges. `MICA_RENDER_TOPOLOGY_FOCUS=pinned`

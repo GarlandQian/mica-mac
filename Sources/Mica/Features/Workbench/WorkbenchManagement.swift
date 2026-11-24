@@ -6,8 +6,6 @@ import SwiftUI
 
 enum WorkbenchManagementMetrics {
     static let formCanvasWidth: CGFloat = 1_040
-    static let maximumCanvasWidth: CGFloat = 1_180
-    static let controllerListWidth: CGFloat = 320
 }
 
 enum WorkbenchManagementWidthMode: Equatable, Sendable {
@@ -21,37 +19,6 @@ enum WorkbenchManagementWidthMode: Equatable, Sendable {
 
 extension EnvironmentValues {
     @Entry var workbenchManagementWidthMode: WorkbenchManagementWidthMode = .regular
-}
-
-struct WorkbenchManagementCanvas<Content: View>: View {
-    private let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            let widthMode = WorkbenchManagementWidthMode(
-                availableWidth: geometry.size.width
-            )
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space4) {
-                    content
-                }
-                .padding(.horizontal, MicaTheme.Metrics.pagePadding(for: geometry.size.width))
-                .padding(.vertical, MicaTheme.Spacing.space4)
-                .frame(
-                    maxWidth: WorkbenchManagementMetrics.maximumCanvasWidth,
-                    alignment: .topLeading
-                )
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            .micaObserveScrollPerformance()
-            .environment(\.workbenchManagementWidthMode, widthMode)
-        }
-    }
 }
 
 struct WorkbenchManagementFormCanvas<Content: View>: View {
@@ -257,7 +224,11 @@ struct WorkbenchFormRow<Control: View>: View {
                 // the trailing edge, and the two meet in the middle.
                 HStack(alignment: .center, spacing: MicaTheme.Spacing.space4) {
                     label
-                        .frame(minWidth: MicaTheme.Metrics.formLabelWidth, alignment: .leading)
+                        .frame(
+                            minWidth: MicaTheme.Metrics.formLabelWidth,
+                            maxWidth: 320,
+                            alignment: .leading
+                        )
                         .layoutPriority(1)
                     controlColumn
                 }
@@ -318,102 +289,6 @@ struct WorkbenchFormValue: View {
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: alignment)
-    }
-}
-
-struct WorkbenchOperationLine<Command: View>: View {
-    @Environment(\.micaAppLanguage) private var language
-    @Environment(\.workbenchManagementWidthMode) private var widthMode
-
-    let systemImage: String
-    let tint: Color
-    let titleKey: String
-    let detailKey: String
-    var reason: String?
-    var isRunning = false
-    private let command: Command
-
-    init(
-        systemImage: String,
-        tint: Color,
-        titleKey: String,
-        detailKey: String,
-        reason: String? = nil,
-        isRunning: Bool = false,
-        @ViewBuilder command: () -> Command
-    ) {
-        self.systemImage = systemImage
-        self.tint = tint
-        self.titleKey = titleKey
-        self.detailKey = detailKey
-        self.reason = reason
-        self.isRunning = isRunning
-        self.command = command()
-    }
-
-    var body: some View {
-        Group {
-            switch widthMode {
-            case .regular:
-                HStack(alignment: .top, spacing: MicaTheme.Spacing.space3) {
-                    explanation
-                    Spacer(minLength: MicaTheme.Spacing.space3)
-                    commandColumn
-                }
-            case .compact:
-                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                    explanation
-                    commandColumn
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
-        .padding(.vertical, MicaTheme.Spacing.space1)
-    }
-
-    private var explanation: some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
-                .frame(width: 20)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(MicaStrings.localizedKey(titleKey, language: language))
-                    .micaThemeFont(.label, weight: .medium)
-
-                Text(MicaStrings.localizedKey(detailKey, language: language))
-                    .micaThemeFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let reason = reason?.managementNonEmpty {
-                    Text(verbatim: reason)
-                        .micaThemeFont(.caption)
-                        .foregroundStyle(MicaTheme.statusWarning)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-            }
-            .frame(maxWidth: 560, alignment: .leading)
-        }
-    }
-
-    private var commandColumn: some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
-            if isRunning {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityHidden(true)
-            }
-            command
-        }
-        .frame(
-            minWidth: 150,
-            maxWidth: .infinity,
-            minHeight: MicaTheme.Metrics.controlMinHeight,
-            alignment: .trailing
-        )
     }
 }
 

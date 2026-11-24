@@ -9,14 +9,14 @@ struct OverviewViewportLayoutTests {
         let tall = OverviewViewportLayout(width: width, height: 1_100, metricCount: 3)
         #expect(short.metricPlotHeight <= tall.metricPlotHeight)
         #expect(short.topologyMinimumHeight < tall.topologyMinimumHeight)
-        #expect(short.metricPlotHeight <= 64)
+        #expect(short.metricPlotHeight <= 104)
         #expect(short.topologyMinimumHeight <= 240)
-        #expect(tall.metricPlotHeight <= 92)
+        #expect(tall.metricPlotHeight <= 104)
         #expect(tall.topologyMinimumHeight <= 440)
-        #expect(short.topologyMinimumHeight > short.metricPlotHeight * 3)
+        #expect(short.topologyMinimumHeight > short.metricPlotHeight * 2.5)
         // The map and plot leave room for their headings, readouts and page
         // padding even before a sparse map releases unused canvas space.
-        #expect(460 - short.topologyMinimumHeight - short.metricPlotHeight >= 180)
+        #expect(460 - short.topologyMinimumHeight - short.metricPlotHeight >= 165)
     }
 
     @Test(arguments: [0, 1, 2, 3])

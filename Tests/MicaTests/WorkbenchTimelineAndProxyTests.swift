@@ -422,7 +422,10 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(
             ProxyProjection.filteredGroups(arranged, query: "Shared Provider").isEmpty
         )
-        #expect(ProxyProjection.filteredGroups(arranged, query: "Fallback").isEmpty)
+        #expect(
+            ProxyProjection.filteredGroups(arranged, query: "Fallback")
+                .map { $0.group.id } == ["Second"]
+        )
         #expect(ProxyProjection.filteredGroups(arranged, query: "utun7").isEmpty)
         #expect(arranged.map { $0.group.id } == ["First", "Second", "Third"])
         #expect(groups.map(\.id) == ["First", "Second", "Third"])
@@ -994,7 +997,7 @@ struct WorkbenchTimelineAndProxyTests {
         #expect(values["host"] == "controller.example")
         #expect(values["version"] == "1.19.7")
         #expect(values["mode"] == "Rule")
-        #expect(values["mode-options"] == "Rule\nGlobal")
+        #expect(values["mode-options"] == "Rule · Global")
         #expect(values["log-level"] == "debug")
         #expect(values["allow-lan"] == "Enabled")
         #expect(values["ipv6"] == "Disabled")

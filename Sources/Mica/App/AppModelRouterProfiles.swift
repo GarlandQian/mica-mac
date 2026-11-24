@@ -59,6 +59,9 @@ extension AppModel {
             if draft.shouldSaveSecret {
                 try await secretStore.save(draft.secret, for: profile.id)
                 profile.secretReference = Self.secretReference(for: profile.id)
+            } else if draft.clearStoredSecret {
+                try await secretStore.removeSecret(for: profile.id)
+                profile.secretReference = nil
             } else {
                 profile.secretReference = existingProfile?.secretReference
             }
@@ -73,7 +76,7 @@ extension AppModel {
             do {
                 try await profileStore.saveProfiles(nextRouters)
             } catch {
-                if draft.shouldSaveSecret {
+                if draft.shouldSaveSecret || draft.clearStoredSecret {
                     if let existingSecret {
                         try? await secretStore.save(existingSecret, for: profile.id)
                     } else {
@@ -86,6 +89,8 @@ extension AppModel {
             routers = nextRouters
             if draft.shouldSaveSecret {
                 controllerSecrets[profile.id] = draft.secret
+            } else if draft.clearStoredSecret {
+                controllerSecrets.removeValue(forKey: profile.id)
             } else if let existingSecret {
                 controllerSecrets[profile.id] = existingSecret
             } else {

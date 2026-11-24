@@ -40,11 +40,14 @@ final class WorkbenchNavigationModel {
         _ next: WorkbenchDestination,
         current: WorkbenchDestination?
     ) -> WorkbenchDestination? {
-        guard acceptsEditorCommands, next != current else { return nil }
-        guard editor != nil else { return next }
-        pendingIntent = .destination(next)
-        discardRequestID &+= 1
-        return nil
+        guard acceptsEditorCommands else { return nil }
+        guard editor == nil else {
+            pendingIntent = .destination(next)
+            discardRequestID &+= 1
+            return nil
+        }
+        guard next != current else { return nil }
+        return next
     }
 
     func requestEditor(_ presentation: RouterEditorPresentation) {

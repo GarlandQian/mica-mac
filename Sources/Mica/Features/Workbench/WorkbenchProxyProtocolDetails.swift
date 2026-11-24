@@ -1,13 +1,29 @@
 import Foundation
 import MicaCore
 
+struct ProxyURLTestResult: Identifiable, Equatable {
+    var id: String { url }
+    let url: String
+    let alive: Bool?
+    let history: [ProxyURLTestSample]
+    let additionalFields: [OverviewPolicyInspectionField]
+}
+
+struct ProxyURLTestSample: Identifiable, Equatable {
+    /// Preserve the controller's array position even when empty samples are omitted.
+    let id: Int
+    let time: String?
+    let delay: Int?
+    let meanDelay: Int?
+}
+
 /// Projects only fields that the controller actually published. Recognizing a
 /// protocol never supplies defaults or loads a separate configuration source.
 enum ProxyProtocolInspectionProjection {
     struct Result: Equatable {
         let runtimeFields: [OverviewPolicyInspectionField]
         let parameters: [OverviewPolicyInspectionField]
-        let testingFields: [OverviewPolicyInspectionField]
+        let urlTests: [ProxyURLTestResult]
         let additionalFields: [OverviewPolicyInspectionField]
     }
 
@@ -54,7 +70,7 @@ enum ProxyProtocolInspectionProjection {
     ) -> Result {
         var runtimeFields: [OverviewPolicyInspectionField] = []
         var parameters: [OverviewPolicyInspectionField] = []
-        var testingFields: [OverviewPolicyInspectionField] = []
+        var urlTests: [ProxyURLTestResult] = []
         var additionalFields: [OverviewPolicyInspectionField] = []
         let protocolType = normalizedKey(detail.type)
         let ordered = detail.reportedMetadata.sorted { left, right in
@@ -70,19 +86,19 @@ enum ProxyProtocolInspectionProjection {
                 // Mihomo publishes per-URL health state here. Other controller
                 // extensions under the same key stay unclassified.
                 for (url, state) in states.sorted(by: { $0.key < $1.key }) {
-                    var fields: [OverviewPolicyInspectionField] = []
-                    appendFields(
-                        state,
-                        path: [.key(key), .key(url)],
-                        rootLabel: .verbatim(key),
-                        protocolType: protocolType,
-                        inheritedSensitivity: isSensitiveParameter(url, value: state, protocolType: protocolType),
-                        to: &fields
-                    )
                     if isURLTestState(url: url, value: state) {
-                        testingFields.append(contentsOf: fields)
+                        if let result = urlTest(url: url, value: state, protocolType: protocolType) {
+                            urlTests.append(result)
+                        }
                     } else {
-                        additionalFields.append(contentsOf: fields)
+                        appendFields(
+                            state,
+                            path: [.key(key), .key(url)],
+                            rootLabel: .verbatim(key),
+                            protocolType: protocolType,
+                            inheritedSensitivity: isSensitiveParameter(url, value: state, protocolType: protocolType),
+                            to: &additionalFields
+                        )
                     }
                 }
             } else if let runtimeField = runtimeField(for: key) {
@@ -118,16 +134,16 @@ enum ProxyProtocolInspectionProjection {
         return Result(
             runtimeFields: runtimeFields,
             parameters: parameters,
-            testingFields: testingFields,
+            urlTests: urlTests,
             additionalFields: additionalFields
         )
     }
 
     private static func runtimeField(for key: String) -> Parameter? {
-        switch key {
+        switch normalizedKey(key) {
         case "id": Parameter(titleKey: "routing.node_runtime_id", order: 0)
-        case "routing-mark": Parameter(titleKey: "routing.node_runtime_routing_mark", order: 1)
-        case "dialer-proxy": Parameter(titleKey: "routing.node_runtime_dialer_proxy", order: 2)
+        case "routingmark": Parameter(titleKey: "routing.node_runtime_routing_mark", order: 1)
+        case "dialerproxy": Parameter(titleKey: "routing.node_runtime_dialer_proxy", order: 2)
         default: nil
         }
     }
@@ -137,9 +153,78 @@ enum ProxyProtocolInspectionProjection {
               ["http", "https"].contains(url.scheme?.lowercased()),
               url.host?.isEmpty == false,
               case .object(let state) = value else { return false }
-        if case .bool? = state["alive"] { return true }
-        if case .array? = state["history"] { return true }
-        return false
+        // Invalid known values still belong to this URL's reported fields.
+        // A URL-shaped extension containing unrelated keys is not a test.
+        return state["alive"] != nil || state["history"] != nil
+    }
+
+    private static func urlTest(
+        url: String,
+        value: MihomoJSONValue,
+        protocolType: String
+    ) -> ProxyURLTestResult? {
+        guard case .object(var remainder) = value else { return nil }
+        var alive: Bool?
+        if case .bool(let reportedAlive)? = remainder["alive"] {
+            alive = reportedAlive
+            remainder.removeValue(forKey: "alive")
+        }
+
+        var history: [ProxyURLTestSample] = []
+        if case .array(let reportedHistory)? = remainder["history"] {
+            var remainingHistory: [MihomoJSONValue] = []
+            for (index, entry) in reportedHistory.enumerated() {
+                guard case .object(var fields) = entry else {
+                    remainingHistory.append(entry)
+                    continue
+                }
+                var time: String?
+                if case .string(let reportedTime)? = fields["time"],
+                   !reportedTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    time = reportedTime
+                    fields.removeValue(forKey: "time")
+                }
+                let delay = reportedInteger(fields["delay"])
+                if delay != nil { fields.removeValue(forKey: "delay") }
+                let meanDelay: Int?
+                if let reportedMean = reportedInteger(fields["meanDelay"]) {
+                    meanDelay = reportedMean
+                    fields.removeValue(forKey: "meanDelay")
+                } else if let reportedMean = reportedInteger(fields["mean-delay"]) {
+                    meanDelay = reportedMean
+                    fields.removeValue(forKey: "mean-delay")
+                } else {
+                    meanDelay = nil
+                }
+                if time != nil || delay != nil || meanDelay != nil {
+                    history.append(ProxyURLTestSample(id: index, time: time, delay: delay, meanDelay: meanDelay))
+                }
+                // Keep every unconsumed value at its original array position,
+                // including a second mean-delay alias with a different value.
+                remainingHistory.append(.object(fields))
+            }
+            remainder["history"] = .array(remainingHistory)
+        }
+
+        var additionalFields: [OverviewPolicyInspectionField] = []
+        appendFields(
+            .object(remainder),
+            path: [.key("extra"), .key(url)],
+            rootLabel: .verbatim("extra"),
+            protocolType: protocolType,
+            inheritedSensitivity: isSensitiveParameter(url, value: value, protocolType: protocolType),
+            labelPathStartIndex: 2,
+            to: &additionalFields
+        )
+        guard alive != nil || !history.isEmpty || !additionalFields.isEmpty else { return nil }
+        return ProxyURLTestResult(url: url, alive: alive, history: history, additionalFields: additionalFields)
+    }
+
+    private static func reportedInteger(_ value: MihomoJSONValue?) -> Int? {
+        guard case .number(let number)? = value, number.isFinite else { return nil }
+        // Exact conversion rejects fractions and out-of-range values without
+        // rounding a controller value or trapping on malformed metadata.
+        return Int(exactly: number)
     }
 
     private static func isSensitiveParameter(
@@ -165,14 +250,27 @@ enum ProxyProtocolInspectionProjection {
 
     static func isSensitiveKey(_ key: String) -> Bool {
         let normalized = normalizedKey(key)
-        return [
+        let exact: Set<String> = [
             "password", "passwords", "passwd", "pass", "passphrase", "secret", "secrets",
             "obfspassword", "auth", "authstr", "authkey", "authorization",
             "proxyauthorization", "authentication", "cookie", "setcookie", "credential",
             "credentials", "token", "accesstoken", "refreshtoken", "apikey",
             "xapikey", "xauthtoken", "privatekey", "privatekeypassword",
             "privatekeypassphrase", "clientkey", "presharedkey", "psk", "uuid", "key",
-        ].contains(normalized)
+            "shadowtlspassword", "restlspassword", "bearer",
+        ]
+        if exact.contains(normalized) { return true }
+        return normalized.hasSuffix("password")
+            || normalized.hasSuffix("passwd")
+            || normalized.hasSuffix("passphrase")
+            || normalized.hasSuffix("secret")
+            || normalized.hasSuffix("token")
+            || normalized.hasSuffix("apikey")
+            || normalized.hasSuffix("privatekey")
+            || normalized.hasSuffix("clientkey")
+            || normalized.hasSuffix("sharedkey")
+            || normalized.hasPrefix("xauth")
+            || normalized.hasPrefix("xtoken")
     }
 
     private static func appendFields(
@@ -181,6 +279,7 @@ enum ProxyProtocolInspectionProjection {
         rootLabel: OverviewPolicyInspectionField.Label,
         protocolType: String,
         inheritedSensitivity: Bool,
+        labelPathStartIndex: Int = 0,
         to fields: inout [OverviewPolicyInspectionField]
     ) {
         switch value {
@@ -193,6 +292,7 @@ enum ProxyProtocolInspectionProjection {
                     protocolType: protocolType,
                     inheritedSensitivity: inheritedSensitivity
                         || isSensitiveParameter(key, value: child, protocolType: protocolType),
+                    labelPathStartIndex: labelPathStartIndex,
                     to: &fields
                 )
             }
@@ -205,6 +305,7 @@ enum ProxyProtocolInspectionProjection {
                     rootLabel: rootLabel,
                     protocolType: protocolType,
                     inheritedSensitivity: inheritedSensitivity,
+                    labelPathStartIndex: labelPathStartIndex,
                     to: &fields
                 )
             }
@@ -219,16 +320,44 @@ enum ProxyProtocolInspectionProjection {
         guard let text = ProxyReportedMetadataField.displayText(for: value) else { return }
         let identifier = path.map(\.identifier).joined(separator: "/")
         let reportedPath = path.map(\.displayText).joined(separator: ".")
+        let labelPath = path.dropFirst(labelPathStartIndex).map(\.displayText).joined(separator: ".")
+        let resolvedLabel: OverviewPolicyInspectionField.Label
+        if path.count == 1 {
+            resolvedLabel = rootLabel
+        } else if case .localized(let rootTitleKey) = rootLabel, labelPathStartIndex == 0 {
+            let suffix = formattedSuffix(from: path.dropFirst())
+            resolvedLabel = suffix.isEmpty ? rootLabel : .localizedWithSuffix(rootTitleKey, suffix)
+        } else {
+            resolvedLabel = .verbatim(labelPath)
+        }
         fields.append(
             OverviewPolicyInspectionField(
                 id: "metadata.\(identifier)",
-                label: path.count == 1 ? rootLabel : .verbatim(reportedPath),
+                label: resolvedLabel,
                 value: text,
                 monospaced: true,
                 isSensitive: inheritedSensitivity,
                 reportedKey: reportedPath
             )
         )
+    }
+
+    private static func formattedSuffix(from components: ArraySlice<PathComponent>) -> String {
+        var result = ""
+        for component in components {
+            switch component {
+            case .key(let key):
+                let display = PathComponent.key(key).displayText
+                if result.isEmpty {
+                    result += display
+                } else {
+                    result += ".\(display)"
+                }
+            case .index(let index):
+                result += "[\(index)]"
+            }
+        }
+        return result
     }
 
     private static func normalizedKey(_ key: String) -> String {

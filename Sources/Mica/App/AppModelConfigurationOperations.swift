@@ -23,6 +23,7 @@ extension AppModel {
         )
         let previousConfig = dashboard.config
         mutation.apply(to: &dashboard.config)
+        publishDashboardDomains([.metadata])
         updatingConfigFieldID = mutation.id
         operationState = .working(
             localized("operation.updating_config_field"),
@@ -101,6 +102,7 @@ extension AppModel {
                 }
 
                 dashboard.config = previousConfig
+                publishDashboardDomains([.metadata])
                 updatingConfigFieldID = nil
                 configTask = nil
                 finishCommand(

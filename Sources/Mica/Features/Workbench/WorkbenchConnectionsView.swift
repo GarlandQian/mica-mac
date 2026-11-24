@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MicaCore
 import SwiftUI
@@ -6,16 +7,18 @@ struct WorkbenchConnectionsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.micaAppFontScale) private var fontScale
     @EnvironmentObject private var preferences: AppPreferencesStore
 
     @Binding var destination: WorkbenchDestination
     @Binding var searchText: String
 
     @State private var model = ConnectionsWorkspaceModel()
+    @State private var resolverToken: UUID?
 
     private static let widthBudget = WorkbenchDataWidthBudget(
-        fullMinimum: 1_080,
-        compactMinimum: 720
+        fullMinimum: 900,
+        compactMinimum: 640
     )
 
     var body: some View {
@@ -25,7 +28,10 @@ struct WorkbenchConnectionsView: View {
             supplementary: {
                 if showsPulse {
                     WorkbenchConnectionPulseStrip(
-                        projection: model.pulse
+                        projection: model.pulse,
+                        onSelectOwner: { owner in
+                            searchText = searchText == owner ? "" : owner
+                        }
                     )
                 }
 
@@ -97,19 +103,26 @@ struct WorkbenchConnectionsView: View {
         }
         .onAppear {
             let pageModel = model
-            workspaceStore.connectionRowResolver = { pageModel.row(id: $0) }
+            resolverToken = workspaceStore.registerConnectionRowResolver { [weak pageModel] id in
+                pageModel?.row(id: id)
+            }
             restoreWorkspace()
             model.update(presentationInput)
+            syncRestoredSelectionIfCleared()
             updateNavigationDirectory()
             consumeConnectionNavigation()
         }
         .onDisappear {
-            workspaceStore.connectionRowResolver = nil
+            if let resolverToken {
+                workspaceStore.clearConnectionRowResolver(token: resolverToken)
+                self.resolverToken = nil
+            }
             model.deactivate()
         }
         .onChange(of: sessionIdentity) {
             restoreWorkspace()
             model.update(presentationInput)
+            syncRestoredSelectionIfCleared()
             updateNavigationDirectory()
             consumeConnectionNavigation()
         }
@@ -234,7 +247,10 @@ struct WorkbenchConnectionsView: View {
             WorkbenchStateView(
                 kind: .filterEmpty,
                 titleKey: "dashboard.no_matching_connections",
-                detailKey: "traffic.empty_filtered"
+                detailKey: "traffic.empty_filtered",
+                actionTitleKey: searchText.isEmpty ? nil : "dashboard.clear_filter",
+                actionSystemImage: "xmark.circle",
+                action: searchText.isEmpty ? nil : { searchText = "" }
             )
         case .failed(let message):
             WorkbenchStateView(
@@ -299,7 +315,7 @@ struct WorkbenchConnectionsView: View {
                         ) { row in
                             connectionIdentity(row)
                         }
-                        .width(min: 190, ideal: 270)
+                        .width(min: 190, ideal: 260)
 
                         TableColumn(
                             MicaStrings.localizedKey("traffic.connection_process", language: language),
@@ -309,80 +325,101 @@ struct WorkbenchConnectionsView: View {
                             // process column owns process name and path.
                             processCell(row)
                                 .frame(
-                                    minHeight: WorkbenchDataRowGeometry.height,
-                                    maxHeight: WorkbenchDataRowGeometry.height,
+                                    minHeight: WorkbenchDataRowGeometry.height(for: fontScale),
                                     alignment: .leading
                                 )
                         }
-                        .width(min: 130, ideal: 190)
+                        .width(min: 120, ideal: 180)
 
                         TableColumn(MicaStrings.localizedKey("dashboard.col_rule", language: language)) { row in
                             VStack(alignment: .leading, spacing: 1) {
                                 WorkbenchDataText(value: Self.reportedParts([row.rule, row.payload]))
                                 WorkbenchDataText(
-                                    value: row.route,
+                                    value: reportedValue(row.route),
                                     role: .caption,
                                     tone: .secondary
                                 )
                             }
                             .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height,
+                                minHeight: WorkbenchDataRowGeometry.height(for: fontScale),
                                 alignment: .leading
                             )
                         }
-                        .width(min: 210, ideal: 320)
+                        .width(min: 190, ideal: 280)
 
-                        TableColumn(
-                            MicaStrings.localizedKey("dashboard.col_upload", language: language),
-                            value: \.upload
-                        ) { row in
-                            transferCell(
-                                total: row.uploadDisplayText,
-                                speed: row.uploadRateDisplayText
-                            )
-                        }
-                        .width(min: 88, ideal: 108)
+                        if model.scope == .active {
+                            TableColumn(
+                                MicaStrings.localizedKey("dashboard.col_upload", language: language),
+                                value: \.uploadSpeed
+                            ) { row in
+                                transferCell(
+                                    total: row.uploadDisplayText,
+                                    speed: row.uploadRateDisplayText
+                                )
+                            }
+                            .width(min: 86, ideal: 106)
 
-                        TableColumn(
-                            MicaStrings.localizedKey("dashboard.col_download", language: language),
-                            value: \.download
-                        ) { row in
-                            transferCell(
-                                total: row.downloadDisplayText,
-                                speed: row.downloadRateDisplayText
-                            )
+                            TableColumn(
+                                MicaStrings.localizedKey("dashboard.col_download", language: language),
+                                value: \.downloadSpeed
+                            ) { row in
+                                transferCell(
+                                    total: row.downloadDisplayText,
+                                    speed: row.downloadRateDisplayText
+                                )
+                            }
+                            .width(min: 86, ideal: 106)
+                        } else {
+                            TableColumn(
+                                MicaStrings.localizedKey("dashboard.col_upload", language: language),
+                                value: \.upload
+                            ) { row in
+                                transferCell(
+                                    total: row.uploadDisplayText,
+                                    speed: row.uploadRateDisplayText
+                                )
+                            }
+                            .width(min: 86, ideal: 106)
+
+                            TableColumn(
+                                MicaStrings.localizedKey("dashboard.col_download", language: language),
+                                value: \.download
+                            ) { row in
+                                transferCell(
+                                    total: row.downloadDisplayText,
+                                    speed: row.downloadRateDisplayText
+                                )
+                            }
+                            .width(min: 86, ideal: 106)
                         }
-                        .width(min: 88, ideal: 108)
 
                         TableColumn(
                             MicaStrings.localizedKey(
-                                model.scope == .active ? "traffic.start_time" : "traffic.log_received_time",
+                                model.scope == .active ? "traffic.start_time" : "traffic.closed_time",
                                 language: language
-                            )
+                            ),
+                            value: \.timestampSortKey
                         ) { row in
                             WorkbenchDataText(
-                                value: row.timestampText,
+                                value: row.formattedTimestampText,
                                 role: .dataCaption,
                                 tone: .secondary
                             )
                         }
-                        .width(min: 120, ideal: 160)
+                        .width(min: 112, ideal: 148)
 
                     case .compact:
                         TableColumn(
                             MicaStrings.localizedKey("traffic.connection_section_identity", language: language),
                             value: \.host
                         ) { row in
-                            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
-                                connectionIdentity(row)
-                            }
+                            connectionIdentity(row)
                         }
-                        .width(min: 250, ideal: 360)
+                        .width(min: 220, ideal: 340)
 
                         TableColumn(MicaStrings.localizedKey("traffic.connection_section_routing", language: language)) { row in
                             VStack(alignment: .leading, spacing: 1) {
-                                WorkbenchDataText(value: reportedText([row.process, row.network]))
+                                WorkbenchDataText(value: reportedText([row.process]))
                                 WorkbenchDataText(
                                     value: reportedText([row.rule, row.route]),
                                     role: .caption,
@@ -390,12 +427,11 @@ struct WorkbenchConnectionsView: View {
                                 )
                             }
                             .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height,
+                                minHeight: WorkbenchDataRowGeometry.height(for: fontScale),
                                 alignment: .leading
                             )
                         }
-                        .width(min: 250, ideal: 360)
+                        .width(min: 220, ideal: 340)
 
                         TableColumn(MicaStrings.localizedKey("traffic.connection_section_transfer", language: language)) { row in
                             VStack(alignment: .trailing, spacing: 1) {
@@ -406,12 +442,11 @@ struct WorkbenchConnectionsView: View {
                                 )
                             }
                             .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height,
+                                minHeight: WorkbenchDataRowGeometry.height(for: fontScale),
                                 alignment: .trailing
                             )
                         }
-                        .width(min: 104, ideal: 124)
+                        .width(min: 96, ideal: 120)
 
                     case .stacked:
                         TableColumn(
@@ -420,14 +455,12 @@ struct WorkbenchConnectionsView: View {
                         ) { row in
                             HStack(spacing: MicaTheme.Spacing.space3) {
                                 WorkbenchDataPrimaryCell(
-                                    title: row.host,
+                                    title: reportedValue(row.host),
                                     detail: Self.reportedParts([row.destination, row.rule, row.route]).dataNonEmpty,
                                     systemImage: model.scope == .active
                                         ? "point.3.connected.trianglepath.dotted"
                                         : "clock",
-                                    tint: model.scope == .active
-                                        ? MicaTheme.accent
-                                        : .secondary
+                                    tint: .secondary
                                 )
 
                                 Spacer(minLength: MicaTheme.Spacing.space2)
@@ -441,12 +474,17 @@ struct WorkbenchConnectionsView: View {
                                 }
                             }
                             .frame(
-                                minHeight: WorkbenchDataRowGeometry.height,
-                                maxHeight: WorkbenchDataRowGeometry.height
+                                minHeight: WorkbenchDataRowGeometry.height(for: fontScale)
                             )
                         }
                         .width(min: 220, ideal: 520)
 
+                    }
+                }
+                .contextMenu(forSelectionType: WorkbenchConnectionRow.ID.self) { selectedIDs in
+                    if let id = selectedIDs.first ?? model.selectedRowID,
+                       let row = model.row(id: id) {
+                        connectionContextMenu(for: row)
                     }
                 }
                 .micaWorkbenchTable(
@@ -481,8 +519,7 @@ struct WorkbenchConnectionsView: View {
             }
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale),
             alignment: .trailing
         )
     }
@@ -503,6 +540,10 @@ struct WorkbenchConnectionsView: View {
         }
     }
 
+    private func reportedValue(_ value: String) -> String {
+        value == "-" ? MicaStrings.localizedKey("overview.config_not_reported", language: language) : value
+    }
+
     /// Joins only the parts the controller reported; the projection keeps
     /// `-` placeholders for search and identity, not for display.
     static func reportedParts(_ parts: [String]) -> String {
@@ -518,7 +559,7 @@ struct WorkbenchConnectionsView: View {
     /// Host first, then only the reported destination and network parts.
     private func connectionIdentity(_ row: WorkbenchConnectionRow) -> some View {
         WorkbenchDataPrimaryCell(
-            title: row.host,
+            title: reportedValue(row.host),
             detail: Self.reportedParts([row.destination, row.network]).dataNonEmpty,
             systemImage: nil
         )
@@ -554,10 +595,9 @@ struct WorkbenchConnectionsView: View {
     private func openMatchingRule(for row: WorkbenchConnectionRow) {
         guard let controllerID = appModel.selectedRouterID,
               let type = row.connection.rule?.dataNonEmpty,
-              let payload = row.connection.rulePayload?.dataNonEmpty,
               let target = model.navigationDirectory.ruleTarget(
                   type: type,
-                  payload: payload
+                  payload: row.connection.rulePayload?.dataNonEmpty ?? ""
               ) else {
             return
         }
@@ -600,7 +640,7 @@ struct WorkbenchConnectionsView: View {
             endpointStatus: model.scope == .active
                 ? appModel.controllerHealth.status(for: .connections)
                 : nil,
-            sessionState: appModel.controllerSessionPresentation.state,
+            sessionState: model.scope == .active ? appModel.controllerSessionPresentation.state : nil,
             language: language
         )
     }
@@ -706,7 +746,7 @@ struct WorkbenchConnectionsView: View {
                 $0.id == id && $0.connection.id.dataNonEmpty != nil
             }
         case .group:
-            return canCloseGroup && pendingCloseGroup != nil
+            return canCloseOne && (pendingCloseGroup?.connections.count ?? 0) > 1
         case .all:
             return canCloseAll && !model.allRows.isEmpty
         }
@@ -841,6 +881,15 @@ struct WorkbenchConnectionsView: View {
         }
     }
 
+    private func syncRestoredSelectionIfCleared() {
+        if model.selectedRowID == nil {
+            persistSelection(nil)
+            workspaceStore.clearInspectorSelection(ownedBy: .connections)
+        } else if let selectedRowID = model.selectedRowID {
+            workspaceStore.selectInspector(.connection(id: selectedRowID))
+        }
+    }
+
     private func consumeConnectionNavigation() {
         guard let controllerID = appModel.selectedRouterID else { return }
         let generation = appModel.controllerSessionPresentation.generation
@@ -848,21 +897,92 @@ struct WorkbenchConnectionsView: View {
             controllerID: controllerID,
             destination: .connections
         )
-        guard let pending = workspace.pendingConnectionSelection,
-              let revealedQuery = model.reveal(pending, input: presentationInput),
-              workspaceStore.consumeConnectionNavigation(
-                  controllerID: controllerID,
-                  generation: generation
-              ) != nil else { return }
-        searchText = revealedQuery
+        guard let pending = workspace.pendingConnectionSelection else { return }
+        if model.scope != .active {
+            model.scope = .active
+        }
+        if let revealedQuery = model.reveal(pending, input: presentationInput) {
+            if workspaceStore.consumeConnectionNavigation(
+                controllerID: controllerID,
+                generation: generation
+            ) != nil {
+                searchText = revealedQuery
+            }
+        } else if appModel.connectionsMetricsRevision > 0
+                    || appModel.controllerSessionPresentation.state.isTerminatedOrFailed {
+            _ = workspaceStore.consumeConnectionNavigation(
+                controllerID: controllerID,
+                generation: generation
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func connectionContextMenu(for row: WorkbenchConnectionRow) -> some View {
+        if row.host != "-" {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(row.host, forType: .string)
+            } label: {
+                Label(MicaStrings.localizedKey("action.copy_host", language: language), systemImage: "doc.on.doc")
+            }
+        }
+        if row.destination != "-" {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(row.destination, forType: .string)
+            } label: {
+                Label(MicaStrings.localizedKey("action.copy_destination", language: language), systemImage: "doc.on.doc")
+            }
+        }
+        if let processCopy = row.connection.metadata?.processPath?.dataNonEmpty ?? (row.process == "-" ? nil : row.process) {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(processCopy, forType: .string)
+            } label: {
+                Label(MicaStrings.localizedKey("action.copy_process", language: language), systemImage: "doc.on.doc")
+            }
+        }
+        if let filterProcess = row.connection.metadata?.process?.dataNonEmpty {
+            Button {
+                searchText = filterProcess
+            } label: {
+                Label(MicaStrings.localizedKey("traffic.filter_by_process", language: language), systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+        if let filterRule = row.connection.rule?.dataNonEmpty {
+            Button {
+                searchText = row.connection.rulePayload?.dataNonEmpty ?? filterRule
+            } label: {
+                Label(MicaStrings.localizedKey("traffic.filter_by_rule", language: language), systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+        if model.scope == .active, canCloseOne, row.connection.id.dataNonEmpty != nil {
+            Divider()
+            Button(role: .destructive) {
+                model.requestClose(.connection(row.id), identity: sessionIdentity)
+            } label: {
+                Label(MicaStrings.localizedKey("action.close_connection", language: language), systemImage: "xmark.circle")
+            }
+        }
     }
 
     private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
         [
             accessibilitySortOption("host", titleKey: "traffic.connection_host"),
             accessibilitySortOption("process", titleKey: "traffic.connection_process"),
-            accessibilitySortOption("upload", titleKey: "dashboard.col_upload"),
-            accessibilitySortOption("download", titleKey: "dashboard.col_download"),
+            accessibilitySortOption(
+                model.scope == .active ? "uploadSpeed" : "upload",
+                titleKey: "dashboard.col_upload"
+            ),
+            accessibilitySortOption(
+                model.scope == .active ? "downloadSpeed" : "download",
+                titleKey: "dashboard.col_download"
+            ),
+            accessibilitySortOption(
+                "timestamp",
+                titleKey: model.scope == .active ? "traffic.start_time" : "traffic.closed_time"
+            ),
         ]
     }
 

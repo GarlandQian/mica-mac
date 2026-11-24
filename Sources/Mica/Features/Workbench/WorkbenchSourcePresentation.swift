@@ -29,6 +29,171 @@ extension WorkbenchDataInspectorProjection {
         ]
     }
 
+    static func sourceStatusSummary(
+        _ row: WorkbenchSourceRow,
+        language: AppLanguage
+    ) -> [WorkbenchDataInspectorValue] {
+        let source = row.source
+        return [
+            value(
+                "source.updated-at",
+                "traffic.updated_at",
+                source.updatedAt?.dataNonEmpty != nil ? row.updatedText : nil,
+                monospaced: true
+            ),
+            value(
+                "source.updatable",
+                "traffic.provider_updatable",
+                MicaStrings.localizedKey(
+                    source.updatable ? "traffic.provider_updatable_yes" : "traffic.provider_updatable_no",
+                    language: language
+                )
+            ),
+        ]
+    }
+
+    static func sourceHealthCheck(
+        _ row: WorkbenchSourceRow,
+        language: AppLanguage
+    ) -> [WorkbenchDataInspectorValue] {
+        guard let healthCheck = row.source.healthCheck else { return [] }
+        guard case .object(let map) = healthCheck else {
+            return [
+                value("source.health-check", "traffic.provider_health_check", row.source.healthCheckText, monospaced: true),
+            ]
+        }
+
+        let enabledText = MicaStrings.localizedKey("traffic.rule_status_enabled", language: language)
+        let disabledText = MicaStrings.localizedKey("traffic.rule_status_disabled", language: language)
+        var result: [WorkbenchDataInspectorValue] = []
+        var consumed: Set<String> = []
+
+        func popCaseInsensitive(_ candidates: [String]) -> MihomoJSONValue? {
+            for candidate in candidates {
+                if let match = map.first(where: { $0.key.caseInsensitiveCompare(candidate) == .orderedSame }) {
+                    consumed.insert(match.key)
+                    return match.value
+                }
+            }
+            return nil
+        }
+
+        if let val = popCaseInsensitive(["enable", "enabled"]), case .bool(let flag) = val {
+            result.append(value("source.health.enable", "traffic.provider_health_enabled", flag ? enabledText : disabledText))
+        }
+        if let val = popCaseInsensitive(["url"]), case .string(let text) = val {
+            result.append(value("source.health.url", "routing.test_url", text.dataNonEmpty, monospaced: true))
+        }
+        if let val = popCaseInsensitive(["interval"]), case .number(let seconds) = val, seconds.isFinite {
+            result.append(value("source.health.interval", "traffic.provider_health_interval", "\(Int(seconds.rounded()))s", monospaced: true))
+        }
+        if let val = popCaseInsensitive(["timeout"]), case .number(let ms) = val, ms.isFinite {
+            result.append(value("source.health.timeout", "traffic.provider_health_timeout", "\(Int(ms.rounded()))ms", monospaced: true))
+        }
+        if let val = popCaseInsensitive(["lazy"]), case .bool(let flag) = val {
+            result.append(value("source.health.lazy", "traffic.provider_health_lazy", flag ? enabledText : disabledText))
+        }
+        if let val = popCaseInsensitive(["expectedStatus", "expected-status"]) {
+            result.append(value("source.health.expected-status", "traffic.provider_health_expected_status", formattedJSONScalar(val), monospaced: true))
+        }
+
+        for key in map.keys.sorted() where !consumed.contains(key) {
+            if let formatted = map[key].flatMap(formattedJSONScalar) {
+                result.append(value("source.health.\(key)", key, formatted, monospaced: true))
+            }
+        }
+        return result
+    }
+
+    static func sourceSubscription(
+        _ row: WorkbenchSourceRow,
+        language: AppLanguage
+    ) -> [WorkbenchDataInspectorValue] {
+        guard let subscription = row.source.subscriptionInfo else { return [] }
+        guard case .object(let map) = subscription else {
+            return [
+                value("source.subscription-info", "traffic.provider_subscription_info", row.source.subscriptionInfoText, monospaced: true),
+            ]
+        }
+
+        var result: [WorkbenchDataInspectorValue] = []
+        var consumed: Set<String> = []
+
+        func popCaseInsensitive(_ candidates: [String]) -> MihomoJSONValue? {
+            for candidate in candidates {
+                if let match = map.first(where: { $0.key.caseInsensitiveCompare(candidate) == .orderedSame }) {
+                    consumed.insert(match.key)
+                    return match.value
+                }
+            }
+            return nil
+        }
+
+        if let val = popCaseInsensitive(["upload"]), case .number(let bytes) = val,
+           let clamped = clampedByteCount(bytes) {
+            result.append(value("source.sub.upload", "traffic.provider_sub_upload", WorkbenchDataFormat.bytes(clamped), monospaced: true))
+        }
+        if let val = popCaseInsensitive(["download"]), case .number(let bytes) = val,
+           let clamped = clampedByteCount(bytes) {
+            result.append(value("source.sub.download", "traffic.provider_sub_download", WorkbenchDataFormat.bytes(clamped), monospaced: true))
+        }
+        if let val = popCaseInsensitive(["total"]), case .number(let bytes) = val,
+           let clamped = clampedByteCount(bytes) {
+            result.append(value("source.sub.total", "traffic.provider_sub_total", WorkbenchDataFormat.bytes(clamped), monospaced: true))
+        }
+        if let val = popCaseInsensitive(["expire"]), case .number(let ts) = val,
+           ts.isFinite, ts > 0 {
+            let formatted = if let integer = Int64(exactly: ts.rounded(.towardZero)) {
+                WorkbenchDataFormat.providerUpdatedAt(String(integer), language: language)
+                    ?? String(integer)
+            } else if ts < Double(Int64.max) {
+                WorkbenchDataFormat.providerUpdatedAt(String(Int64(ts)), language: language)
+                    ?? String(Int64(ts))
+            } else {
+                String(ts)
+            }
+            result.append(value("source.sub.expire", "traffic.provider_sub_expire", formatted, monospaced: true))
+        }
+
+        for key in map.keys.sorted() where !consumed.contains(key) {
+            if let formatted = map[key].flatMap(formattedJSONScalar) {
+                result.append(value("source.sub.\(key)", key, formatted, monospaced: true))
+            }
+        }
+        return result
+    }
+
+    private static func formattedJSONScalar(_ value: MihomoJSONValue) -> String? {
+        switch value {
+        case .string(let s):
+            return s.dataNonEmpty
+        case .number(let n):
+            guard n.isFinite else { return nil }
+            if n.rounded() == n, n >= Double(Int64.min), n < Double(Int64.max) {
+                return String(Int64(n))
+            }
+            return n.formatted()
+        case .bool(let b):
+            return b ? "true" : "false"
+        case .null:
+            return nil
+        case .array, .object:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            guard let data = try? encoder.encode(value) else { return nil }
+            return String(data: data, encoding: .utf8)?.dataNonEmpty
+        }
+    }
+
+    private static func clampedByteCount(_ value: Double) -> Int64? {
+        guard value.isFinite, value >= 0 else { return nil }
+        let rounded = value.rounded(.towardZero)
+        if let exact = Int64(exactly: rounded) {
+            return exact
+        }
+        return rounded >= Double(Int64.max) ? Int64.max : nil
+    }
+
 }
 
 // MARK: - Source projection
@@ -40,6 +205,7 @@ struct WorkbenchSourceRow: Identifiable, Equatable {
     let source: ProxyProviderViewState
     let kindText: String
     let updatedText: String
+    let updatedAtSortKey: Double
     let typeText: String
     let configurationDetailText: String?
     let compactConfigurationText: String
@@ -54,6 +220,9 @@ struct WorkbenchSourceRow: Identifiable, Equatable {
     var name: String { source.name }
     var type: String { source.type }
     var itemCount: Int { source.itemCount }
+    var displayUpdatedText: String {
+        source.updatedAt?.dataNonEmpty != nil ? updatedText : "—"
+    }
 }
 
 enum WorkbenchSourceProjection {
@@ -85,8 +254,15 @@ enum WorkbenchSourceProjection {
         )
         return sources.enumerated().map { index, source in
             let kindText = source.kind == .proxy ? proxyKind : ruleKind
-            let updatedText = timestamps.value(for: source.updatedAt)?.formatted(using: dateStyle)
+            let parsedUpdatedAt = timestamps.value(for: source.updatedAt)
+            let updatedText = parsedUpdatedAt?.formatted(using: dateStyle)
                 ?? notReported
+            let updatedAtSortKey: Double = {
+                if case .date(let date) = parsedUpdatedAt {
+                    return date.timeIntervalSince1970
+                }
+                return -Double.greatestFiniteMagnitude
+            }()
             let typeText = source.type.dataNonEmpty ?? notReported
             let configurationDetailText = WorkbenchDataFormat.joined([
                 source.vehicleType,
@@ -115,6 +291,7 @@ enum WorkbenchSourceProjection {
                 source: source,
                 kindText: kindText,
                 updatedText: updatedText,
+                updatedAtSortKey: updatedAtSortKey,
                 typeText: typeText,
                 configurationDetailText: configurationDetailText,
                 compactConfigurationText: compactConfigurationText,
@@ -191,6 +368,39 @@ enum WorkbenchSourceProjection {
             ),
         ].joined(separator: ", ")
     }
+    static func healthCheckSummary(
+        _ value: MihomoJSONValue?,
+        language: AppLanguage
+    ) -> String? {
+        guard let value else { return nil }
+        guard case .object(let map) = value else { return nil }
+
+        if let enabledValue = map.first(where: {
+            $0.key.caseInsensitiveCompare("enable") == .orderedSame
+                || $0.key.caseInsensitiveCompare("enabled") == .orderedSame
+        })?.value,
+           case .bool(let flag) = enabledValue,
+           !flag {
+            return MicaStrings.localizedKey("traffic.rule_status_disabled", language: language)
+        }
+
+        var parts: [String] = []
+        if let intervalValue = map.first(where: { $0.key.caseInsensitiveCompare("interval") == .orderedSame })?.value,
+           case .number(let seconds) = intervalValue,
+           seconds.isFinite,
+           seconds > 0 {
+            parts.append("\(Int(seconds.rounded()))s")
+        }
+        if let urlValue = map.first(where: { $0.key.caseInsensitiveCompare("url") == .orderedSame })?.value,
+           case .string(let rawURL) = urlValue,
+           let host = URL(string: rawURL)?.host?.dataNonEmpty ?? rawURL.dataNonEmpty {
+            parts.append(host)
+        }
+        if !parts.isEmpty {
+            return parts.joined(separator: " · ")
+        }
+        return MicaStrings.localizedKey("traffic.provider_health_check_available", language: language)
+    }
 }
 
 struct WorkbenchSourceFocusProjection: Equatable {
@@ -198,11 +408,13 @@ struct WorkbenchSourceFocusProjection: Equatable {
     let configuration: String
     let itemCount: String
     let updatedAt: String
+    let displayUpdatedAt: String
     let updatableStatus: String
     let healthAvailability: String
     let health: String?
+    let healthSummary: String?
 
-    init(row: WorkbenchSourceRow) {
+    init(row: WorkbenchSourceRow, language: AppLanguage = .english) {
         name = row.source.name
         configuration = WorkbenchDataFormat.joined([
             row.kindText,
@@ -210,9 +422,14 @@ struct WorkbenchSourceFocusProjection: Equatable {
         ]) ?? row.typeText
         itemCount = row.itemCountText
         updatedAt = row.updatedText
+        displayUpdatedAt = row.displayUpdatedText
         updatableStatus = row.updatableText
         healthAvailability = row.healthCheckAvailabilityText
         health = row.source.healthCheckText?.dataNonEmpty
+        healthSummary = WorkbenchSourceProjection.healthCheckSummary(
+            row.source.healthCheck,
+            language: language
+        )
     }
 }
 

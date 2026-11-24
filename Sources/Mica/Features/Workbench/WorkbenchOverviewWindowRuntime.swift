@@ -141,11 +141,15 @@ final class OverviewTopologyRuntime {
         var statuses: [String: MicaTheme.Status] = [:]
         statuses.reserveCapacity(topology.nodes.count)
         for node in topology.nodes {
-            guard case .policyHop = node.columnID else { continue }
-            statuses[node.id] = OverviewTopologyNodeStatus.resolve(
-                name: node.name,
-                policyIndex: policyIndex
-            )
+            switch node.columnID {
+            case .policyHop, .finalOutbound:
+                statuses[node.id] = OverviewTopologyNodeStatus.resolve(
+                    name: node.name,
+                    policyIndex: policyIndex
+                )
+            default:
+                continue
+            }
         }
         nodeStatusCache = (policyRevision, topologyRevision, statuses)
         return statuses

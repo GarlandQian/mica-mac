@@ -105,6 +105,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     private static func isSimplifiedChineseCandidate(_ identifier: String) -> Bool {
         let normalized = normalizeLocaleIdentifier(identifier)
 
+        if normalized.hasPrefix("zh-hant")
+            || normalized.hasPrefix("zh-tw")
+            || normalized.hasPrefix("zh-hk")
+            || normalized.hasPrefix("zh-mo") {
+            return false
+        }
+
         if normalized.hasPrefix("zh-hans")
             || normalized.hasPrefix("zh-cn")
             || normalized.hasPrefix("zh-sg")
@@ -170,7 +177,8 @@ enum MicaStrings {
     }
 
     static var appLanguage: AppLanguage {
-        let rawValue = UserDefaults.standard.string(forKey: "appLanguage") ?? AppLanguage.system.rawValue
+        let rawValue = UserDefaults.standard.string(forKey: AppPreferencesStore.languageKey)
+            ?? AppLanguage.system.rawValue
         return AppLanguage.stored(rawValue)
     }
 
@@ -462,11 +470,6 @@ enum MicaStrings {
         if let count = integerPrefix(in: trimmed, suffix: " 个策略")
             ?? integerPrefix(in: trimmed, suffix: "个策略") {
             return localized("endpoint.policies_count \(count)", language: language)
-        }
-
-        let relocalized = relocalizedText(trimmed)
-        if language == appLanguage {
-            return relocalized == trimmed ? trimmed : relocalized
         }
 
         let relocalizedForLanguage = relocalizedText(trimmed, language: language)

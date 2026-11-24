@@ -10,24 +10,30 @@ struct WorkbenchRuleDecisionPathRail: View {
     let onOpenTarget: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-            ScrollView(.horizontal) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: MicaTheme.Spacing.space3) {
                 horizontalPath
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.bottom, MicaTheme.Spacing.space1)
-            }
-            .scrollIndicators(.automatic)
-            .fixedSize(horizontal: false, vertical: true)
-
-            ScrollView(.horizontal) {
+                Spacer(minLength: MicaTheme.Spacing.space2)
                 statistics
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.bottom, MicaTheme.Spacing.space1)
             }
-            .scrollIndicators(.automatic)
-            .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                ScrollView(.horizontal) {
+                    horizontalPath
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .scrollIndicators(.hidden)
+                .fixedSize(horizontal: false, vertical: true)
+
+                ScrollView(.horizontal) {
+                    statistics
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .scrollIndicators(.hidden)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.horizontal, MicaTheme.Spacing.space3)
+        .padding(.horizontal, MicaTheme.Metrics.chromeHorizontalPadding)
         .padding(.vertical, MicaTheme.Spacing.space2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(MicaTheme.surface)
@@ -38,15 +44,14 @@ struct WorkbenchRuleDecisionPathRail: View {
     private var horizontalPath: some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
             typeStep
-                .frame(minWidth: 130, maxWidth: 180)
+                .frame(minWidth: 100, maxWidth: 150)
             WorkbenchDecisionPathConnector()
             payloadStep
-                .frame(minWidth: 170, maxWidth: 260)
+                .frame(minWidth: 130, maxWidth: 240)
             WorkbenchDecisionPathConnector()
             targetStep
-                .frame(minWidth: 140, maxWidth: 220)
+                .frame(minWidth: 110, maxWidth: 200)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var typeStep: some View {
@@ -74,7 +79,7 @@ struct WorkbenchRuleDecisionPathRail: View {
             titleKey: "dashboard.col_proxy",
             value: reported(projection.target),
             systemImage: targetIsNavigable
-                ? "arrow.right.circle"
+                ? "arrow.right.circle.fill"
                 : "point.3.connected.trianglepath.dotted",
             tint: targetIsNavigable
                 ? MicaTheme.accent
@@ -87,22 +92,37 @@ struct WorkbenchRuleDecisionPathRail: View {
     }
 
     private var statistics: some View {
-        HStack(spacing: MicaTheme.Spacing.space4) {
+        HStack(spacing: MicaTheme.Spacing.space3) {
             statusReadout
             activityReadout
-            hitReadout
-            missReadout
+            if projection.hitCount != nil {
+                hitReadout
+            }
+            if projection.missCount != nil {
+                missReadout
+            }
         }
     }
 
     private var statusReadout: some View {
-        WorkbenchDecisionReadout(
-            titleKey: "dashboard.col_status",
-            value: projection.status,
-            systemImage: "circle.fill",
-            tint: statusTint,
-            monospaced: false
-        )
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            Circle()
+                .fill(statusTint)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(MicaStrings.localizedKey("dashboard.col_status", language: language))
+                    .micaThemeFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(verbatim: projection.status)
+                    .micaThemeFont(.dataCaption, weight: .semibold)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var activityReadout: some View {
@@ -166,6 +186,7 @@ struct WorkbenchRuleInspector: View {
     let failure: String?
     let close: () -> Void
     let disabled: Binding<Bool>
+    var onOpenTarget: (() -> Void)? = nil
 
     var body: some View {
         if let row {
@@ -175,7 +196,17 @@ struct WorkbenchRuleInspector: View {
                 subtitle: rule.index.map { "#\($0)" },
                 statusText: row.statusText,
                 statusTint: statusTint(rule),
-                close: close
+                close: close,
+                actions: {
+                    if let onOpenTarget {
+                        WorkbenchIconCommand(
+                            titleKey: "traffic.open_target_policy",
+                            systemImage: "arrow.right.circle",
+                            isEnabled: true,
+                            action: onOpenTarget
+                        )
+                    }
+                }
             ) {
                 WorkbenchDataInspectorSection("traffic.rule_section_definition") {
                     WorkbenchDataInspectorValueList(
@@ -186,16 +217,23 @@ struct WorkbenchRuleInspector: View {
                 if rule.hasMutableExtra, rule.index != nil {
                     WorkbenchDataInspectorSection("traffic.rule_section_state") {
                         Toggle(
-                            MicaStrings.localizedKey("traffic.rule_disabled", language: language),
-                            isOn: disabled
+                            MicaStrings.localizedKey("routing.rule_enabled", language: language),
+                            isOn: Binding(
+                                get: { !disabled.wrappedValue },
+                                set: { disabled.wrappedValue = !$0 }
+                            )
                         )
                         .toggleStyle(.switch)
+                        .micaThemeFont(.label)
+                        .fixedSize(horizontal: false, vertical: true)
                         .disabled(!canMutate || isUpdating)
                         .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
 
                         if isUpdating {
                             ProgressView {
                                 Text(MicaStrings.localizedKey("traffic.rule_updating", language: language))
+                                    .micaThemeFont(.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             .controlSize(.small)
                         }
@@ -206,11 +244,23 @@ struct WorkbenchRuleInspector: View {
                     WorkbenchDataInspectorSection("traffic.rule_section_error") {
                         Label {
                             Text(verbatim: failure)
+                                .micaThemeFont(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .textSelection(.enabled)
                         } icon: {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(MicaTheme.statusError)
                         }
+                        .padding(MicaTheme.Spacing.space2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: MicaTheme.Shape.rowRadius, style: .continuous)
+                                .fill(MicaTheme.statusError.opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: MicaTheme.Shape.rowRadius, style: .continuous)
+                                .strokeBorder(MicaTheme.statusError.opacity(0.24), lineWidth: MicaTheme.Shape.hairline)
+                        )
                     }
                 }
 
@@ -226,6 +276,7 @@ struct WorkbenchRuleInspector: View {
                     )
                 }
             }
+            .id(row.id)
         }
     }
 

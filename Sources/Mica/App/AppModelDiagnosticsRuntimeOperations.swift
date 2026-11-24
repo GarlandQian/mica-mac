@@ -16,7 +16,7 @@ extension AppModel {
 
     var actionsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow] {
         guard selectedUnifiedControllerType.hasWorkbenchRuntimeOperations else { return [] }
-        return runtimeOperationRows
+        return diagnosticsRuntimeOperationRows
     }
 
     private var runtimeOperationRows: [DiagnosticsRuntimeOperationRow] {

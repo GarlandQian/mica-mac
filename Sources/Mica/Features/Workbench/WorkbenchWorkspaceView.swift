@@ -89,7 +89,7 @@ struct WorkbenchWorkspaceView: View {
 
     private var searchText: Binding<String> {
         workspaceStore.searchBinding(
-            controllerID: appModel.selectedRouterID,
+            controllerID: destination == .controllers ? nil : appModel.selectedRouterID,
             destination: destination
         )
     }
@@ -105,6 +105,7 @@ struct WorkbenchWorkspaceView: View {
 struct WorkbenchInspectorContainer: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
+    @EnvironmentObject private var preferences: AppPreferencesStore
 
     @Binding var destination: WorkbenchDestination
 
@@ -151,14 +152,26 @@ struct WorkbenchInspectorContainer: View {
     @ViewBuilder
     private func connectionInspectorContent(id: String) -> some View {
         if let row = workspaceStore.connectionRowResolver?(id) {
+            let canClose = row.closedAt == nil && canCloseConnection
             WorkbenchConnectionInspector(
                 row: row,
                 isActive: row.closedAt == nil,
+                canClose: canClose,
+                isClosing: appModel.closingConnectionID == row.connection.id,
+                onCloseConnection: canClose ? { appModel.closeConnection(row.connection) } : nil,
                 close: { workspaceStore.dismissInspector() }
             )
         } else {
             emptyState
         }
+    }
+
+    private var canCloseConnection: Bool {
+        guard let router = appModel.selectedRouter else { return false }
+        let action: UnifiedControllerAction = appModel.runtimeControllerKind(for: router) == .surgeCompatible
+            ? .killActiveRequest
+            : .closeConnection
+        return appModel.supportsUnifiedAction(action) && !appModel.isBusy
     }
 
     /// Rule detail resolved live through the destination's registered
@@ -172,6 +185,31 @@ struct WorkbenchInspectorContainer: View {
             generation: appModel.controllerSessionPresentation.generation
         )
         if let row = workspaceStore.ruleRowResolver?(type, payload) {
+            let openTarget: (() -> Void)? = WorkbenchRulePolicyTargetResolver.resolve(
+                target: row.rule.proxy,
+                catalog: appModel.policyGroupCatalog,
+                visibility: preferences.globalGroupVisibility
+            ).map { target in
+                {
+                    let groups = ProxyProjection.arrangedGroups(
+                        appModel.policyGroupCatalog.groups,
+                        mode: appModel.policyGroupCatalog.mode,
+                        visibility: preferences.globalGroupVisibility
+                    )
+                    workspaceStore.update(
+                        controllerID: appModel.selectedRouterID,
+                        destination: .proxies
+                    ) { workspace in
+                        workspace = ProxyWorkspaceProjection.activating(
+                            target.id,
+                            in: workspace,
+                            groups: groups,
+                            preferredMemberID: nil
+                        )
+                    }
+                    destination = .proxies
+                }
+            }
             WorkbenchRuleInspector(
                 row: row,
                 canMutate: row.rule.hasMutableExtra
@@ -191,7 +229,8 @@ struct WorkbenchInspectorContainer: View {
                             scope: commandScope
                         )
                     }
-                )
+                ),
+                onOpenTarget: openTarget
             )
         } else {
             emptyState

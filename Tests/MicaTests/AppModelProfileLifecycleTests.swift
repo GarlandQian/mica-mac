@@ -5,11 +5,13 @@ import Testing
 
 private enum ProfileLifecycleFailure: Error {
     case read
+    case save
 }
 
 private actor LifecycleProfileStore: RouterProfileStore {
     private var profiles: [RouterProfile]
     private var remainingLoadFailures: Int
+    private var remainingSaveFailures: Int
     private var suspendsSave: Bool
     private var saveRelease: CheckedContinuation<Void, Never>?
     private var saveWaiters: [CheckedContinuation<Void, Never>] = []
@@ -18,10 +20,12 @@ private actor LifecycleProfileStore: RouterProfileStore {
     init(
         profiles: [RouterProfile],
         loadFailures: Int = 0,
+        saveFailures: Int = 0,
         suspendsSave: Bool = false
     ) {
         self.profiles = profiles
         remainingLoadFailures = loadFailures
+        remainingSaveFailures = saveFailures
         self.suspendsSave = suspendsSave
     }
 
@@ -35,6 +39,10 @@ private actor LifecycleProfileStore: RouterProfileStore {
     }
 
     func saveProfiles(_ profiles: [RouterProfile]) async throws {
+        if remainingSaveFailures > 0 {
+            remainingSaveFailures -= 1
+            throw ProfileLifecycleFailure.save
+        }
         if suspendsSave {
             suspendsSave = false
             await withCheckedContinuation { continuation in
@@ -467,5 +475,41 @@ struct AppModelProfileLifecycleTests {
         #expect(model.controllerSession.controllerID == nil)
         model.mainWindowDidAppear()
         #expect(model.controllerSession.controllerID == selected.id)
+    }
+
+    @Test func clearingStoredSecretRemovesAndRollsBackOnSaveFailure() async throws {
+        let initial = profile("SecretHost", withSecret: true)
+        let profileStore = LifecycleProfileStore(profiles: [initial], saveFailures: 1)
+        let secretStore = LifecycleSecretStore(values: [initial.id: "stored-secret"])
+        let fixture = ProfileLifecycleFixture(
+            profileStore: profileStore,
+            secretStore: secretStore
+        )
+        defer { fixture.finish() }
+
+        let model = fixture.model
+        model.loadPersistedState()
+        await model.loadTask?.value
+        #expect(model.controllerSecrets[initial.id] == "stored-secret")
+
+        var draft = RouterDraft(profile: initial, secret: "", hasStoredSecret: true)
+        draft.clearStoredSecret = true
+
+        do {
+            try await model.upsertRouter(from: draft)
+            Issue.record("Expected profile store failure to trigger secret rollback")
+        } catch ProfileLifecycleFailure.save {
+            #expect(model.routers == [initial])
+            #expect(model.controllerSecrets[initial.id] == "stored-secret")
+            let restored = try await secretStore.secret(for: initial.id)
+            #expect(restored == "stored-secret")
+        }
+
+        let updated = try await model.upsertRouter(from: draft)
+        #expect(updated.secretReference == nil)
+        #expect(model.routers.first?.secretReference == nil)
+        #expect(model.controllerSecrets[initial.id] == nil)
+        let remainingSecret = try await secretStore.secret(for: initial.id)
+        #expect(remainingSecret == nil)
     }
 }

@@ -12,7 +12,7 @@ enum MicaMenuBarRateFormat {
         guard value >= 1_000 else { return "\(value) B" }
         var scaled = Double(value) / 1_000
         var unitIndex = 0
-        while scaled >= 999.95, unitIndex < units.count - 1 {
+        while scaled >= 999.5, unitIndex < units.count - 1 {
             scaled /= 1_000
             unitIndex += 1
         }
@@ -95,32 +95,60 @@ struct MicaMenuBarLabel: View {
     }
 
     private var isStreaming: Bool {
-        appModel.selectedRouterID != nil
-            && appModel.controllerSessionPresentation.controllerID == appModel.selectedRouterID
-            && appModel.controllerSessionPresentation.state.allowsLiveCommands
+        let session = appModel.controllerSessionPresentation
+        return appModel.selectedRouterID != nil
+            && session.controllerID == appModel.selectedRouterID
+            && session.state.allowsLiveCommands
+            && !session.controls.dashboardUpdatesPaused
+            && appModel.selectedUnifiedCapabilities.traffic
     }
 }
 
-/// Menu-style content: controller and rates, one submenu per selectable
-/// policy group with its members in reported order, and app commands.
+/// Isolated menu item for live transfer rates so menu subtrees don't rebuild every second.
+private struct MicaMenuBarRatesItem: View {
+    @Environment(AppModel.self) private var appModel
+    @Environment(\.micaAppLanguage) private var language
+
+    var body: some View {
+        let rate = appModel.liveTrafficRate
+        Text(
+            MicaStrings.localized(
+                "menu_bar.rates \(OverviewFormat.rate(rate.upload)) \(OverviewFormat.rate(rate.download))",
+                language: language
+            )
+        )
+    }
+}
+
+/// Menu-style content: controller status and rates, session quick actions,
+/// one submenu per selectable policy group, and app commands.
 struct MicaMenuBarContent: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var preferences: AppPreferencesStore
 
     var body: some View {
         if let router = appModel.selectedRouter {
-            Text(verbatim: router.displayName)
-            let rate = appModel.liveTrafficRate
-            Text(
-                MicaStrings.localized(
-                    "menu_bar.rates \(OverviewFormat.rate(rate.upload)) \(OverviewFormat.rate(rate.download))",
-                    language: language
-                )
-            )
+            Text(verbatim: "\(router.displayName) · \(sessionStatusLabel)")
+            MicaMenuBarRatesItem()
         } else {
             Text(localized("menu_bar.no_controller"))
+        }
+
+        if appModel.selectedRouter != nil {
+            Divider()
+
+            Button(localized("command.menu_refresh_data")) {
+                appModel.refreshSelectedRouter()
+            }
+            .disabled(!appModel.canRefreshSelectedRouter)
+
+            Button(localized(pauseTitleKey)) {
+                appModel.toggleDashboardUpdatesPaused()
+            }
+            .disabled(!appModel.canTogglePresentationPause)
         }
 
         Divider()
@@ -134,8 +162,9 @@ struct MicaMenuBarContent: View {
         }
         .keyboardShortcut("o")
 
-        SettingsLink {
-            Text(localized("menu_bar.settings"))
+        Button(localized("menu_bar.settings")) {
+            NSApplication.shared.activate()
+            openSettings()
         }
         .keyboardShortcut(",")
 
@@ -145,6 +174,18 @@ struct MicaMenuBarContent: View {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    private var pauseTitleKey: String {
+        appModel.dashboardSessionControls.dashboardUpdatesPaused ? "live.resume" : "live.pause"
+    }
+
+    private var sessionStatusLabel: String {
+        let session = appModel.controllerSessionPresentation
+        if session.controls.dashboardUpdatesPaused {
+            return localized("operation.dashboard_updates_paused")
+        }
+        return session.state.label(language: language)
     }
 
     @ViewBuilder
@@ -158,12 +199,13 @@ struct MicaMenuBarContent: View {
         } else {
             Text(localized("menu_bar.policy_groups"))
             ForEach(groups) { occurrence in
+                let uniqueOptions = uniquePreservingOrder(occurrence.group.options)
                 Menu {
                     Picker(
                         occurrence.group.id,
                         selection: selection(for: occurrence.group)
                     ) {
-                        ForEach(occurrence.group.options, id: \.self) { option in
+                        ForEach(uniqueOptions, id: \.self) { option in
                             Text(verbatim: optionTitle(option, in: occurrence.group))
                                 .tag(option)
                         }
@@ -176,6 +218,11 @@ struct MicaMenuBarContent: View {
                 }
             }
         }
+    }
+
+    private func uniquePreservingOrder(_ options: [String]) -> [String] {
+        var seen: Set<String> = []
+        return options.filter { seen.insert($0).inserted }
     }
 
     private func selection(for group: ProxyGroupViewState) -> Binding<String> {
@@ -208,6 +255,9 @@ struct MicaMenuBarContent: View {
     private func canSwitch(_ group: ProxyGroupViewState) -> Bool {
         appModel.controllerSessionPresentation.state.allowsLiveCommands
             && appModel.switchingGroupID == nil
+            && appModel.clearingFixedGroupID == nil
+            && appModel.switchingSurgePolicyGroup == nil
+            && !appModel.hasSurgeOperationInFlight
             && (isSurge
                 ? appModel.supportsUnifiedAction(.selectSurgePolicy)
                 : appModel.supportsUnifiedAction(.switchPolicy))
@@ -222,10 +272,10 @@ struct MicaMenuBarContent: View {
     /// menu bar item is the only thing running.
     private func openWorkbench() {
         NSApplication.shared.activate()
-        if appModel.mainWindowCount > 0,
-           let window = NSApplication.shared.windows.first(where: {
-               $0.identifier?.rawValue.hasPrefix(MicaSceneID.workbench) == true
-           }) {
+        if let window = NSApplication.shared.windows.first(where: {
+            $0.identifier?.rawValue.hasPrefix(MicaSceneID.workbench) == true
+                && ($0.isVisible || $0.isMiniaturized)
+        }) {
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
         } else {

@@ -500,6 +500,15 @@ enum LiveSessionState: Equatable {
         }
     }
 
+    var isTerminatedOrFailed: Bool {
+        switch self {
+        case .failedBeforeFirstSnapshot, .failed, .stopped:
+            true
+        case .idle, .connecting, .live, .staleReconnecting, .partial:
+            false
+        }
+    }
+
     var failureDetail: String? {
         switch self {
         case .staleReconnecting(let message), .partial(let message),

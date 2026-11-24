@@ -153,22 +153,29 @@ enum LogSessionLevel: String, CaseIterable, Identifiable {
     }
 
     func matches(_ type: String) -> Bool {
+        guard let minimumRank else { return true }
+        return Self.severityRank(for: type) >= minimumRank
+    }
+
+    var minimumRank: Int? {
         switch self {
-        case .all: true
-        case .error: Self.normalizedType(type) == "error"
-        case .warning: Self.normalizedType(type) == "warning"
-        case .info: Self.normalizedType(type) == "info"
-        case .debug: Self.normalizedType(type) == "debug"
-        case .trace: Self.normalizedType(type) == "trace"
+        case .all: nil
+        case .trace: 0
+        case .debug: 1
+        case .info: 2
+        case .warning: 3
+        case .error: 4
         }
     }
 
-    private static func normalizedType(_ type: String) -> String {
-        switch type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "err": "error"
-        case "warn": "warning"
-        case "information": "info"
-        default: type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    static func severityRank(for value: String) -> Int {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "error", "err", "fatal", "panic": 4
+        case "warning", "warn": 3
+        case "info", "information", "notice": 2
+        case "debug", "verbose": 1
+        case "trace": 0
+        default: 2
         }
     }
 }

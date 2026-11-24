@@ -285,6 +285,8 @@ final class WorkbenchWorkspaceStore {
     /// state. Populated by workbench surfaces via `selectInspector(_:)`.
     private(set) var inspectorSelection: WorkbenchInspectorSelection = .none
     private(set) var inspectorOwningDestination: WorkbenchDestination?
+    var didDismissControllersInspector = false
+    var controllerConnectionTests = WorkbenchConnectionTestProjection()
 
     /// Live lookup registered by the Connections destination so the workspace
     /// inspector resolves the selected connection against that destination's
@@ -305,6 +307,67 @@ final class WorkbenchWorkspaceStore {
     /// source row's stable projection identity (task 08-17 Phase 5B). Cleared
     /// when the destination unmounts.
     var sourceRowResolver: ((String) -> WorkbenchSourceRow?)?
+
+    @ObservationIgnored private var connectionResolverToken: UUID?
+    @ObservationIgnored private var ruleResolverToken: UUID?
+    @ObservationIgnored private var logResolverToken: UUID?
+    @ObservationIgnored private var sourceResolverToken: UUID?
+
+    @discardableResult
+    func registerConnectionRowResolver(_ resolver: @escaping (String) -> WorkbenchConnectionRow?) -> UUID {
+        let token = UUID()
+        connectionResolverToken = token
+        connectionRowResolver = resolver
+        return token
+    }
+
+    func clearConnectionRowResolver(token: UUID) {
+        guard connectionResolverToken == token else { return }
+        connectionResolverToken = nil
+        connectionRowResolver = nil
+    }
+
+    @discardableResult
+    func registerRuleRowResolver(_ resolver: @escaping (String, String) -> WorkbenchRuleRow?) -> UUID {
+        let token = UUID()
+        ruleResolverToken = token
+        ruleRowResolver = resolver
+        return token
+    }
+
+    func clearRuleRowResolver(token: UUID) {
+        guard ruleResolverToken == token else { return }
+        ruleResolverToken = nil
+        ruleRowResolver = nil
+    }
+
+    @discardableResult
+    func registerLogEntryResolver(_ resolver: @escaping (String) -> WorkbenchLogRow?) -> UUID {
+        let token = UUID()
+        logResolverToken = token
+        logEntryResolver = resolver
+        return token
+    }
+
+    func clearLogEntryResolver(token: UUID) {
+        guard logResolverToken == token else { return }
+        logResolverToken = nil
+        logEntryResolver = nil
+    }
+
+    @discardableResult
+    func registerSourceRowResolver(_ resolver: @escaping (String) -> WorkbenchSourceRow?) -> UUID {
+        let token = UUID()
+        sourceResolverToken = token
+        sourceRowResolver = resolver
+        return token
+    }
+
+    func clearSourceRowResolver(token: UUID) {
+        guard sourceResolverToken == token else { return }
+        sourceResolverToken = nil
+        sourceRowResolver = nil
+    }
 
     init(
         defaults: UserDefaults = .standard,
@@ -458,6 +521,7 @@ final class WorkbenchWorkspaceStore {
             controllerID: selection.controllerID,
             destination: .connections
         ) { workspace in
+            workspace.activeTab = nil
             workspace.selectedItemID = nil
             workspace.pendingConnectionSelection = selection
         }
@@ -586,7 +650,8 @@ final class WorkbenchWorkspaceStore {
     /// the live session stay untouched (task 08-17 Phase 2).
     func selectInspector(
         _ selection: WorkbenchInspectorSelection,
-        from destination: WorkbenchDestination? = nil
+        from destination: WorkbenchDestination? = nil,
+        revealInspector: Bool = true
     ) {
         let owner = selection == .none
             ? nil
@@ -598,7 +663,10 @@ final class WorkbenchWorkspaceStore {
         if inspectorOwningDestination != owner {
             inspectorOwningDestination = owner
         }
-        if selection != .none, !isInspectorPresented {
+        if selection != .none, owner == .controllers, revealInspector {
+            didDismissControllersInspector = false
+        }
+        if revealInspector, selection != .none, !isInspectorPresented {
             isInspectorPresented = true
         }
     }
@@ -653,14 +721,16 @@ final class WorkbenchWorkspaceStore {
 
     func clearSessionBoundState(controllerID: RouterProfile.ID) {
         activeSessionGenerations.removeValue(forKey: controllerID)
-        if inspectorSelection != .none {
-            inspectorSelection = .none
-        }
-        if inspectorOwningDestination != nil {
-            inspectorOwningDestination = nil
-        }
-        if isInspectorPresented {
-            isInspectorPresented = false
+        if inspectorOwningDestination != .controllers {
+            if inspectorSelection != .none {
+                inspectorSelection = .none
+            }
+            if inspectorOwningDestination != nil {
+                inspectorOwningDestination = nil
+            }
+            if isInspectorPresented {
+                isInspectorPresented = false
+            }
         }
         let keys = states.keys.filter { $0.controllerID == controllerID }
         for key in keys {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MicaCore
 import SwiftUI
@@ -8,16 +9,18 @@ struct WorkbenchRulesView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.micaAppFontScale) private var fontScale
     @EnvironmentObject private var preferences: AppPreferencesStore
 
     @Binding var destination: WorkbenchDestination
     @Binding var searchText: String
 
     @State private var model = RulesWorkspaceModel()
+    @State private var resolverToken: UUID?
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 980,
-        compactMinimum: 520
+        compactMinimum: 560
     )
 
     var body: some View {
@@ -48,21 +51,26 @@ struct WorkbenchRulesView: View {
         }
         .onAppear {
             let pageModel = model
-            workspaceStore.ruleRowResolver = { type, payload in
-                pageModel.inspectorRow(type: type, payload: payload)
+            resolverToken = workspaceStore.registerRuleRowResolver { [weak pageModel] type, payload in
+                pageModel?.inspectorRow(type: type, payload: payload)
             }
             restoreWorkspace()
             model.update(presentationInput)
             consumeRuleNavigation()
+            syncRestoredSelectionIfCleared()
         }
         .onDisappear {
-            workspaceStore.ruleRowResolver = nil
+            if let resolverToken {
+                workspaceStore.clearRuleRowResolver(token: resolverToken)
+                self.resolverToken = nil
+            }
             model.deactivate()
         }
         .onChange(of: sessionIdentity) {
             restoreWorkspace()
             model.update(presentationInput)
             consumeRuleNavigation()
+            syncRestoredSelectionIfCleared()
         }
         .onChange(of: searchText) {
             model.update(presentationInput)
@@ -102,7 +110,9 @@ struct WorkbenchRulesView: View {
             WorkbenchCommandSummary(
                 symbolName: "list.bullet.rectangle",
                 titleKey: "dashboard.tab_rules",
-                value: String(model.rows.count),
+                value: model.rows.count == model.allRows.count
+                    ? model.allRows.count.formatted()
+                    : "\(model.rows.count.formatted()) / \(model.allRows.count.formatted())",
                 detail: nil
             )
         } controls: {
@@ -178,10 +188,11 @@ struct WorkbenchRulesView: View {
                 } ?? allTitle,
                 systemImage: systemImage
             )
+            .lineLimit(1)
         }
         .menuStyle(.button)
         .controlSize(.small)
-        .fixedSize()
+        .frame(maxWidth: 168, alignment: .leading)
         .help(title)
         .accessibilityLabel(title)
         .accessibilityValue(current)
@@ -215,14 +226,21 @@ struct WorkbenchRulesView: View {
                 detailKey: "traffic.rules_empty_message"
             )
         case .filterEmpty:
-            if model.facets.isActive {
+            if model.facets.isActive || searchText.dataNonEmpty != nil {
                 WorkbenchStateView(
                     kind: .filterEmpty,
                     titleKey: "dashboard.no_matching_rules",
                     detailKey: "traffic.empty_filtered",
-                    actionTitleKey: "traffic.rule_facets_clear",
-                    actionSystemImage: "line.3.horizontal.decrease.circle",
-                    action: { model.facets = .none }
+                    actionTitleKey: model.facets.isActive
+                        ? "traffic.rule_facets_clear"
+                        : "action.clear_search",
+                    actionSystemImage: model.facets.isActive
+                        ? "line.3.horizontal.decrease.circle"
+                        : "xmark.circle",
+                    action: {
+                        model.facets = .none
+                        searchText = ""
+                    }
                 )
             } else {
                 WorkbenchStateView(
@@ -272,7 +290,7 @@ struct WorkbenchRulesView: View {
             restorationID: model.restoredScrollAnchorID,
             request: model.scrollRequest,
             interaction: model.tableInteraction,
-            rowIndex: { id in model.rows.firstIndex { $0.id == id } },
+            rowIndex: { id in model.visibleIndex(id: id) },
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onInteractionEnded: {
                 model.finishDeferredPresentation(
@@ -300,8 +318,13 @@ struct WorkbenchRulesView: View {
                                 role: .dataLabel,
                                 weight: .medium
                             )
+                            .frame(
+                                minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+                                maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+                                alignment: .leading
+                            )
                         }
-                        .width(min: 240, ideal: 420)
+                        .width(min: 220, ideal: 380)
 
                         TableColumn(
                             MicaStrings.localizedKey("dashboard.col_type", language: language),
@@ -309,7 +332,7 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             ruleTypeCell(row)
                         }
-                        .width(min: 118, ideal: 140, max: 168)
+                        .width(min: 110, ideal: 132, max: 160)
 
                         TableColumn(
                             MicaStrings.localizedKey("dashboard.col_proxy", language: language),
@@ -320,21 +343,34 @@ struct WorkbenchRulesView: View {
                                 role: .label,
                                 weight: .medium
                             )
+                            .frame(
+                                minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+                                maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+                                alignment: .leading
+                            )
                         }
-                        .width(min: 132, ideal: 176, max: 224)
+                        .width(min: 124, ideal: 164, max: 210)
 
                         TableColumn(
-                            MicaStrings.localizedKey("traffic.rule_section_statistics", language: language),
+                            MicaStrings.localizedKey("dashboard.active_sessions", language: language),
                             value: \.activeConnections
                         ) { row in
-                            ruleActivityCell(row)
+                            ruleActiveConnectionsCell(row)
                         }
-                        .width(min: 128, ideal: 148, max: 180)
+                        .width(min: 76, ideal: 92, max: 114)
+
+                        TableColumn(
+                            MicaStrings.localizedKey("traffic.rule_hits", language: language),
+                            value: \.hitCount
+                        ) { row in
+                            ruleHitCountCell(row)
+                        }
+                        .width(min: 76, ideal: 92, max: 114)
 
                         TableColumn(MicaStrings.localizedKey("dashboard.col_status", language: language)) { row in
                             ruleStateCell(row)
                         }
-                        .width(min: 142, ideal: 160, max: 184)
+                        .width(min: 136, ideal: 152, max: 176)
 
                         TableColumn(
                             MicaStrings.localizedKey("dashboard.col_index", language: language),
@@ -342,7 +378,7 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             WorkbenchDataMetric(value: row.indexText, tone: .secondary)
                         }
-                        .width(min: 48, ideal: 56, max: 64)
+                        .width(min: 48, ideal: 56, max: 68)
 
                     case .compact:
                         TableColumn(
@@ -351,12 +387,12 @@ struct WorkbenchRulesView: View {
                         ) { row in
                             ruleIdentity(row)
                         }
-                        .width(min: 260, ideal: 420)
+                        .width(min: 260, ideal: 380)
 
                         TableColumn(MicaStrings.localizedKey("traffic.rule_section_statistics", language: language)) { row in
                             ruleCompactSummary(row)
                         }
-                        .width(min: 260, ideal: 340)
+                        .width(min: 240, ideal: 300)
 
                     case .stacked:
                         TableColumn(
@@ -368,11 +404,17 @@ struct WorkbenchRulesView: View {
                         .width(min: 220, ideal: 520)
                     }
                 }
+                .contextMenu(forSelectionType: WorkbenchRuleRow.ID.self) { ids in
+                    if let id = ids.first, let row = model.row(id: id) {
+                        ruleContextMenu(for: row)
+                    }
+                }
                 .micaWorkbenchTable(
                     accessibilityLabel: MicaStrings.localizedKey(
                         "dashboard.tab_rules",
                         language: language
-                    )
+                    ),
+                    lines: mode == .full ? 1 : 2
                 )
                 .accessibilityHidden(true)
                 .overlay {
@@ -393,8 +435,8 @@ struct WorkbenchRulesView: View {
             ruleAction(row)
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
             alignment: .leading
         )
     }
@@ -406,34 +448,46 @@ struct WorkbenchRulesView: View {
             tone: .secondary
         )
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
             alignment: .leading
         )
     }
 
-    private func ruleActivityCell(_ row: WorkbenchRuleRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space3) {
-            ruleMetric(
-                value: row.activeConnectionsText,
-                systemImage: "point.3.connected.trianglepath.dotted",
-                accessibilityText: row.activeConnectionsAccessibilityText
-            )
-            ruleMetric(
-                value: row.hitCountText,
-                systemImage: "scope",
-                accessibilityText: row.hitCountAccessibilityText
-            )
-        }
+    private func ruleActiveConnectionsCell(_ row: WorkbenchRuleRow) -> some View {
+        ruleMetric(
+            value: row.activeConnectionsText,
+            systemImage: "point.3.connected.trianglepath.dotted",
+            accessibilityText: row.activeConnectionsAccessibilityText
+        )
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
             alignment: .leading
         )
-        .accessibilityLabel(
-            row.activityAccessibilityText
+    }
+
+    private func ruleHitCountCell(_ row: WorkbenchRuleRow) -> some View {
+        Group {
+            if let hitCount = row.rule.hitCount {
+                ruleMetric(
+                    value: hitCount.formatted(),
+                    systemImage: "scope",
+                    accessibilityText: row.hitCountAccessibilityText
+                )
+            } else {
+                WorkbenchDataText(
+                    value: "—",
+                    role: .dataCaption,
+                    tone: .tertiary
+                )
+            }
+        }
+        .frame(
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
+            alignment: .leading
         )
-        .accessibilityValue(row.activityText)
     }
 
     private func ruleCompactSummary(_ row: WorkbenchRuleRow) -> some View {
@@ -448,11 +502,13 @@ struct WorkbenchRulesView: View {
                         systemImage: "point.3.connected.trianglepath.dotted",
                         accessibilityText: row.activeConnectionsAccessibilityText
                     )
-                    ruleMetric(
-                        value: row.hitCountText,
-                        systemImage: "scope",
-                        accessibilityText: row.hitCountAccessibilityText
-                    )
+                    if row.rule.hitCount != nil {
+                        ruleMetric(
+                            value: row.hitCountText,
+                            systemImage: "scope",
+                            accessibilityText: row.hitCountAccessibilityText
+                        )
+                    }
                 }
             }
 
@@ -460,8 +516,8 @@ struct WorkbenchRulesView: View {
             ruleAction(row)
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
             alignment: .leading
         )
     }
@@ -485,19 +541,21 @@ struct WorkbenchRulesView: View {
                         systemImage: "point.3.connected.trianglepath.dotted",
                         accessibilityText: row.activeConnectionsAccessibilityText
                     )
-                    ruleMetric(
-                        value: row.hitCountText,
-                        systemImage: "scope",
-                        accessibilityText: row.hitCountAccessibilityText
-                    )
+                    if row.rule.hitCount != nil {
+                        ruleMetric(
+                            value: row.hitCountText,
+                            systemImage: "scope",
+                            accessibilityText: row.hitCountAccessibilityText
+                        )
+                    }
                 }
             }
 
             ruleAction(row)
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2)
         )
     }
 
@@ -553,7 +611,7 @@ struct WorkbenchRulesView: View {
                 .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
         } else if row.rule.hasMutableExtra, row.rule.index != nil {
             WorkbenchIconCommand(
-                titleKey: "action.set_rule_state",
+                titleKey: row.rule.disabled == true ? "action.enable_rule" : "action.disable_rule",
                 systemImage: row.rule.disabled == true ? "play.circle" : "pause.circle",
                 isEnabled: canMutate(row)
             ) {
@@ -739,13 +797,100 @@ struct WorkbenchRulesView: View {
             controllerID: controllerID,
             destination: .rules
         )
-        guard let pending = workspace.pendingRuleSelection,
-              let revealedQuery = model.reveal(pending, input: presentationInput),
-              workspaceStore.consumeRuleNavigation(
-                  controllerID: controllerID,
-                  generation: generation
-              ) != nil else { return }
-        searchText = revealedQuery
+        guard let pending = workspace.pendingRuleSelection else { return }
+        if let revealedQuery = model.reveal(pending, input: presentationInput) {
+            if workspaceStore.consumeRuleNavigation(
+                controllerID: controllerID,
+                generation: generation
+            ) != nil {
+                searchText = revealedQuery
+            }
+        } else if !appModel.rulesCatalog.rules.isEmpty
+                    || appModel.controllerSessionPresentation.state.isTerminatedOrFailed {
+            _ = workspaceStore.consumeRuleNavigation(
+                controllerID: controllerID,
+                generation: generation
+            )
+        }
+    }
+
+    private func syncRestoredSelectionIfCleared() {
+        guard model.selectedRowID == nil else { return }
+        workspaceStore.update(
+            controllerID: appModel.selectedRouterID,
+            destination: .rules
+        ) {
+            $0.selectedItemID = nil
+        }
+        workspaceStore.clearInspectorSelection(ownedBy: .rules)
+    }
+
+    @ViewBuilder
+    private func ruleContextMenu(for row: WorkbenchRuleRow) -> some View {
+        if let payload = row.rule.payload.dataNonEmpty {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(payload, forType: .string)
+            } label: {
+                Label(MicaStrings.localizedKey("action.copy_payload", language: language), systemImage: "doc.on.doc")
+            }
+        }
+        Button {
+            let line = [row.rule.type.dataNonEmpty, row.rule.payload.dataNonEmpty, row.rule.proxy.dataNonEmpty]
+                .compactMap { $0 }
+                .joined(separator: ",")
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(line, forType: .string)
+        } label: {
+            Label(MicaStrings.localizedKey("action.copy_rule", language: language), systemImage: "doc.on.doc")
+        }
+        if let ruleType = row.rule.type.dataNonEmpty {
+            Button {
+                model.facets.type = ruleType
+            } label: {
+                Label(MicaStrings.localizedKey("traffic.filter_by_type", language: language), systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+        if let policy = row.rule.proxy.dataNonEmpty {
+            Button {
+                model.facets.policy = policy
+            } label: {
+                Label(MicaStrings.localizedKey("traffic.filter_by_policy", language: language), systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+        if WorkbenchRulePolicyTargetResolver.resolve(
+            target: row.rule.proxy,
+            catalog: appModel.policyGroupCatalog,
+            visibility: preferences.globalGroupVisibility
+        ) != nil {
+            Button {
+                openTargetPolicyGroup(for: row)
+            } label: {
+                Label(MicaStrings.localizedKey("traffic.open_target_policy", language: language), systemImage: "arrow.right.circle")
+            }
+        }
+        if canMutate(row) {
+            Divider()
+            Button {
+                guard let commandScope = LiveCommandScope(
+                    controllerID: appModel.selectedRouterID,
+                    generation: appModel.controllerSessionPresentation.generation
+                ) else { return }
+                appModel.setRuleDisabled(
+                    row.rule,
+                    disabled: !(row.rule.disabled ?? false),
+                    scope: commandScope
+                )
+            } label: {
+                Label(
+                    MicaStrings.localizedKey(
+                        row.rule.disabled == true ? "action.enable_rule" : "action.disable_rule",
+                        language: language
+                    ),
+                    systemImage: row.rule.disabled == true ? "play.circle" : "pause.circle"
+                )
+            }
+        }
     }
 
     private var accessibilitySortOptions: [WorkbenchAccessibilitySortOption] {
@@ -788,7 +933,9 @@ struct WorkbenchRulesView: View {
     ) -> WorkbenchAccessibilityNamedAction? {
         WorkbenchRuleAccessibilityMutationResolver.namedAction(
             for: row,
-            title: localization.localizedKey("action.set_rule_state"),
+            title: localization.localizedKey(
+                row.rule.disabled == true ? "action.enable_rule" : "action.disable_rule"
+            ),
             updatingRuleID: appModel.updatingRuleID,
             canRefresh: appModel.canRefreshSelectedRouter,
             isBusy: appModel.isBusy,

@@ -6,13 +6,22 @@ extension RouterEditorView {
     var controllerFormContent: some View {
         Section {
             WorkbenchFormRow("editor.name") {
-                TextField("", text: $draft.displayName)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
-                    .help(MicaStrings.localizedKey("editor.help_name", language: appLanguage))
-                    .accessibilityLabel(
-                        MicaStrings.localizedKey("editor.acc_name", language: appLanguage)
-                    )
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                    TextField("", text: $draft.displayName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
+                        .help(MicaStrings.localizedKey("editor.help_name", language: appLanguage))
+                        .accessibilityLabel(
+                            MicaStrings.localizedKey("editor.acc_name", language: appLanguage)
+                        )
+
+                    if showsValidation, let nameError = draft.nameValidationError(language: appLanguage) {
+                        Label(nameError, systemImage: "exclamationmark.triangle.fill")
+                            .micaThemeFont(.caption)
+                            .foregroundStyle(MicaTheme.statusError)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
 
             WorkbenchFormRow("editor.controller_family") {
@@ -23,7 +32,7 @@ extension RouterEditorView {
                     ),
                     selection: $draft.controllerKind
                 ) {
-                    ForEach(ControllerKind.editableCases, id: \.self) { kind in
+                    ForEach(controllerKindOptions, id: \.self) { kind in
                         Label(kind.micaLabel(language: appLanguage), systemImage: kind.editorSymbol)
                             .tag(kind)
                     }
@@ -137,7 +146,7 @@ extension RouterEditorView {
                             prompt: Text(verbatim: MicaStrings.localizedKey("editor.port", language: appLanguage))
                         )
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 76)
+                        .frame(minWidth: 76, maxWidth: 100)
                         .help(MicaStrings.localizedKey("editor.help_port", language: appLanguage))
                         .accessibilityLabel(
                             MicaStrings.localizedKey("editor.acc_port", language: appLanguage)
@@ -156,6 +165,20 @@ extension RouterEditorView {
                         .foregroundStyle(.secondary)
                         .accessibilityElement(children: .combine)
                     }
+
+                    if showsValidation {
+                        if let hostError = draft.hostValidationError(language: appLanguage) {
+                            Label(hostError, systemImage: "exclamationmark.triangle.fill")
+                                .micaThemeFont(.caption)
+                                .foregroundStyle(MicaTheme.statusError)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if let portError = draft.portValidationError(language: appLanguage) {
+                            Label(portError, systemImage: "exclamationmark.triangle.fill")
+                                .micaThemeFont(.caption)
+                                .foregroundStyle(MicaTheme.statusError)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
             }
         } header: {
@@ -171,29 +194,70 @@ extension RouterEditorView {
                     ? "editor.replace_secret"
                     : "editor.controller_secret"
             ) {
-                SecureField("", text: $draft.secret)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
-                .help(MicaStrings.localizedKey("editor.help_secret", language: appLanguage))
-                .accessibilityLabel(
-                    MicaStrings.localizedKey("editor.acc_secret", language: appLanguage)
-                )
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                    HStack(spacing: MicaTheme.Spacing.space2) {
+                        SecureField("", text: $draft.secret)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: MicaTheme.Metrics.formControlMax, alignment: .leading)
+                            .disabled(draft.clearStoredSecret)
+                            .help(MicaStrings.localizedKey("editor.help_secret", language: appLanguage))
+                            .accessibilityLabel(
+                                MicaStrings.localizedKey("editor.acc_secret", language: appLanguage)
+                            )
+
+                        if draft.hasStoredSecret {
+                            Button {
+                                draft.clearStoredSecret.toggle()
+                                if draft.clearStoredSecret {
+                                    draft.secret = ""
+                                }
+                            } label: {
+                                Text(
+                                    MicaStrings.localizedKey(
+                                        draft.clearStoredSecret ? "action.undo" : "editor.remove_secret",
+                                        language: appLanguage
+                                    )
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+
+                    if draft.clearStoredSecret {
+                        Label(
+                            MicaStrings.localizedKey("editor.secret_will_be_removed", language: appLanguage),
+                            systemImage: "trash"
+                        )
+                        .micaThemeFont(.caption)
+                        .foregroundStyle(MicaTheme.statusWarning)
+                    }
+                }
             }
 
             WorkbenchFormRow("editor.tls") {
-                Picker(
-                    MicaStrings.localizedKey("editor.tls", language: appLanguage),
-                    selection: $draft.tlsPolicy
-                ) {
-                    MicaText("editor.tls_system_trust").tag(TLSValidationPolicy.system)
-                    MicaText("editor.tls_self_signed")
-                        .tag(TLSValidationPolicy.allowSelfSigned)
+                VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+                    Picker(
+                        MicaStrings.localizedKey("editor.tls", language: appLanguage),
+                        selection: $draft.tlsPolicy
+                    ) {
+                        MicaText("editor.tls_system_trust").tag(TLSValidationPolicy.system)
+                        MicaText("editor.tls_self_signed")
+                            .tag(TLSValidationPolicy.allowSelfSigned)
+                    }
+                    .pickerStyle(.menu)
+                    .opacity(draft.scheme == .https ? 1 : 0.65)
+                    .help(MicaStrings.localizedKey("editor.help_tls", language: appLanguage))
+                    .accessibilityLabel(
+                        MicaStrings.localizedKey("editor.acc_tls", language: appLanguage)
+                    )
+
+                    if draft.scheme == .http {
+                        Text(MicaStrings.localizedKey("editor.tls_https_only_note", language: appLanguage))
+                            .micaThemeFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .pickerStyle(.menu)
-                .help(MicaStrings.localizedKey("editor.help_tls", language: appLanguage))
-                .accessibilityLabel(
-                    MicaStrings.localizedKey("editor.acc_tls", language: appLanguage)
-                )
             }
         } header: {
             RouterEditorSectionHeader(
@@ -201,7 +265,7 @@ extension RouterEditorView {
                 systemImage: "lock.shield"
             )
         } footer: {
-            if draft.hasStoredSecret {
+            if draft.hasStoredSecret && !draft.clearStoredSecret {
                 Label(
                     MicaStrings.localizedKey(
                         "editor.keychain_notice",
@@ -213,17 +277,14 @@ extension RouterEditorView {
                 .foregroundStyle(.secondary)
             }
         }
+    }
 
-        if showsValidation, let validationError {
-            Section {
-                WorkbenchManagementInlineState(
-                    systemImage: "exclamationmark.triangle.fill",
-                    title: validationError,
-                    tint: MicaTheme.statusError
-                )
-            }
-            .listRowBackground(Color.clear)
+    private var controllerKindOptions: [ControllerKind] {
+        var options = ControllerKind.editableCases
+        if !options.contains(draft.controllerKind) {
+            options.append(draft.controllerKind)
         }
+        return options
     }
 
 }

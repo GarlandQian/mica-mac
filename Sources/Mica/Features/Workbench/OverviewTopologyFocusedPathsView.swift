@@ -21,6 +21,7 @@ struct OverviewTopologyFocusedPathsView: View {
                 Text(verbatim: focus.title)
                     .micaThemeFont(.label, weight: .semibold)
                     .lineLimit(1)
+                    .help(focus.title)
                 Text(verbatim: focus.paths.count.formatted())
                     .micaThemeFont(.dataLabel)
                     .foregroundStyle(MicaTheme.textSecondary)
@@ -110,7 +111,7 @@ struct OverviewTopologyFocusedPathsView: View {
                         stageRow(
                             title: OverviewTopologyProjection.columnTitle(stage.columnID, language: language),
                             value: stage.name,
-                            symbol: stage.columnID == .source ? "network" : stage.columnID == .finalOutbound ? "arrow.up.right" : "arrow.turn.down.right"
+                            symbol: stageSymbol(for: stage.columnID)
                         )
                     }
                     if path.finalOutbound == nil {
@@ -140,6 +141,15 @@ struct OverviewTopologyFocusedPathsView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func stageSymbol(for column: ConnectionTopology.Column.ID) -> String {
+        switch column {
+        case .source: "network"
+        case .rule: "line.3.horizontal.decrease"
+        case .policyHop: "arrow.triangle.branch"
+        case .finalOutbound: "arrow.up.right"
+        }
     }
 
     private var unknownSource: String {

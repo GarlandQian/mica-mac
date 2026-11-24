@@ -725,6 +725,7 @@ extension AppModel {
                         language: presentationLanguage
                     )
                     activeSessionControllerKind = nil
+                    controllerHealth.markVersionFailure(error, language: presentationLanguage)
                     connectionState = .failed(message)
                     setLiveStreamState(.failed(message))
                     controllerSession.state = .failedBeforeFirstSnapshot(message)

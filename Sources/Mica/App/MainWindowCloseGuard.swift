@@ -2,7 +2,17 @@ import AppKit
 import SwiftUI
 
 @MainActor
+private final class WeakCloseGuardBox {
+    weak var value: MainWindowCloseGuard?
+    init(_ value: MainWindowCloseGuard) {
+        self.value = value
+    }
+}
+
+@MainActor
 final class MainWindowCloseGuard: NSObject, NSWindowDelegate {
+    private static var activeGuards: [ObjectIdentifier: WeakCloseGuardBox] = [:]
+
     private weak var window: NSWindow?
     // NSObject message forwarding is nonisolated even though AppKit invokes
     // NSWindowDelegate on the main thread. Keep only this forwarding reference
@@ -14,13 +24,52 @@ final class MainWindowCloseGuard: NSObject, NSWindowDelegate {
     private var allowsNextClose = false
     private var language: AppLanguage = .system
 
+    override init() {
+        super.init()
+        Self.activeGuards[ObjectIdentifier(self)] = WeakCloseGuardBox(self)
+    }
+
+    static func confirmApplicationTermination(for application: NSApplication) -> NSApplication.TerminateReply {
+        activeGuards = activeGuards.filter { $0.value.value != nil }
+        let guards = activeGuards.values.compactMap(\.value)
+
+        if guards.contains(where: \.isSaving) {
+            NSSound.beep()
+            return .terminateCancel
+        }
+
+        guard let dirtyGuard = guards.first(where: { $0.isDirty && $0.window != nil }),
+              let window = dirtyGuard.window else {
+            return .terminateNow
+        }
+
+        if dirtyGuard.isConfirmingDiscard {
+            window.makeKeyAndOrderFront(nil)
+            return .terminateCancel
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        dirtyGuard.presentDiscardAlert(for: window) { shouldDiscard in
+            if shouldDiscard {
+                dirtyGuard.isDirty = false
+                window.isDocumentEdited = false
+            }
+            application.reply(toApplicationShouldTerminate: shouldDiscard)
+        }
+        return .terminateLater
+    }
+
     func attach(to candidate: NSWindow) {
-        guard candidate !== window else { return }
+        guard candidate !== window else {
+            candidate.isDocumentEdited = isDirty
+            return
+        }
 
         detach()
         window = candidate
         originalDelegate = candidate.delegate
         candidate.delegate = self
+        candidate.isDocumentEdited = isDirty
     }
 
     func update(isDirty: Bool, isSaving: Bool, language: AppLanguage) {
@@ -56,29 +105,45 @@ final class MainWindowCloseGuard: NSObject, NSWindowDelegate {
         }
         guard !isConfirmingDiscard else { return false }
 
+        presentDiscardAlert(for: sender) { [weak self, weak sender] shouldDiscard in
+            guard shouldDiscard, let self, let sender else { return }
+            self.isDirty = false
+            sender.isDocumentEdited = false
+            DispatchQueue.main.async { [weak self, weak sender] in
+                guard let self, let sender else { return }
+                self.allowsNextClose = true
+                sender.performClose(nil)
+                self.allowsNextClose = false
+            }
+        }
+        return false
+    }
+
+    private func presentDiscardAlert(
+        for window: NSWindow,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
         isConfirmingDiscard = true
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = MicaStrings.localized("editor.window_close_unsaved_title", language: language)
         alert.informativeText = MicaStrings.localized("editor.window_close_unsaved_message", language: language)
+        alert.addButton(
+            withTitle: MicaStrings.localized("editor.continue_editing", language: language)
+        )
         let discardButton = alert.addButton(
             withTitle: MicaStrings.localized("editor.discard_changes", language: language)
         )
         discardButton.hasDestructiveAction = true
-        alert.addButton(
-            withTitle: MicaStrings.localized("editor.continue_editing", language: language)
-        )
 
-        alert.beginSheetModal(for: sender) { [weak self, weak sender] response in
-            guard let self else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else {
+                completion(false)
+                return
+            }
             self.isConfirmingDiscard = false
-            guard response == .alertFirstButtonReturn, let sender else { return }
-            self.isDirty = false
-            sender.isDocumentEdited = false
-            self.allowsNextClose = true
-            sender.performClose(nil)
+            completion(response == .alertSecondButtonReturn)
         }
-        return false
     }
 
     override nonisolated func responds(to selector: Selector!) -> Bool {
@@ -100,8 +165,12 @@ struct MainWindowCloseGuardAttachment: NSViewRepresentable {
     func makeNSView(context: Context) -> MainWindowCloseGuardHostView {
         let view = MainWindowCloseGuardHostView()
         view.onWindowChange = { [weak closeGuard] window in
-            guard let window else { return }
-            closeGuard?.attach(to: window)
+            guard let closeGuard else { return }
+            if let window {
+                closeGuard.attach(to: window)
+            } else {
+                closeGuard.detach()
+            }
         }
         return view
     }

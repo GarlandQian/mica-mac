@@ -51,6 +51,19 @@ struct WorkbenchConfigurationView: View {
                 titleKey: "configuration.loading_title",
                 detailKey: "configuration.loading_detail"
             )
+        } else if (configStatus.isFailure || sessionFailureDetail != nil),
+                  !hasConfigurationPresentation {
+            WorkbenchStateView(
+                kind: .failed,
+                titleKey: "configuration.failed_title",
+                detailKey: "configuration.failed_detail",
+                message: configStatus.isFailure
+                    ? configStatus.detail(language: language)
+                    : sessionFailureDetail,
+                actionTitleKey: "action.retry",
+                isActionEnabled: appModel.canRefreshSelectedRouter,
+                action: refreshIfAvailable
+            )
         } else if (!appModel.selectedUnifiedCapabilities.snapshot
                     || !hasSupportedConfigurationCapability),
                   !hasConfigurationPresentation {
@@ -58,17 +71,6 @@ struct WorkbenchConfigurationView: View {
                 kind: .unsupported,
                 titleKey: "configuration.unsupported_title",
                 detailKey: "configuration.unsupported_detail"
-            )
-        } else if configStatus.isFailure,
-                  !hasConfigurationPresentation {
-            WorkbenchStateView(
-                kind: .failed,
-                titleKey: "configuration.failed_title",
-                detailKey: "configuration.failed_detail",
-                message: configStatus.detail(language: language),
-                actionTitleKey: "action.retry",
-                isActionEnabled: appModel.canRefreshSelectedRouter,
-                action: refreshIfAvailable
             )
         } else if !hasConfigurationPresentation {
             WorkbenchStateView(
@@ -115,7 +117,7 @@ struct WorkbenchConfigurationView: View {
         Section {
             configurationRow(
                 "overview.config_outbound_mode",
-                isBusy: appModel.changingMode
+                isBusy: appModel.changingMode || appModel.changingSurgeOutbound
             ) {
                 if !modeOptions.isEmpty {
                     Picker(
@@ -129,10 +131,9 @@ struct WorkbenchConfigurationView: View {
                     }
                     // A few modes read best side by side; longer lists stay a menu.
                     .modifier(WorkbenchChoicePickerStyle(isCompact: modeOptions.count <= 4))
-                    .fixedSize()
                     .disabled(configWriteDisabled)
                 } else {
-                    configurationValue(
+                    WorkbenchFormValue(
                         value: reported(reportedMode),
                         placeholder: reportedMode == nil
                     )
@@ -236,6 +237,10 @@ struct WorkbenchConfigurationView: View {
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         )
+        let options = logLevelOptions(current: current)
+        let canonical = options.first {
+            $0.caseInsensitiveCompare(current) == .orderedSame
+        } ?? current
         return configurationRow(
             "overview.config_log_level",
             isBusy: appModel.updatingConfigFieldID == "log-level"
@@ -243,9 +248,10 @@ struct WorkbenchConfigurationView: View {
             Picker(
                 MicaStrings.localizedKey("overview.config_log_level", language: language),
                 selection: Binding(
-                    get: { current },
+                    get: { canonical },
                     set: { next in
-                        guard next != current, let commandScope else { return }
+                        guard next.caseInsensitiveCompare(current) != .orderedSame,
+                              let commandScope else { return }
                         appModel.updateControllerConfig(
                             .logLevel(next),
                             scope: commandScope
@@ -253,7 +259,7 @@ struct WorkbenchConfigurationView: View {
                     }
                 )
             ) {
-                ForEach(logLevelOptions(current: current), id: \.self) { level in
+                ForEach(options, id: \.self) { level in
                     Text(verbatim: logLevelLabel(level)).tag(level)
                 }
             }
@@ -281,7 +287,7 @@ struct WorkbenchConfigurationView: View {
                 isOn: Binding(
                     get: { value },
                     set: { next in
-                        guard let commandScope else { return }
+                        guard next != value, let commandScope else { return }
                         appModel.updateControllerConfig(
                             mutation(next),
                             scope: commandScope
@@ -301,20 +307,6 @@ struct WorkbenchConfigurationView: View {
         WorkbenchFormRow(titleKey, isBusy: isBusy) {
             control()
         }
-    }
-
-    private func configurationValue(
-        value: String,
-        monospaced: Bool = false,
-        placeholder: Bool = false
-    ) -> some View {
-        Text(verbatim: value)
-            .micaThemeFont(monospaced ? .dataBody : .body)
-            .foregroundStyle(placeholder ? .secondary : .primary)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var modeOptions: [String] {
@@ -371,6 +363,15 @@ struct WorkbenchConfigurationView: View {
 
     private var configStatus: ControllerEndpointStatus {
         appModel.controllerHealth.status(for: .configs)
+    }
+
+    private var sessionFailureDetail: String? {
+        switch appModel.controllerSessionPresentation.state {
+        case .failedBeforeFirstSnapshot(let message), .failed(let message):
+            message.managementNonEmpty
+        case .idle, .connecting, .live, .staleReconnecting, .partial, .stopped:
+            nil
+        }
     }
 
     private var hasConfigurationPresentation: Bool {
@@ -439,8 +440,9 @@ struct WorkbenchConfigurationView: View {
 
     private func logLevelOptions(current: String) -> [String] {
         var options = ["silent", "error", "warning", "info", "debug"]
-        if current.managementNonEmpty != nil, !options.contains(current) {
-            options.insert(current, at: 0)
+        if let normalized = current.managementNonEmpty,
+           !options.contains(where: { $0.caseInsensitiveCompare(normalized) == .orderedSame }) {
+            options.insert(normalized, at: 0)
         }
         return options
     }
@@ -512,8 +514,8 @@ private struct WorkbenchPortField: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: MicaTheme.Spacing.space2) {
+        VStack(alignment: .trailing, spacing: 2) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
                 TextField(
                     "",
                     text: $text
@@ -524,6 +526,26 @@ private struct WorkbenchPortField: View {
                 .frame(width: 104)
                 .focused($isFocused)
                 .onSubmit(commit)
+                .onExitCommand {
+                    text = String(value)
+                }
+                .accessibilityLabel(MicaStrings.localizedKey(titleKey, language: language))
+
+                if isDirty {
+                    Button {
+                        text = String(value)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: MicaTheme.Metrics.iconControlSize, height: MicaTheme.Metrics.iconControlSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(disabled)
+                    .help(MicaStrings.localizedKey("action.revert_port", language: language))
+                    .accessibilityLabel(
+                        MicaStrings.localizedKey("action.revert_port", language: language)
+                    )
+                }
 
                 Button(action: commit) {
                     Image(systemName: "checkmark")
@@ -531,7 +553,7 @@ private struct WorkbenchPortField: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .disabled(disabled || parsedValue == nil || parsedValue == value)
+                .disabled(disabled || parsedValue == nil || !isDirty)
                 .help(MicaStrings.localizedKey("action.apply_port", language: language))
                 .accessibilityLabel(
                     MicaStrings.localizedKey("action.apply_port", language: language)
@@ -539,28 +561,33 @@ private struct WorkbenchPortField: View {
             }
 
             if showsValidationError {
-                Text(MicaStrings.localizedKey("editor.validation_port_range", language: language))
+                Text(MicaStrings.localizedKey("configuration.validation_port_range", language: language))
                     .micaThemeFont(.caption)
                     .foregroundStyle(MicaTheme.statusError)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .onChange(of: value) { _, next in
-            if !isFocused { text = String(next) }
-        }
-        .onChange(of: isFocused) { _, focused in
-            if !focused { text = String(value) }
+            text = String(next)
         }
         .disabled(disabled)
     }
 
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isDirty: Bool {
+        trimmedText != String(value)
+    }
+
     private var parsedValue: Int? {
-        guard let number = Int(text), (0...65_535).contains(number) else { return nil }
+        guard let number = Int(trimmedText), (0...65_535).contains(number) else { return nil }
         return number
     }
 
     private var showsValidationError: Bool {
-        isFocused && text != String(value) && parsedValue == nil
+        isDirty && parsedValue == nil
     }
 
     private func commit() {
@@ -575,10 +602,15 @@ struct WorkbenchChoicePickerStyle: ViewModifier {
 
     func body(content: Content) -> some View {
         if isCompact {
-            content
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+            ViewThatFits(in: .horizontal) {
+                content
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize(horizontal: true, vertical: false)
+
+                content
+                    .pickerStyle(.menu)
+            }
         } else {
             content.pickerStyle(.menu)
         }

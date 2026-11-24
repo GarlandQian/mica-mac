@@ -52,8 +52,6 @@ struct OverviewPreferencesBar: View {
             preferencesLabel
             metricControls
             MicaHairlineSeparator(axis: .vertical).frame(height: 26)
-            timelinePicker
-            MicaHairlineSeparator(axis: .vertical).frame(height: 26)
             optionalModuleControls
             Spacer(minLength: MicaTheme.Spacing.space2)
             resetButton
@@ -72,8 +70,6 @@ struct OverviewPreferencesBar: View {
             ScrollView(.horizontal) {
                 HStack(spacing: MicaTheme.Spacing.space4) {
                     metricControls
-                    MicaHairlineSeparator(axis: .vertical).frame(height: 26)
-                    timelinePicker
                     MicaHairlineSeparator(axis: .vertical).frame(height: 26)
                     optionalModuleControls
                 }
@@ -121,28 +117,6 @@ struct OverviewPreferencesBar: View {
                 .fixedSize()
             }
         }
-    }
-
-    private var timelinePicker: some View {
-        Picker(
-            MicaStrings.localizedKey(
-                "overview.timeline_window",
-                language: language
-            ),
-            selection: Binding(
-                get: { store.preferences.timelineWindow },
-                set: { window in
-                    store.setTimelineWindow(window)
-                }
-            )
-        ) {
-            ForEach(OverviewTimelineWindow.allCases) { window in
-                Text(MicaStrings.localizedKey(window.titleKey, language: language))
-                    .tag(window)
-            }
-        }
-        .pickerStyle(.segmented)
-        .fixedSize()
     }
 
     private var optionalModuleControls: some View {

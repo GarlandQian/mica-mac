@@ -37,10 +37,13 @@ final class WorkbenchLogsModel {
     @ObservationIgnored private var cadence = WorkbenchLogFollowCadence()
     @ObservationIgnored private var latestCatalog: LogsCatalogSnapshot?
     @ObservationIgnored private var latestRequest: WorkbenchLogsPresentationRequest?
+    @ObservationIgnored var resolverToken: UUID?
     @ObservationIgnored private(set) var isActive = false
     @ObservationIgnored private var needsInitialFollow = false
     @ObservationIgnored private var hasDeferredPresentation = false
     @ObservationIgnored private var countedSourceRevision: UInt64?
+    @ObservationIgnored private var visibleIDs: [String] = []
+    @ObservationIgnored private var visibleIndexByID: [String: Int] = [:]
 
     var accessibilityWindow: WorkbenchAccessibilityWindow {
         WorkbenchAccessibilityWindow.resolve(
@@ -70,6 +73,8 @@ final class WorkbenchLogsModel {
             severityCounts = WorkbenchLogSeverityCounts()
             newestRowIDsBySeverity = [:]
             countedSourceRevision = nil
+            visibleIDs = []
+            visibleIndexByID = [:]
             rowRevision &+= 1
         }
         self.scope = scope
@@ -141,12 +146,16 @@ final class WorkbenchLogsModel {
     }
 
     func select(_ id: String?) {
-        guard id == nil || rows.contains(where: { $0.id == id }) else { return }
+        guard id == nil || visibleIndexByID[id ?? ""] != nil else { return }
         selectedRowID = id
         if id != nil {
             setFollowing(false)
         }
         reconcileAccessibilityWindow(revealing: id)
+    }
+
+    func visibleIndex(id: String) -> Int? {
+        visibleIndexByID[id]
     }
 
     func setFollowing(_ follows: Bool, now: Date = Date()) {
@@ -184,13 +193,18 @@ final class WorkbenchLogsModel {
     }
 
     func consumeFollow(_ request: WorkbenchLogsFollowRequest, now: Date = Date()) {
-        guard isActive, scope == request.scope, followRequest == request,
-              !interaction.isUserScrolling,
-              let id = cadence.consume(
-                isEnabled: followsNewest,
-                hasSelection: selectedRowID != nil,
-                now: now
-              ) else { return }
+        guard isActive, scope == request.scope, followRequest == request else { return }
+        guard !interaction.isUserScrolling else {
+            cancelFollow()
+            return
+        }
+        guard let id = cadence.consume(
+            isEnabled: followsNewest,
+            hasSelection: selectedRowID != nil,
+            now: now
+        ) else {
+            return
+        }
         followRequest = nil
         scrollRequest = WorkbenchDataScrollRequest(id: id)
     }
@@ -204,8 +218,8 @@ final class WorkbenchLogsModel {
             setFollowing(false)
             accessibilityCursor.move(
                 to: lowerBound,
-                totalCount: rows.count,
-                idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
+                totalCount: visibleIDs.count,
+                idAt: { self.visibleIDs.indices.contains($0) ? self.visibleIDs[$0] : nil }
             )
         case .setSort, .performNamedAction:
             break
@@ -216,6 +230,7 @@ final class WorkbenchLogsModel {
         guard isActive, let catalog = latestCatalog, let request = latestRequest else { return }
         hasDeferredPresentation = false
         let previousRows = cache.allRows
+        let previousCount = rows.count
         let previousNewestID = rows.last?.id
         let changed = cache.project(
             entries: catalog.entries,
@@ -228,6 +243,10 @@ final class WorkbenchLogsModel {
         if changed {
             sourceCount = cache.allRows.count
             rows = cache.visibleRows
+            visibleIDs = rows.map(\.id)
+            visibleIndexByID = Dictionary(
+                uniqueKeysWithValues: visibleIDs.enumerated().map { ($0.element, $0.offset) }
+            )
             rowRevision &+= 1
             newestRowIDsBySeverity = WorkbenchLogSeverityCounts.newestRowIDs(in: rows)
         }
@@ -247,13 +266,13 @@ final class WorkbenchLogsModel {
             reconcileAccessibilityWindow(revealing: needsInitialFollow ? selectedRowID : nil)
         case .prefixDelta(let droppedCount):
             accessibilityCursor.applyPrefixDelta(
-                totalCount: rows.count,
+                totalCount: visibleIDs.count,
                 droppedCount: droppedCount,
                 followsNewest: followsNewest,
-                idAt: { rows.indices.contains($0) ? rows[$0].id : nil }
+                idAt: { self.visibleIDs.indices.contains($0) ? self.visibleIDs[$0] : nil }
             )
         }
-        if previousNewestID != rows.last?.id || needsInitialFollow {
+        if previousNewestID != rows.last?.id || (changed && previousCount != rows.count) || needsInitialFollow {
             requestFollow(now: now)
         }
         needsInitialFollow = false
@@ -289,9 +308,11 @@ final class WorkbenchLogsModel {
 
     private func reconcileAccessibilityWindow(revealing id: String? = nil) {
         accessibilityCursor.reconcile(
-            orderedIDs: rows.map(\.id),
+            totalCount: visibleIDs.count,
             revealing: id,
-            followsNewest: followsNewest
+            followsNewest: followsNewest,
+            indexOf: { visibleIndexByID[$0] },
+            idAt: { visibleIDs.indices.contains($0) ? visibleIDs[$0] : nil }
         )
     }
 }

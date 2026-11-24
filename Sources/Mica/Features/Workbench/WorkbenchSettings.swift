@@ -1,18 +1,24 @@
 import SwiftUI
 
 private enum MicaSettingsMetrics {
-    static let readingWidth: CGFloat = 820
-    static let controlColumnWidth: CGFloat = 196
+    static let readingWidth: CGFloat = 760
+    static let controlColumnWidth: CGFloat = 204
+    static let compactBreakpoint: CGFloat = 480
 }
 
 private struct WorkbenchPreferenceMenu<Option: Hashable & Identifiable>: View {
     @Environment(\.micaAppLanguage) private var language
+    @State private var isHovered = false
 
     let labelKey: String
     @Binding var selection: Option
     let options: [Option]
     let optionTitleKey: (Option) -> String
     let optionSystemImage: (Option) -> String
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+    }
 
     var body: some View {
         Menu {
@@ -33,27 +39,38 @@ private struct WorkbenchPreferenceMenu<Option: Hashable & Identifiable>: View {
                 Image(systemName: optionSystemImage(selection))
                     .symbolRenderingMode(.monochrome)
                     .foregroundStyle(MicaTheme.accent)
-                    .frame(width: 18)
+                    .frame(width: 16)
                     .accessibilityHidden(true)
 
                 Text(verbatim: localized(optionTitleKey(selection)))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(MicaTheme.textPrimary)
                     .lineLimit(1)
 
                 Spacer(minLength: MicaTheme.Spacing.space1)
 
                 Image(systemName: "chevron.down")
                     .micaThemeFont(.caption, weight: .semibold)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(MicaTheme.textSecondary)
                     .accessibilityHidden(true)
             }
             .micaThemeFont(.label)
+            .padding(.horizontal, 10)
             .frame(width: MicaSettingsMetrics.controlColumnWidth, alignment: .leading)
             .frame(minHeight: MicaTheme.Metrics.controlMinHeight, alignment: .leading)
-            .contentShape(Rectangle())
+            .background(isHovered ? MicaTheme.surfaceHover : MicaTheme.surface, in: shape)
+            .overlay {
+                shape.strokeBorder(
+                    isHovered ? MicaTheme.surfaceBorderStrong : MicaTheme.surfaceBorder,
+                    lineWidth: 1
+                )
+            }
+            .contentShape(shape)
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
+        .onHover { isHovered = $0 }
+        .micaStateChangeAnimation(MicaTheme.Motion.press, value: isHovered)
         .fixedSize(horizontal: true, vertical: false)
         .accessibilityLabel(localized(labelKey))
         .accessibilityValue(localized(optionTitleKey(selection)))
@@ -153,9 +170,9 @@ private struct WorkbenchPreferenceForm: View {
             preferenceForm(horizontalMargin: horizontalMargin)
                 .environment(
                     \.workbenchManagementWidthMode,
-                    WorkbenchManagementWidthMode(
-                        availableWidth: availableContentWidth
-                    )
+                    availableContentWidth < MicaSettingsMetrics.compactBreakpoint
+                        ? .compact
+                        : .regular
                 )
         }
     }
@@ -195,6 +212,7 @@ private struct WorkbenchPreferenceForm: View {
             alignment: .topLeading
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .micaObserveScrollPerformance()
     }
 
     private func sectionHeader(_ titleKey: String, systemImage: String) -> some View {
@@ -266,7 +284,7 @@ private struct WorkbenchPreferenceForm: View {
     private var languagePicker: some View {
         WorkbenchPreferenceMenu(
             labelKey: "settings.language",
-            selection: languageBinding,
+            selection: $preferences.language,
             options: AppLanguage.allCases,
             optionTitleKey: \.titleKey,
             optionSystemImage: languageSystemImage
@@ -279,7 +297,7 @@ private struct WorkbenchPreferenceForm: View {
     private var appearancePicker: some View {
         WorkbenchPreferenceTiles(
             labelKey: "settings.appearance",
-            selection: appearanceBinding,
+            selection: $preferences.appearance,
             options: AppAppearance.allCases,
             optionTitleKey: \.titleKey
         ) { option in
@@ -291,7 +309,7 @@ private struct WorkbenchPreferenceForm: View {
     private var fontScalePicker: some View {
         WorkbenchPreferenceTiles(
             labelKey: "settings.font_scale",
-            selection: fontScaleBinding,
+            selection: $preferences.fontScale,
             options: AppFontScale.allCases,
             optionTitleKey: \.titleKey
         ) { option in
@@ -307,7 +325,7 @@ private struct WorkbenchPreferenceForm: View {
     private var globalGroupVisibilityPicker: some View {
         WorkbenchPreferenceMenu(
             labelKey: "settings.global_group_visibility",
-            selection: globalGroupVisibilityBinding,
+            selection: $preferences.globalGroupVisibility,
             options: GlobalGroupVisibility.allCases,
             optionTitleKey: \.titleKey,
             optionSystemImage: globalGroupVisibilitySystemImage
@@ -335,34 +353,6 @@ private struct WorkbenchPreferenceForm: View {
         case .alwaysShow:
             "eye"
         }
-    }
-
-    private var languageBinding: Binding<AppLanguage> {
-        Binding(
-            get: { preferences.language },
-            set: { preferences.language = $0 }
-        )
-    }
-
-    private var appearanceBinding: Binding<AppAppearance> {
-        Binding(
-            get: { preferences.appearance },
-            set: { preferences.appearance = $0 }
-        )
-    }
-
-    private var fontScaleBinding: Binding<AppFontScale> {
-        Binding(
-            get: { preferences.fontScale },
-            set: { preferences.fontScale = $0 }
-        )
-    }
-
-    private var globalGroupVisibilityBinding: Binding<GlobalGroupVisibility> {
-        Binding(
-            get: { preferences.globalGroupVisibility },
-            set: { preferences.globalGroupVisibility = $0 }
-        )
     }
 
     private func localized(_ key: String) -> String {
@@ -393,15 +383,14 @@ private struct WorkbenchPreferenceTiles<Option: Hashable & Identifiable, Preview
                 } label: {
                     VStack(spacing: MicaTheme.Spacing.space1 + 2) {
                         preview(option)
-                            .frame(width: 64, height: 42)
+                            .frame(width: 68, height: 44)
                             .clipShape(shape)
                             .overlay {
                                 shape.strokeBorder(
-                                    isSelected ? MicaTheme.accent : MicaTheme.separator,
+                                    isSelected ? MicaTheme.accent : MicaTheme.surfaceBorderStrong,
                                     lineWidth: isSelected ? 2 : 1
                                 )
                             }
-                            .padding(isSelected ? 0 : 1)
                         Text(verbatim: title)
                             .micaThemeFont(.caption, weight: isSelected ? .semibold : .regular)
                             .foregroundStyle(isSelected ? MicaTheme.textPrimary : MicaTheme.textSecondary)
@@ -437,7 +426,9 @@ private struct WorkbenchAppearancePreview: View {
                 .overlay {
                     miniature(dark: true)
                         .mask(alignment: .trailing) {
-                            Rectangle().frame(width: 32)
+                            GeometryReader { proxy in
+                                Rectangle().frame(width: proxy.size.width / 2)
+                            }
                         }
                 }
         }

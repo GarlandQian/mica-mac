@@ -141,8 +141,15 @@ struct WorkbenchDiagnosticsSnapshot: Equatable {
 
 enum WorkbenchDiagnosticsProjection {
     static func snapshot(_ input: WorkbenchDiagnosticsInput) -> WorkbenchDiagnosticsSnapshot {
-        let isChecking = input.sessionState == .connecting
-            || input.health.summary == .checking && input.lastSuccessAt == nil
+        let isChecking: Bool
+        switch input.sessionState {
+        case .connecting:
+            isChecking = true
+        case .failedBeforeFirstSnapshot, .failed, .stopped:
+            isChecking = false
+        case .idle, .live, .staleReconnecting, .partial:
+            isChecking = input.health.summary == .checking && input.lastSuccessAt == nil
+        }
         let controllerAccessIssue = isChecking ? nil : controllerAccessIssue(input)
         let suppressDomainIssues = controllerAccessIssue != nil
 
@@ -534,7 +541,36 @@ enum WorkbenchDiagnosticsProjection {
     ) -> [WorkbenchDiagnosticsArea] {
         guard input.lastSuccessAt != nil else { return [] }
 
+        switch input.sessionState {
+        case .failedBeforeFirstSnapshot, .failed, .stopped:
+            return []
+        case .idle, .connecting, .live, .staleReconnecting, .partial:
+            break
+        }
+
         let issueIDs = Set(issues.map(\.id))
+        guard !issueIDs.contains("controller-access"),
+              !issueIDs.contains("adapter") else {
+            return []
+        }
+
+        let rulesHealthy: Bool = {
+            if case .unavailable = input.rulesState { return false }
+            return !input.health.status(for: .rules).isFailure
+        }()
+        let providersHealthy: Bool = {
+            if case .unavailable = input.providersState { return false }
+            return !input.health.status(for: .providers).isFailure
+        }()
+        let telemetryHealthy: Bool = {
+            switch input.liveStreamState {
+            case .partial, .failed:
+                return false
+            case .idle, .connecting, .live, .nearLive, .unavailable, .stopped:
+                return true
+            }
+        }()
+
         var areas: [WorkbenchDiagnosticsArea] = []
         func append(
             _ destination: WorkbenchDestination,
@@ -551,20 +587,37 @@ enum WorkbenchDiagnosticsProjection {
             )
         }
 
-        append(.proxies, when: input.capabilities.policyGroups, excluding: ["endpoint-proxies"])
+        append(
+            .proxies,
+            when: input.capabilities.policyGroups && !input.health.status(for: .proxies).isFailure,
+            excluding: ["endpoint-proxies"]
+        )
         append(
             .connections,
-            when: input.capabilities.connections || input.capabilities.activeRequests,
+            when: (input.capabilities.connections || input.capabilities.activeRequests)
+                && !input.health.status(for: .connections).isFailure,
             excluding: ["endpoint-connections"]
         )
-        append(.rules, when: input.capabilities.rules, excluding: ["endpoint-rules", "rules-data"])
-        append(.sources, when: input.capabilities.providers, excluding: ["endpoint-providers", "sources-data"])
+        append(
+            .rules,
+            when: input.capabilities.rules && rulesHealthy,
+            excluding: ["endpoint-rules", "rules-data"]
+        )
+        append(
+            .sources,
+            when: input.capabilities.providers && providersHealthy,
+            excluding: ["endpoint-providers", "sources-data"]
+        )
         append(
             .overview,
-            when: input.capabilities.traffic || input.capabilities.logs,
+            when: (input.capabilities.traffic || input.capabilities.logs) && telemetryHealthy,
             excluding: ["live-telemetry"]
         )
-        append(.configuration, when: input.capabilities.snapshot, excluding: ["endpoint-configs"])
+        append(
+            .configuration,
+            when: input.capabilities.snapshot && !input.health.status(for: .configs).isFailure,
+            excluding: ["endpoint-configs"]
+        )
         return areas
     }
 

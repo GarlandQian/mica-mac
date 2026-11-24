@@ -132,9 +132,9 @@ final class RulesWorkspaceModel {
         } else {
             update = .visibleOnly
         }
-        let previousRows = allRows
+        let previousVisibleRows = rows
         let previousSelection = selectedRowID
-        let changed = cache.project(
+        var changed = cache.project(
             update: update,
             rules: input.rules,
             connections: input.connections,
@@ -147,6 +147,35 @@ final class RulesWorkspaceModel {
             language: input.language,
             isActive: isActive
         )
+        if !allRows.isEmpty {
+            var reconciledFacets = facets
+            if let type = reconciledFacets.type,
+               !facetOptions.types.contains(where: { $0.value == type }) {
+                reconciledFacets.type = nil
+            }
+            if let policy = reconciledFacets.policy,
+               !facetOptions.policies.contains(where: { $0.value == policy }) {
+                reconciledFacets.policy = nil
+            }
+            if reconciledFacets != facets {
+                facets = reconciledFacets
+                if cache.project(
+                    update: .visibleOnly,
+                    rules: input.rules,
+                    connections: input.connections,
+                    controllerID: input.identity.controllerID,
+                    generation: input.identity.generation,
+                    structureRevision: input.structureRevision,
+                    query: input.query,
+                    facets: reconciledFacets,
+                    sortOrder: sortOrder,
+                    language: input.language,
+                    isActive: isActive
+                ) {
+                    changed = true
+                }
+            }
+        }
         previousRules = input.rules
         previousLanguage = input.language
         previousStructureRevision = input.structureRevision
@@ -162,9 +191,15 @@ final class RulesWorkspaceModel {
         if reconcileSelection {
             selectedRowID = WorkbenchDataSelection.reconciled(
                 previousSelection,
-                previousRows: previousRows,
+                previousRows: previousVisibleRows,
                 nextVisibleRows: rows,
-                identityFamily: \.identityFamily
+                identityFamily: \.identityFamily,
+                matchesPrevious: {
+                    $0.identityFamily == $1.identityFamily
+                        && $0.rule.type == $1.rule.type
+                        && $0.rule.payload == $1.rule.payload
+                        && $0.rule.proxy == $1.rule.proxy
+                }
             )
         }
         if changed {
@@ -174,6 +209,8 @@ final class RulesWorkspaceModel {
     }
 
     func row(id: String?) -> WorkbenchRuleRow? { cache.row(id: id) }
+
+    func visibleIndex(id: String) -> Int? { visiblePositions[id] }
 
     func inspectorRow(type: String, payload: String) -> WorkbenchRuleRow? {
         if let selectedRow,

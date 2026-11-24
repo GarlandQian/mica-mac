@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.34.0 - 2026-11-24
+
+### Workbench
+
+- Redesigned the native Workbench frontend UI across Overview and connection topology, Proxies (list and grid modes, persisted node sort order, grouped per-URL health-test details), Connections, Rules, Sources, Logs, Diagnostics, Controllers, Configuration, Actions, Settings, Menu Bar, and the Router Editor.
+- Refined narrow-width responsive layouts with `ViewThatFits` fallbacks for connection decision action bars and command bars so summary titles and trailing controls stay readable without vertical character wrapping or clipping.
+- Unified `.micaThemeFont` typography roles across Workbench views, added 45 English and Simplified Chinese localization entries, and removed unused legacy layout files (`MicaLayouts.swift`, `ControllerBayPresentation.swift`).
+
+### Fixes
+
+- Fixed `Int64` overflow crashes on large numeric proxy metadata in searchable leaf projection and hardened source subscription byte-count and expiration timestamp parsing.
+- Fixed deferred connection metric re-sorting at scroll end (`ConnectionsWorkspaceModel.finishDeferredPresentation`), and fixed `ProxyScrollInteractionTracker.reset` clearing aggregate `isScrolling`.
+- Moved source and log catalog observer resolver tokens off SwiftUI `@State` onto reference models (`WorkbenchSourcesModel`, `WorkbenchLogsModel`) to prevent stale callbacks from restoring old controller generations.
+- Stopped over-masking non-secret VLESS Reality `short-id`, restored Overview narrow-width topology fitting and cross-window timeline synchronization, and restored `AppModel` language synchronization from Settings when the main window is closed.
+- Added explicit stored-secret removal (`clearStoredSecret`) with save-failure rollback in the Router Editor, and fixed Surge `dns-flush` and pause gating, `autoDetect` Diagnostics state handling, and controller/editor cancellation and field validation bugs.
+
+### Verification
+
+- Verified release compilation, the complete offline unit and UI test suite, source and localization contracts (`verify-real-controller-source.mjs`, `normalize-localizations.mjs`), and Light/Dark visual rendering across desktop and compact window sizes.
+
 ## 0.33.0 - 2026-10-02
 
 ### Workbench

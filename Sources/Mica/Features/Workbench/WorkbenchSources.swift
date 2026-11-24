@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MicaCore
 import SwiftUI
@@ -8,13 +9,14 @@ struct WorkbenchSourcesView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.micaAppFontScale) private var fontScale
     @Binding var searchText: String
 
     @State private var model = WorkbenchSourcesModel()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 960,
-        compactMinimum: 520
+        compactMinimum: 560
     )
 
     var body: some View {
@@ -26,12 +28,20 @@ struct WorkbenchSourcesView: View {
             commands: { commandBar },
             supplementary: {
                 if let progress = appModel.providerUpdateAllProgress {
-                    WorkbenchProviderUpdateAllProgressView(progress: progress)
+                    WorkbenchProviderUpdateAllProgressView(
+                        progress: progress,
+                        onDismiss: {
+                            appModel.dismissProviderUpdateAllProgress()
+                        }
+                    )
                 }
 
                 if let selectedRow = model.selectedRow {
                     WorkbenchSourceFocusRail(
-                        projection: WorkbenchSourceFocusProjection(row: selectedRow),
+                        projection: WorkbenchSourceFocusProjection(
+                            row: selectedRow,
+                            language: language
+                        ),
                         supportsUpdate: selectedRow.source.updatable,
                         supportsHealthCheck: selectedRow.source.supportsHealthCheck,
                         canUpdate: canUpdate(selectedRow),
@@ -87,7 +97,9 @@ struct WorkbenchSourcesView: View {
             WorkbenchCommandSummary(
                 symbolName: "shippingbox",
                 titleKey: "dashboard.tab_providers",
-                value: String(model.rows.count),
+                value: model.rows.count == model.sourceCount
+                    ? model.sourceCount.formatted()
+                    : "\(model.rows.count.formatted()) / \(model.sourceCount.formatted())",
                 detail: nil
             )
         } controls: {
@@ -172,11 +184,29 @@ struct WorkbenchSourcesView: View {
                 detailKey: "traffic.sources_empty_message"
             )
         case .filterEmpty:
-            WorkbenchStateView(
-                kind: .filterEmpty,
-                titleKey: "dashboard.no_matching_sources",
-                detailKey: "traffic.empty_filtered"
-            )
+            if model.kind != .all || searchText.dataNonEmpty != nil {
+                WorkbenchStateView(
+                    kind: .filterEmpty,
+                    titleKey: "dashboard.no_matching_sources",
+                    detailKey: "traffic.empty_filtered",
+                    actionTitleKey: model.kind != .all
+                        ? "traffic.rule_facets_clear"
+                        : "action.clear_search",
+                    actionSystemImage: model.kind != .all
+                        ? "line.3.horizontal.decrease.circle"
+                        : "xmark.circle",
+                    action: {
+                        model.setKind(.all)
+                        searchText = ""
+                    }
+                )
+            } else {
+                WorkbenchStateView(
+                    kind: .filterEmpty,
+                    titleKey: "dashboard.no_matching_sources",
+                    detailKey: "traffic.empty_filtered"
+                )
+            }
         case .failed(let message):
             WorkbenchStateView(
                 kind: .failed,
@@ -212,7 +242,7 @@ struct WorkbenchSourcesView: View {
             generation: generation,
             restorationID: model.restoredScrollAnchorID,
             interaction: model.interaction,
-            rowIndex: { id in model.rows.firstIndex { $0.id == id } },
+            rowIndex: { id in model.visibleIndex(id: id) },
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onInteractionEnded: {
                 model.finishDeferredPresentation(
@@ -237,7 +267,7 @@ struct WorkbenchSourcesView: View {
                         ) { row in
                             sourceIdentity(row)
                         }
-                        .width(min: 190, ideal: 280)
+                        .width(min: 180, ideal: 260)
 
                         TableColumn(
                             MicaStrings.localizedKey("traffic.source_section_configuration", language: language),
@@ -245,7 +275,7 @@ struct WorkbenchSourcesView: View {
                         ) { row in
                             sourceConfiguration(row)
                         }
-                        .width(min: 190, ideal: 270)
+                        .width(min: 180, ideal: 250)
 
                         TableColumn(
                             MicaStrings.localizedKey("traffic.provider_items", language: language),
@@ -253,16 +283,19 @@ struct WorkbenchSourcesView: View {
                         ) { row in
                             WorkbenchDataMetric(value: row.itemCountText)
                         }
-                        .width(min: 70, ideal: 84)
+                        .width(min: 68, ideal: 84)
 
-                        TableColumn(MicaStrings.localizedKey("traffic.updated_at", language: language)) { row in
+                        TableColumn(
+                            MicaStrings.localizedKey("traffic.updated_at", language: language),
+                            value: \.updatedAtSortKey
+                        ) { row in
                             WorkbenchDataText(
-                                value: row.updatedText,
+                                value: row.displayUpdatedText,
                                 role: .dataCaption,
-                                tone: .secondary
+                                tone: row.source.updatedAt?.dataNonEmpty == nil ? .tertiary : .secondary
                             )
                         }
-                        .width(min: 140, ideal: 180)
+                        .width(min: 136, ideal: 176)
 
                         TableColumn(MicaStrings.localizedKey("traffic.source_section_status", language: language)) { row in
                             sourceStatus(row)
@@ -276,12 +309,12 @@ struct WorkbenchSourcesView: View {
                         ) { row in
                             sourceIdentity(row, includesConfiguration: true)
                         }
-                        .width(min: 270, ideal: 420)
+                        .width(min: 260, ideal: 400)
 
                         TableColumn(MicaStrings.localizedKey("traffic.source_section_status", language: language)) { row in
                             sourceCompactSummary(row)
                         }
-                        .width(min: 210, ideal: 280)
+                        .width(min: 220, ideal: 280)
 
                     case .stacked:
                         TableColumn(
@@ -294,11 +327,17 @@ struct WorkbenchSourcesView: View {
 
                     }
                 }
+                .contextMenu(forSelectionType: WorkbenchSourceRow.ID.self) { ids in
+                    if let id = ids.first, let row = model.row(id: id) {
+                        sourceContextMenu(for: row)
+                    }
+                }
                 .micaWorkbenchTable(
                     accessibilityLabel: MicaStrings.localizedKey(
                         "dashboard.tab_providers",
                         language: language
-                    )
+                    ),
+                    lines: mode == .full ? 2 : 2
                 )
                 .accessibilityHidden(true)
                 .overlay {
@@ -345,8 +384,8 @@ struct WorkbenchSourcesView: View {
             }
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
             alignment: .leading
         )
     }
@@ -357,8 +396,8 @@ struct WorkbenchSourcesView: View {
             sourceHealthState(row, showsTitle: true)
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
             alignment: .leading
         )
         .accessibilityElement(children: .ignore)
@@ -373,14 +412,17 @@ struct WorkbenchSourcesView: View {
             }
 
             WorkbenchDataText(
-                value: row.compactStatusText,
+                value: WorkbenchDataFormat.joined([
+                    row.itemCountText,
+                    row.displayUpdatedText,
+                ]) ?? row.displayUpdatedText,
                 role: .dataCaption,
                 tone: .secondary
             )
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
             alignment: .leading
         )
         .accessibilityElement(children: .ignore)
@@ -401,7 +443,10 @@ struct WorkbenchSourcesView: View {
                 }
 
                 WorkbenchDataText(
-                    value: row.stackedSummaryText,
+                    value: WorkbenchDataFormat.joined([
+                        row.itemCountText,
+                        row.displayUpdatedText,
+                    ]) ?? row.displayUpdatedText,
                     role: .dataCaption,
                     tone: .secondary,
                     alignment: .trailing
@@ -409,8 +454,8 @@ struct WorkbenchSourcesView: View {
             }
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
+            maxHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
@@ -442,7 +487,7 @@ struct WorkbenchSourcesView: View {
         HStack(spacing: MicaTheme.Spacing.space1) {
             Image(systemName: "waveform.path.ecg")
                 .micaThemeFont(.caption)
-                .foregroundStyle(MicaTheme.textSecondary)
+                .foregroundStyle(MicaTheme.textSecondary.opacity(row.source.supportsHealthCheck ? 1 : 0.45))
                 .frame(width: 12)
                 .accessibilityHidden(true)
 
@@ -450,19 +495,58 @@ struct WorkbenchSourcesView: View {
                 Text(
                     verbatim: row.source.supportsHealthCheck
                         ? row.healthCheckAvailabilityText
-                        : MicaStrings.localizedKey(
-                            "overview.config_not_reported",
-                            language: language
-                        )
+                        : "—"
                 )
                 .micaThemeFont(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(row.source.supportsHealthCheck ? .secondary : .tertiary)
                 .lineLimit(1)
             }
         }
         .help(row.healthCheckAvailabilityText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.healthCheckAvailabilityText)
+    }
+
+    @ViewBuilder
+    private func sourceContextMenu(for row: WorkbenchSourceRow) -> some View {
+        let commandScope = model.scope.flatMap {
+            LiveCommandScope(controllerID: $0.controllerID, generation: $0.generation)
+        }
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(row.source.name, forType: .string)
+        } label: {
+            Label(MicaStrings.localizedKey("action.copy_name", language: language), systemImage: "doc.on.doc")
+        }
+        if let testURL = row.source.testURL?.dataNonEmpty {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(testURL, forType: .string)
+            } label: {
+                Label(MicaStrings.localizedKey("action.copy_test_url", language: language), systemImage: "doc.on.doc")
+            }
+        }
+        if row.source.updatable || row.source.supportsHealthCheck {
+            Divider()
+        }
+        if row.source.updatable {
+            Button {
+                guard let commandScope else { return }
+                appModel.updateProxyProvider(row.source, scope: commandScope)
+            } label: {
+                Label(MicaStrings.localizedKey("action.provider_update", language: language), systemImage: "arrow.clockwise")
+            }
+            .disabled(!canUpdate(row) || appModel.updatingProviderName == row.source.id)
+        }
+        if row.source.supportsHealthCheck {
+            Button {
+                guard let commandScope else { return }
+                appModel.healthCheckProxyProvider(row.source, scope: commandScope)
+            } label: {
+                Label(MicaStrings.localizedKey("action.provider_health_check", language: language), systemImage: "waveform.path.ecg")
+            }
+            .disabled(!canHealthCheck(row) || appModel.checkingProviderName == row.source.id)
+        }
     }
 
     private var selectionBinding: Binding<String?> {

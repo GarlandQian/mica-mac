@@ -573,8 +573,8 @@ struct WorkbenchProxyWorkspaceTests {
             snapshot.sections.flatMap(\.fields).first { $0.id == "latency" }
         )
 
-        #expect(latency.value == OverviewFormat.latency(0))
-        #expect(latency.tone == .neutral)
+        #expect(latency.value == MicaStrings.localizedKey("latency.timeout", language: .english))
+        #expect(latency.tone == .failure)
     }
 
     @Test func proxyRevealSourceKeepsExactActiveGroupTargetsAndExplicitFilterRecovery() throws {
@@ -593,7 +593,7 @@ struct WorkbenchProxyWorkspaceTests {
                 "reveal.groupID == presentation.id"
             )
         )
-        #expect(root.contains("proxy.scrollTo(reveal.targetID, anchor: .center)"))
+        #expect(root.contains("proxy.scrollTo(reveal.targetID, anchor: .top)"))
         #expect(root.contains("lastScrolledRevealToken"))
         #expect(root.contains("groupProjection.visibleDirectoryItems.isEmpty"))
         #expect(!root.contains(".scrollPosition(id: $scrollAnchorID"))
@@ -607,8 +607,8 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(panels.contains(".accessibilityLabel("))
         #expect(panels.contains(".accessibilityHint("))
         #expect(root.contains("stored.proxyMemberQuery = \"\""))
-        #expect(root.contains("healthFilter = .all"))
-        #expect(!root.contains("searchText = \"\""))
+        #expect(root.contains("ProxyWorkspaceFilterKey.healthFilter"))
+        #expect(root.contains("clearDirectoryQuery()"))
         #expect(root.contains("case .emptyCatalog:"))
         #expect(root.contains("workspace.pendingProxySelection"))
         #expect(interaction.contains("routing.show_global_and_locate"))
@@ -715,9 +715,9 @@ struct WorkbenchProxyWorkspaceTests {
         #expect(content.contains("ProxyPolicyGroupDirectoryRow("))
         #expect(content.contains("ProxyPolicyActiveGroupHeader("))
         #expect(content.contains("ProxyPolicyNodeTile("))
-        #expect(!content.contains("LazyVGrid"))
-        #expect(content.contains("accessibilityCatalog(index: model.directoryAccessibilityIndex)"))
-        #expect(content.contains("accessibilityCatalog(index: model.accessibilityIndex)"))
+        #expect(content.contains("ProxyPolicyNodeGridCard("))
+        #expect(content.contains("accessibilityCatalog(index: model.directoryAccessibilityIndex,"))
+        #expect(content.contains("accessibilityCatalog(index: model.accessibilityIndex,"))
         #expect(content.contains("let isInspected = presentation.inspectedMemberID == member.id"))
         #expect(content.contains("if isInspected {"))
         #expect(!activeHeader.contains("LazyVGrid"))

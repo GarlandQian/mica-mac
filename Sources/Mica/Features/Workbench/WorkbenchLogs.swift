@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MicaCore
 import SwiftUI
@@ -8,8 +9,8 @@ extension WorkbenchLogSeverity {
         case .error: MicaTheme.statusError
         case .warning: MicaTheme.statusWarning
         case .info: MicaTheme.textSecondary
-        case .debug: MicaTheme.textTertiary
-        case .trace: MicaTheme.textTertiary
+        case .debug: MicaTheme.statusInfo
+        case .trace: MicaTheme.textSecondary
         }
     }
 }
@@ -93,13 +94,14 @@ struct WorkbenchLogsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(WorkbenchWorkspaceStore.self) private var workspaceStore
     @Environment(\.micaAppLanguage) private var language
+    @Environment(\.micaAppFontScale) private var fontScale
     @Binding var searchText: String
 
     @State private var model = WorkbenchLogsModel()
 
     private static let widthBudget = WorkbenchDataWidthBudget(
         fullMinimum: 760,
-        compactMinimum: 420
+        compactMinimum: 480
     )
 
     var body: some View {
@@ -145,12 +147,17 @@ struct WorkbenchLogsView: View {
             controllerID: appModel.selectedRouterID,
             generation: appModel.controllerSessionPresentation.generation
         )
+        let isFiltered = model.level != .all || searchText.dataNonEmpty != nil
+        let countText = isFiltered
+            ? "\(model.rows.count.formatted()) / \(model.sourceCount.formatted())"
+            : model.rows.count.formatted()
+
         return WorkbenchCommandBar {
             HStack(spacing: MicaTheme.Spacing.space3) {
                 WorkbenchCommandSummary(
                     symbolName: "text.alignleft",
                     titleKey: "dashboard.tab_logs",
-                    value: String(model.rows.count),
+                    value: countText,
                     detail: appModel.dashboardSessionControls.logsPresentationPaused
                         ? MicaStrings.localizedKey(
                             "traffic.log_presentation_paused_detail",
@@ -167,27 +174,21 @@ struct WorkbenchLogsView: View {
                 }
             }
         } controls: {
-            Picker(
-                MicaStrings.localizedKey("traffic.log_level", language: language),
-                selection: Binding(
-                    get: { model.level },
-                    set: { level in
-                        guard let commandScope else { return }
-                        guard appModel.matchesCurrentCommandScope(commandScope) else { return }
-                        model.setLevel(level)
-                        appModel.setControllerLogLevel(level, scope: commandScope)
-                    }
-                )
-            ) {
-                ForEach(availableLogLevels) { level in
-                    Text(MicaStrings.localizedKey(level.titleKey, language: language))
-                        .tag(level)
+            let levelBinding = Binding(
+                get: { model.level },
+                set: { level in
+                    guard let commandScope else { return }
+                    guard appModel.matchesCurrentCommandScope(commandScope) else { return }
+                    model.setLevel(level)
+                    appModel.setControllerLogLevel(level, scope: commandScope)
                 }
+            )
+            ViewThatFits(in: .horizontal) {
+                logLevelPicker(selection: levelBinding, segmented: true)
+                    .fixedSize()
+                logLevelPicker(selection: levelBinding, segmented: false)
+                    .fixedSize()
             }
-            // The level decides what Mica subscribes to (and, on Surge, the
-            // controller's own level); every level stays one click away.
-            .modifier(WorkbenchChoicePickerStyle(isCompact: availableLogLevels.count <= 6))
-            .fixedSize()
             .disabled(appModel.selectedRouter == nil || appModel.isBusy || !canAdjustLogLevel)
             .help(MicaStrings.localizedKey("traffic.log_level_help", language: language))
             .accessibilityLabel(
@@ -238,6 +239,29 @@ struct WorkbenchLogsView: View {
     }
 
     @ViewBuilder
+    private func logLevelPicker(
+        selection: Binding<LogSessionLevel>,
+        segmented: Bool
+    ) -> some View {
+        let picker = Picker(
+            MicaStrings.localizedKey("traffic.log_level", language: language),
+            selection: selection
+        ) {
+            ForEach(availableLogLevels) { level in
+                Text(MicaStrings.localizedKey(level.titleKey, language: language))
+                    .tag(level)
+            }
+        }
+        .labelsHidden()
+
+        if segmented {
+            picker.pickerStyle(.segmented)
+        } else {
+            picker.pickerStyle(.menu)
+        }
+    }
+
+    @ViewBuilder
     private var pageContent: some View {
         switch state {
         case .noController:
@@ -265,10 +289,15 @@ struct WorkbenchLogsView: View {
                 detailKey: "dashboard.no_logs_yet_message"
             )
         case .filterEmpty:
+            let hasFilter = model.level != .all || !searchText.isEmpty
+            let clearAction: (() -> Void)? = hasFilter ? { clearLogFilters() } : nil
             WorkbenchStateView(
                 kind: .filterEmpty,
                 titleKey: "dashboard.no_matching_logs",
-                detailKey: "traffic.empty_filtered"
+                detailKey: "traffic.empty_filtered",
+                actionTitleKey: hasFilter ? "dashboard.clear_filter" : nil,
+                actionSystemImage: "xmark.circle",
+                action: clearAction
             )
         case .failed(let message):
             WorkbenchStateView(
@@ -306,13 +335,18 @@ struct WorkbenchLogsView: View {
             request: model.scrollRequest,
             anchor: .bottom,
             interaction: model.interaction,
-            rowIndex: { id in model.rows.firstIndex { $0.id == id } },
+            rowIndex: model.visibleIndex(id:),
             rowID: { index in model.rows.indices.contains(index) ? model.rows[index].id : nil },
             onInteractionBegan: { model.setFollowing(false) },
             onInteractionEnded: {
                 model.finishDeferredPresentation(
                     scope: WorkbenchSessionIdentity(controllerID: controllerID, generation: generation)
                 )
+            },
+            onReachedBottom: {
+                if model.selectedRowID == nil {
+                    model.setFollowing(true)
+                }
             },
             onAnchorCommit: { anchorID in
                 persistScrollAnchor(
@@ -326,31 +360,31 @@ struct WorkbenchLogsView: View {
                 Table(model.rows, selection: selectionBinding) {
                     switch mode {
                     case .full:
-                        TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
-                            logPayload(row)
-                        }
-                        .width(min: 320, ideal: 720)
-
-                        TableColumn(MicaStrings.localizedKey("traffic.log_level", language: language)) { row in
-                            logLevel(row)
-                        }
-                        .width(min: 82, ideal: 96, max: 124)
-
-                        TableColumn(MicaStrings.localizedKey("traffic.log_type", language: language)) { row in
-                            logType(row)
-                        }
-                        .width(min: 112, ideal: 136, max: 180)
-
                         TableColumn(MicaStrings.localizedKey("traffic.log_received_time", language: language)) { row in
                             logTimestamp(row)
                         }
-                        .width(min: 104, ideal: 120, max: 148)
+                        .width(min: 86, ideal: 98, max: 120)
+
+                        TableColumn(MicaStrings.localizedKey("traffic.log_level", language: language)) { row in
+                            logSeverityPill(row)
+                        }
+                        .width(min: 96, ideal: 118, max: 164)
+
+                        TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
+                            logPayload(row, singleLine: true)
+                        }
+                        .width(min: 320, ideal: 760)
 
                     case .compact:
-                        TableColumn(MicaStrings.localizedKey("traffic.log_section_event", language: language)) { row in
-                            compactLogEvent(row)
+                        TableColumn(MicaStrings.localizedKey("traffic.log_level", language: language)) { row in
+                            compactLogLeading(row)
                         }
-                        .width(min: 340, ideal: 760)
+                        .width(min: 108, ideal: 132, max: 168)
+
+                        TableColumn(MicaStrings.localizedKey("traffic.log_payload", language: language)) { row in
+                            logPayload(row, singleLine: false)
+                        }
+                        .width(min: 240, ideal: 620)
 
                     case .stacked:
                         TableColumn(MicaStrings.localizedKey("dashboard.tab_logs", language: language)) { row in
@@ -359,11 +393,18 @@ struct WorkbenchLogsView: View {
                         .width(min: 220, ideal: 520)
                     }
                 }
+                .contextMenu(forSelectionType: WorkbenchLogRow.ID.self) { selectedIDs in
+                    if let id = selectedIDs.first ?? model.selectedRowID,
+                       let row = model.row(id: id) {
+                        logContextMenu(for: row)
+                    }
+                }
                 .micaWorkbenchTable(
                     accessibilityLabel: MicaStrings.localizedKey(
                         "dashboard.tab_logs",
                         language: language
-                    )
+                    ),
+                    lines: mode == .full ? 1 : 2
                 )
                 .accessibilityHidden(true)
                 .overlay {
@@ -384,33 +425,37 @@ struct WorkbenchLogsView: View {
                 try? await Task.sleep(for: .milliseconds(remainingMilliseconds))
             }
             guard !Task.isCancelled else { return }
-            model.consumeFollow(request)
+            model.consumeFollow(request, now: max(Date(), request.deadline))
         }
-        .safeAreaInset(edge: .bottom, alignment: .trailing) {
-            if !model.followsNewest {
+        .overlay(alignment: .bottomTrailing) {
+            if !model.followsNewest, !model.rows.isEmpty {
                 Button {
                     model.jumpToNewest()
                 } label: {
                     MicaLabel("traffic.jump_to_newest", systemImage: "arrow.down.to.line")
+                        .padding(.horizontal, MicaTheme.Spacing.space3)
+                        .padding(.vertical, MicaTheme.Spacing.space1 + 2)
                 }
-                .buttonStyle(.bordered)
-                .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+                .buttonStyle(.plain)
+                .micaFloatingGlass(cornerRadius: 999)
                 .padding(MicaTheme.Spacing.space3)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
     }
 
-    private func logPayload(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space2) {
-            severityRail(row)
+    private func logPayload(_ row: WorkbenchLogRow, singleLine: Bool) -> some View {
+        let minHeight = WorkbenchDataRowGeometry.height(for: fontScale, lines: singleLine ? 1 : 2)
+        return HStack(spacing: MicaTheme.Spacing.space2) {
+            severityRail(row, compact: singleLine)
             WorkbenchDataText(
                 value: row.payloadText,
-                role: .dataLabel
+                role: .dataLabel,
+                maximumLineCount: singleLine ? 1 : 2
             )
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: minHeight,
             alignment: .leading
         )
     }
@@ -422,61 +467,66 @@ struct WorkbenchLogsView: View {
             tone: .secondary
         )
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
             alignment: .leading
         )
     }
 
-    private func logLevel(_ row: WorkbenchLogRow) -> some View {
-        WorkbenchDataText(
-            value: row.levelText,
-            role: .dataCaption,
-            weight: .semibold
-        )
+    private func logSeverityPill(_ row: WorkbenchLogRow) -> some View {
+        HStack(spacing: MicaTheme.Spacing.space1) {
+            Image(systemName: logTypeSymbol(row))
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(row.severity.tint)
+                .accessibilityHidden(true)
+
+            Text(verbatim: row.levelText)
+                .micaThemeFont(.dataCaption, weight: .semibold)
+                .foregroundStyle(row.severity.tint)
+                .lineLimit(1)
+
+            if row.typeText != row.levelText {
+                Text(verbatim: row.typeText)
+                    .micaThemeFont(.dataCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(row.severity.tint.opacity(0.12), in: Capsule())
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 1),
             alignment: .leading
         )
         .accessibilityLabel(row.levelText)
     }
 
-    private func logType(_ row: WorkbenchLogRow) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space1) {
-            WorkbenchSymbol(
-                systemName: logTypeSymbol(row),
-                tint: row.severity.tint,
-                size: .inline
-            )
-
-            WorkbenchDataText(
-                value: row.typeText,
-                role: .dataCaption,
-                tone: row.typeText == row.levelText ? .secondary : .primary
-            )
+    private func compactLogLeading(_ row: WorkbenchLogRow) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: row.levelText)
+                .micaThemeFont(.dataCaption, weight: .semibold)
+                .foregroundStyle(row.severity.tint)
+                .lineLimit(1)
+            Text(verbatim: row.receivedTimeText)
+                .micaThemeFont(.dataCaption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
             alignment: .leading
         )
-        .accessibilityLabel(row.typeText)
-    }
-
-    private func compactLogEvent(_ row: WorkbenchLogRow) -> some View {
-        stackedLogEvent(row)
     }
 
     private func stackedLogEvent(_ row: WorkbenchLogRow) -> some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
-            severityRail(row)
+            severityRail(row, compact: false)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: row.payloadText)
                     .micaThemeFont(.dataLabel)
                     .lineLimit(1)
-                    .textSelection(.enabled)
+                    .help(row.payloadText)
 
                 HStack(spacing: MicaTheme.Spacing.space2) {
                     Text(verbatim: row.levelText)
@@ -493,17 +543,64 @@ struct WorkbenchLogsView: View {
             }
         }
         .frame(
-            minHeight: WorkbenchDataRowGeometry.height,
-            maxHeight: WorkbenchDataRowGeometry.height,
+            minHeight: WorkbenchDataRowGeometry.height(for: fontScale, lines: 2),
             alignment: .leading
         )
     }
 
-    private func severityRail(_ row: WorkbenchLogRow) -> some View {
+    private func severityRail(_ row: WorkbenchLogRow, compact: Bool) -> some View {
         RoundedRectangle(cornerRadius: 1.5, style: .continuous)
             .fill(row.severity.tint.opacity(0.72))
-            .frame(width: 3, height: 28)
+            .frame(width: 3, height: compact ? 18 : 26)
             .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func logContextMenu(for row: WorkbenchLogRow) -> some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(row.payloadText, forType: .string)
+        } label: {
+            Label(MicaStrings.localizedKey("action.copy", language: language), systemImage: "doc.on.doc")
+        }
+
+        Button {
+            let fullEntry = "[\(row.receivedDateTimeText)] [\(row.levelText)] \(row.payloadText)"
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(fullEntry, forType: .string)
+        } label: {
+            Label(MicaStrings.localizedKey("action.copy_full_log", language: language), systemImage: "doc.on.clipboard")
+        }
+
+        if let filterLevel = LogSessionLevel(rawValue: row.severity.rawValue),
+           availableLogLevels.contains(filterLevel),
+           model.level != filterLevel {
+            Divider()
+            Button {
+                model.setLevel(filterLevel)
+                if let commandScope = LiveCommandScope(
+                    controllerID: appModel.selectedRouterID,
+                    generation: appModel.controllerSessionPresentation.generation
+                ) {
+                    appModel.setControllerLogLevel(filterLevel, scope: commandScope)
+                }
+            } label: {
+                Label(MicaStrings.localizedKey("traffic.filter_by_level", language: language), systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+    }
+
+    private func clearLogFilters() {
+        searchText = ""
+        if model.level != .all {
+            model.setLevel(.all)
+            if let commandScope = LiveCommandScope(
+                controllerID: appModel.selectedRouterID,
+                generation: appModel.controllerSessionPresentation.generation
+            ) {
+                appModel.setControllerLogLevel(.all, scope: commandScope)
+            }
+        }
     }
 
     private func logTypeSymbol(_ row: WorkbenchLogRow) -> String {
@@ -622,28 +719,41 @@ struct WorkbenchLogInspector: View {
     var body: some View {
         if let row {
             let entry = row.entry
+            let eventValues = WorkbenchDataInspectorProjection.logEvent(row, language: language)
+                .filter { item in
+                    guard item.id == "log.type",
+                          let typeVal = entry.message.type.dataNonEmpty,
+                          let levelVal = entry.message.level?.dataNonEmpty else {
+                        return true
+                    }
+                    return typeVal.caseInsensitiveCompare(levelVal) != .orderedSame
+                }
+            let contentValues = WorkbenchDataInspectorProjection.logContent(row)
+                .filter { item in
+                    guard item.id == "log.message",
+                          let messageVal = entry.message.message?.dataNonEmpty,
+                          let payloadVal = entry.message.payload.dataNonEmpty else {
+                        return true
+                    }
+                    return messageVal != payloadVal
+                }
+
             WorkbenchDataInspectorShell(
-                title: MicaStrings.localizedKey("traffic.detail_log", language: language),
+                title: row.payloadText,
                 subtitle: WorkbenchDataFormat.receivedDateTime(entry.receivedAt, language: language),
                 statusText: row.levelText,
                 statusTint: row.severity.tint,
                 close: close
             ) {
                 WorkbenchDataInspectorSection("traffic.log_section_event") {
-                    WorkbenchDataInspectorValueList(
-                        values: WorkbenchDataInspectorProjection.logEvent(
-                            row,
-                            language: language
-                        )
-                    )
+                    WorkbenchDataInspectorValueList(values: eventValues)
                 }
 
                 WorkbenchDataInspectorSection("traffic.log_section_content") {
-                    WorkbenchDataInspectorValueList(
-                        values: WorkbenchDataInspectorProjection.logContent(row)
-                    )
+                    WorkbenchDataInspectorValueList(values: contentValues)
                 }
             }
+            .id(row.id)
         }
     }
 }

@@ -107,29 +107,51 @@ struct OverviewTimelineChartScale: Equatable, Sendable {
         let observedMaximum = max(maximumObservedValue, 0)
         guard observedMaximum > 0 else {
             return OverviewTimelineChartScale(
-                domain: -1...1,
+                domain: -1...19,
                 axisValues: [0]
             )
         }
 
         let scaledMaximum = max(observedMaximum, minimumPositiveMaximum)
-        let headroom = max(scaledMaximum / 8, 1)
-        let upperBound: Int
+        let headroom = max(scaledMaximum / 12, 1)
+        let target: Int
         if scaledMaximum > Int.max - headroom {
-            upperBound = Int.max
+            target = Int.max
         } else {
-            upperBound = scaledMaximum + headroom
+            target = scaledMaximum + headroom
         }
-        let lowerBound = -max(upperBound / 20, 1)
-        let midpoint = upperBound / 2
-        let axisValues = midpoint > 0 && midpoint < upperBound
-            ? [0, midpoint, upperBound]
-            : [0, upperBound]
+
+        let upperBound = niceUpperBound(for: target)
+        let lowerBound = -max(upperBound / 25, 1)
+        let axisValues: [Int]
+        if upperBound >= 4 && upperBound.isMultiple(of: 2) {
+            axisValues = [0, upperBound / 2, upperBound]
+        } else {
+            axisValues = [0, upperBound]
+        }
 
         return OverviewTimelineChartScale(
             domain: lowerBound...upperBound,
             axisValues: axisValues
         )
+    }
+
+    private static func niceUpperBound(for value: Int) -> Int {
+        guard value > 1 else { return max(value, 1) }
+        var magnitude = 1
+        while magnitude <= Int.max / 10, magnitude * 10 <= value {
+            magnitude *= 10
+        }
+        let niceFactors: [(Int, Int)] = [(1, 1), (2, 1), (5, 2), (5, 1), (10, 1)]
+        for (numerator, denominator) in niceFactors {
+            let scaled = (Double(magnitude) * Double(numerator)) / Double(denominator)
+            guard scaled < Double(Int.max) else { return Int.max }
+            let candidate = Int(scaled.rounded())
+            if candidate >= value {
+                return candidate
+            }
+        }
+        return magnitude <= Int.max / 10 ? magnitude * 10 : Int.max
     }
 }
 
@@ -411,7 +433,10 @@ enum OverviewTimelineProjection {
     ) -> ClosedRange<Date>? {
         guard let first = samples.first?[keyPath: date],
               let last = samples.last?[keyPath: date] else { return nil }
-        return max(first, last.addingTimeInterval(-window.duration))...last
+        let low = min(first, last)
+        let high = max(first, last)
+        let start = min(high, max(low, high.addingTimeInterval(-window.duration)))
+        return start...high
     }
 
     static func dateDomain(
@@ -584,6 +609,15 @@ enum OverviewTimelineProjection {
         date: (Element) -> Date
     ) -> Int? {
         guard !elements.isEmpty else { return nil }
+        let isSortedAscending = zip(elements, elements.dropFirst()).allSatisfy {
+            date($0) <= date($1)
+        }
+        guard isSortedAscending else {
+            return elements.indices.min { lhs, rhs in
+                abs(date(elements[lhs]).timeIntervalSince(target))
+                    < abs(date(elements[rhs]).timeIntervalSince(target))
+            }
+        }
         var lowerBound = elements.startIndex
         var upperBound = elements.endIndex
         while lowerBound < upperBound {
@@ -679,7 +713,7 @@ enum OverviewProjection {
             occurrences[group.id] = occurrence + 1
             guard let delay = group.delays[group.selected]
                     ?? group.detail(for: group.selected)?.latestHistoryDelay,
-                  delay >= 180 else {
+                  delay <= 0 || delay >= 180 else {
                 return nil
             }
             return (
@@ -692,7 +726,7 @@ enum OverviewProjection {
                     nodeName: group.selected,
                     delay: delay
                 ),
-                delay,
+                delay <= 0 ? Int.max : delay,
                 sourceIndex
             )
         }
@@ -832,7 +866,7 @@ enum OverviewProjection {
         }
         let config = metadata.config
         append(
-            value: config.modeOptions.isEmpty ? nil : config.modeOptions.joined(separator: "\n"),
+            value: config.modeOptions.isEmpty ? nil : config.modeOptions.joined(separator: " · "),
             id: "mode-options",
             titleKey: "overview.config_mode_options",
             to: &facts,

@@ -64,7 +64,7 @@ struct OverviewTopologySection: View {
         }
         structureInput = OverviewTopologyCatalogInput(
             request: request,
-            catalogRevision: catalog.structureRevision,
+            catalogRevision: request.structureRevision,
             connections: catalog.connections
         )
     }
@@ -168,12 +168,23 @@ struct OverviewTopologyHeaderAvailability: View {
 }
 
 private struct OverviewTopologyHeaderControls: View {
+    @Environment(AppModel.self) private var appModel
     @Environment(\.micaAppLanguage) private var language
 
     let runtime: OverviewTopologyRuntime
 
     var body: some View {
+        let isGlobalPaused = appModel.controllerSessionPresentation.controls.dashboardUpdatesPaused
+        let isPaused = runtime.isPaused || isGlobalPaused
+        let showsOverviewSummary = runtime.focusedPaths == nil
+            && runtime.displayMode == .overview
+            && runtime.presentation?.diagram.isEmpty == false
+
         HStack(spacing: MicaTheme.Spacing.space2) {
+            if showsOverviewSummary, let presentation = runtime.presentation {
+                overviewSummaryPill(presentation)
+            }
+
             if runtime.focusedPaths != nil || runtime.displayMode == .complete {
                 Button {
                     runtime.returnToOverview()
@@ -189,7 +200,7 @@ private struct OverviewTopologyHeaderControls: View {
                 }
                 .buttonStyle(.borderless)
             }
-            if runtime.isPaused {
+            if isPaused && runtime.focusedPaths == nil {
                 Text(
                     MicaStrings.localizedKey(
                         "overview.chart_paused",
@@ -199,16 +210,43 @@ private struct OverviewTopologyHeaderControls: View {
                 .micaThemeFont(.caption, weight: .semibold)
                 .foregroundStyle(MicaTheme.statusWarning)
             }
-            WorkbenchIconCommand(
-                titleKey: runtime.isPaused
-                    ? "live.resume_updates"
-                    : "live.pause_updates",
-                systemImage: runtime.isPaused ? "play" : "pause"
-            ) {
-                runtime.togglePause()
+            if runtime.focusedPaths == nil {
+                WorkbenchIconCommand(
+                    titleKey: isPaused
+                        ? "live.resume_updates"
+                        : "live.pause_updates",
+                    systemImage: isPaused ? "play" : "pause"
+                ) {
+                    if isGlobalPaused {
+                        if runtime.isPaused {
+                            runtime.togglePause()
+                        }
+                        if appModel.canTogglePresentationPause {
+                            appModel.toggleDashboardUpdatesPaused()
+                        }
+                    } else {
+                        runtime.togglePause()
+                    }
+                }
             }
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func overviewSummaryPill(_ presentation: OverviewTopologyPresentation) -> some View {
+        HStack(spacing: 4) {
+            Text(MicaStrings.localized("overview.topology_summary_count \(presentation.topology.connectionCount)", language: language))
+            if presentation.summary.mergedNameCount > 0 {
+                Text("·")
+                Text(MicaStrings.localized("overview.topology_merged_count \(presentation.summary.mergedNameCount) \(presentation.summary.mergedConnectionCount)", language: language))
+            }
+        }
+        .micaThemeFont(.caption, weight: .medium)
+        .foregroundStyle(MicaTheme.textSecondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(MicaTheme.surfaceSecondary, in: Capsule())
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -236,6 +274,10 @@ private struct OverviewTopologyWorkspace: View {
                 titleKey: "overview.topology_empty",
                 detailKey: "overview.topology_empty_detail"
             )
+            .onAppear {
+                runtime.interaction.reset()
+                workspaceStore.clearInspectorSelection(ownedBy: .overview)
+            }
         } else {
             let resolvedMinimumFlowHeight = Int(minimumFlowHeight.rounded())
             let request = OverviewTopologyRequest(
@@ -334,9 +376,6 @@ private struct OverviewTopologyWorkspace: View {
                         )
                     }
                 } else {
-                    if presentation.request.displayMode == .overview {
-                        overviewSummary(presentation)
-                    }
                     OverviewTopologyViewport(
                         topology: presentation.diagram,
                         request: presentation.request,
@@ -369,19 +408,6 @@ private struct OverviewTopologyWorkspace: View {
 
     private var canvasHeight: CGFloat {
         min(max(minimumFlowHeight, 280), 500)
-    }
-
-    private func overviewSummary(_ presentation: OverviewTopologyPresentation) -> some View {
-        HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-            Text(MicaStrings.localized("overview.topology_summary_count \(presentation.topology.connectionCount)", language: language))
-            if presentation.summary.mergedNameCount > 0 {
-                Text("·")
-                Text(MicaStrings.localized("overview.topology_merged_count \(presentation.summary.mergedNameCount) \(presentation.summary.mergedConnectionCount)", language: language))
-            }
-        }
-        .micaThemeFont(.caption)
-        .foregroundStyle(MicaTheme.textSecondary)
-        .accessibilityElement(children: .combine)
     }
 
     @MainActor
@@ -433,15 +459,18 @@ private struct OverviewTopologyWorkspace: View {
     private func proxyNavigationTarget(
         for node: ConnectionTopology.Node
     ) -> WorkbenchProxyNavigationSelection? {
-        guard let controllerID,
-              case .policyHop = node.columnID else {
+        guard let controllerID else { return nil }
+        switch node.columnID {
+        case .policyHop, .finalOutbound:
+            break
+        default:
             return nil
         }
         let policyIndex = runtime.policyInspectionCache.resolve(
             revision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
-        switch policyIndex.resolve(name: node.name) {
+        switch policyIndex.resolveCanonical(name: node.name) {
         case .group(let group):
             let nodeName = group.selected.proxyNonBlank
                 ?? group.members.lazy.compactMap(\.proxyNonBlank).first
@@ -484,17 +513,24 @@ private struct OverviewTopologyWorkspace: View {
             runtime.focusPaths(for: selection, presentation: presentation, language: language)
             return
         }
-        guard snapshot.isPinned,
-              case .node(let nodeID) = selection,
-              let node = runtime.presentation?.index.node(id: nodeID),
-              case .policyHop = node.columnID else {
+        guard snapshot.isPinned else { return }
+        guard case .node(let nodeID) = selection,
+              let node = runtime.presentation?.index.node(id: nodeID) else {
+            workspaceStore.clearInspectorSelection(ownedBy: .overview)
+            return
+        }
+        switch node.columnID {
+        case .policyHop, .finalOutbound:
+            break
+        default:
+            workspaceStore.clearInspectorSelection(ownedBy: .overview)
             return
         }
         let policyIndex = runtime.policyInspectionCache.resolve(
             revision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
-        switch policyIndex.resolve(name: node.name) {
+        switch policyIndex.resolveCanonical(name: node.name) {
         case .group(let group):
             workspaceStore.selectInspector(
                 .proxyGroup(
@@ -512,11 +548,13 @@ private struct OverviewTopologyWorkspace: View {
                 ),
                 from: .overview
             )
-        case .ambiguous, .missing:
+        case .ambiguous:
             workspaceStore.selectInspector(
                 .proxyGroup(groupName: node.name, groupOccurrenceID: nil),
                 from: .overview
             )
+        case .missing:
+            workspaceStore.clearInspectorSelection(ownedBy: .overview)
         }
     }
 }
@@ -525,6 +563,9 @@ private struct OverviewTopologyViewport: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.micaAppFontScale) private var fontScale
 
     let topology: ConnectionTopology
     let request: OverviewTopologyRequest
@@ -617,10 +658,17 @@ private struct OverviewTopologyViewport: View {
     }
 
     private var topologyGraph: some View {
-        // Task 08-23 R10: when long chains widen the graph past the panel the
-        // viewport scrolls horizontally; the width floor keeps the content
-        // pinned to the full panel width otherwise.
-        ScrollView(request.displayMode == .overview ? [.vertical] : [.horizontal, .vertical]) {
+        let needsVerticalScroll = layout.size.height > viewportHeight + 1
+        let scrollAxes: Axis.Set = {
+            var axes: Axis.Set = []
+            if hasHorizontalOverflow { axes.insert(.horizontal) }
+            if needsVerticalScroll || request.displayMode == .complete {
+                axes.insert(.vertical)
+            }
+            return axes
+        }()
+
+        return ScrollView(scrollAxes) {
             LazyVStack(spacing: 0) {
                 ForEach(layout.renderBands) { band in
                     OverviewTopologyBandLayers(
@@ -628,6 +676,9 @@ private struct OverviewTopologyViewport: View {
                         band: band,
                         layout: layout,
                         language: language,
+                        colorScheme: colorScheme,
+                        colorSchemeContrast: colorSchemeContrast,
+                        fontScale: fontScale,
                         allowsMotion: allowsMotion,
                         policyStatusRevision: appModel.policyGroupCatalogRevision,
                         nodeStatusByID: nodeStatusByID,
@@ -651,6 +702,9 @@ private struct OverviewTopologyViewport: View {
             hasHorizontalOverflow ? .visible : .hidden,
             axes: .horizontal
         )
+        .onChange(of: request.displayMode) { _, _ in
+            scrollPosition = ScrollPosition(x: 0, y: 0)
+        }
         .onScrollGeometryChange(for: CGRect.self) { geometry in
             geometry.visibleRect
         } action: { previous, current in
@@ -665,6 +719,13 @@ private struct OverviewTopologyViewport: View {
         }
         .frame(height: viewportHeight)
         .frame(maxWidth: .infinity, alignment: .center)
+        .background(alignment: .top) {
+            VStack(spacing: 0) {
+                MicaTheme.Topology.headerSurface
+                    .frame(height: OverviewTopologyLayout.columnHeaderHeight)
+                MicaHairlineSeparator()
+            }
+        }
         .micaCard(MicaTheme.Topology.panelSurface)
         .clipShape(
             RoundedRectangle(
@@ -687,49 +748,53 @@ private struct OverviewTopologyViewport: View {
     private var topologyContextMenu: some View {
         let snapshot = interaction.snapshot
 
-        Button {
-            interaction.movePathSelection(by: -1)
-        } label: {
-            Label(
-                MicaStrings.localizedKey(
-                    "overview.topology_previous_path",
-                    language: language
-                ),
-                systemImage: "chevron.up"
-            )
-        }
-        .disabled(!interaction.canMovePath(by: -1))
-
-        Button {
-            interaction.movePathSelection(by: 1)
-        } label: {
-            Label(
-                MicaStrings.localizedKey(
-                    "overview.topology_next_path",
-                    language: language
-                ),
-                systemImage: "chevron.down"
-            )
-        }
-        .disabled(!interaction.canMovePath(by: 1))
-
-        if let selection = snapshot.activeSelection {
-            Divider()
-
+        if request.displayMode == .complete {
             Button {
-                interaction.togglePinnedSelection(selection)
+                interaction.movePathSelection(by: -1)
             } label: {
                 Label(
                     MicaStrings.localizedKey(
-                        snapshot.isPinned
-                            ? "overview.topology_unpin_selection"
-                            : "overview.topology_pin_selection",
+                        "overview.topology_previous_path",
                         language: language
                     ),
-                    systemImage: snapshot.isPinned
-                        ? MicaSymbols.Command.unpin
-                        : "pin"
+                    systemImage: "chevron.up"
                 )
+            }
+            .disabled(!interaction.canMovePath(by: -1))
+
+            Button {
+                interaction.movePathSelection(by: 1)
+            } label: {
+                Label(
+                    MicaStrings.localizedKey(
+                        "overview.topology_next_path",
+                        language: language
+                    ),
+                    systemImage: "chevron.down"
+                )
+            }
+            .disabled(!interaction.canMovePath(by: 1))
+        }
+
+        if let selection = snapshot.activeSelection {
+            if request.displayMode == .complete {
+                Divider()
+
+                Button {
+                    interaction.togglePinnedSelection(selection)
+                } label: {
+                    Label(
+                        MicaStrings.localizedKey(
+                            snapshot.isPinned
+                                ? "overview.topology_unpin_selection"
+                                : "overview.topology_pin_selection",
+                            language: language
+                        ),
+                        systemImage: snapshot.isPinned
+                            ? MicaSymbols.Command.unpin
+                            : "pin"
+                    )
+                }
             }
 
             if snapshot.highlight.paths.count == 1,
@@ -747,7 +812,7 @@ private struct OverviewTopologyViewport: View {
                 }
             }
 
-            if request.displayMode == .complete, let policyNode = resolvablePolicyNode(for: selection) {
+            if let policyNode = resolvablePolicyNode(for: selection) {
                 Button { onOpenProxies(policyNode) } label: {
                     Label(
                         MicaStrings.localizedKey(
@@ -774,6 +839,7 @@ private struct OverviewTopologyViewport: View {
     }
 
     private func movePathSelection(_ direction: MoveCommandDirection) {
+        guard request.displayMode == .complete else { return }
         switch direction {
         case .up, .left:
             interaction.movePathSelection(by: -1)
@@ -840,15 +906,20 @@ private struct OverviewTopologyViewport: View {
         for selection: OverviewTopologySelection
     ) -> ConnectionTopology.Node? {
         guard case .node(let nodeID) = selection,
-              let node = index.node(id: nodeID),
-              case .policyHop = node.columnID else {
+              let node = index.node(id: nodeID) else {
+            return nil
+        }
+        switch node.columnID {
+        case .policyHop, .finalOutbound:
+            break
+        default:
             return nil
         }
         let policyIndex = runtime.policyInspectionCache.resolve(
             revision: appModel.policyGroupCatalogRevision,
             catalog: appModel.policyGroupCatalog
         )
-        switch policyIndex.resolve(name: node.name) {
+        switch policyIndex.resolveCanonical(name: node.name) {
         case .group(let group):
             return group.selected.proxyNonBlank != nil
                 || group.members.contains { $0.proxyNonBlank != nil }
@@ -875,8 +946,7 @@ private struct OverviewTopologyViewport: View {
     /// flip neither key, so they never re-resolve the catalog nor invalidate
     /// the band equality gate (task 08-20 R5).
     private var nodeStatusByID: [String: MicaTheme.Status] {
-        guard request.displayMode == .complete else { return [:] }
-        return runtime.nodeStatuses(
+        runtime.nodeStatuses(
             topology: topology,
             topologyRevision: request.revision,
             policyRevision: appModel.policyGroupCatalogRevision,
@@ -1010,7 +1080,6 @@ private struct OverviewTopologyPathRows: View {
                             )
                         )
                         .micaThemeFont(.label, weight: .medium)
-                        .textSelection(.enabled)
                         Text(
                             verbatim: OverviewTopologyProjection.pathDescription(
                                 path,
@@ -1020,7 +1089,6 @@ private struct OverviewTopologyPathRows: View {
                         .micaThemeFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
                     }
                     Spacer(minLength: 0)
                 }
@@ -1057,6 +1125,9 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
     let band: OverviewTopologyLayout.RenderBand
     let layout: OverviewTopologyLayout
     let language: AppLanguage
+    let colorScheme: ColorScheme
+    let colorSchemeContrast: ColorSchemeContrast
+    let fontScale: AppFontScale
     let allowsMotion: Bool
     let policyStatusRevision: UInt64
     let nodeStatusByID: [String: MicaTheme.Status]
@@ -1071,6 +1142,9 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
         lhs.request == rhs.request
             && lhs.band.id == rhs.band.id
             && lhs.language == rhs.language
+            && lhs.colorScheme == rhs.colorScheme
+            && lhs.colorSchemeContrast == rhs.colorSchemeContrast
+            && lhs.fontScale == rhs.fontScale
             && lhs.allowsMotion == rhs.allowsMotion
             && lhs.policyStatusRevision == rhs.policyStatusRevision
             && lhs.interaction === rhs.interaction
@@ -1096,6 +1170,9 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
             OverviewTopologyBaseBand(
                 request: request,
                 band: band,
+                colorScheme: colorScheme,
+                colorSchemeContrast: colorSchemeContrast,
+                fontScale: fontScale,
                 allowsMotion: allowsMotion,
                 nodeStatusByID: nodeStatusByID,
                 tintByNodeID: tintByNodeID,
@@ -1128,14 +1205,15 @@ private struct OverviewTopologyBandLayers: View, @MainActor Equatable {
     }
 }
 
-/// Single drawing layer (task 08-20 R6): one opaque, linear-composited Canvas
+/// Single drawing layer: one opaque, sRGB-composited Canvas
 /// paints the panel base, the tiered edges, and the node bars - including the
-/// accent highlight pass for the active selection. The previous overlay-dim +
-/// second-Canvas highlight layer is gone, and no text is resolved here any
-/// more (labels live in `OverviewTopologyLabelBand`).
+/// accent highlight pass for the active selection.
 private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
     let request: OverviewTopologyRequest
     let band: OverviewTopologyLayout.RenderBand
+    let colorScheme: ColorScheme
+    let colorSchemeContrast: ColorSchemeContrast
+    let fontScale: AppFontScale
     let allowsMotion: Bool
     let nodeStatusByID: [String: MicaTheme.Status]
     /// Full-layout column tints (built by the band layers from `layout`).
@@ -1148,6 +1226,9 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.request == rhs.request
             && lhs.band.id == rhs.band.id
+            && lhs.colorScheme == rhs.colorScheme
+            && lhs.colorSchemeContrast == rhs.colorSchemeContrast
+            && lhs.fontScale == rhs.fontScale
             && lhs.allowsMotion == rhs.allowsMotion
             && lhs.nodeStatusByID == rhs.nodeStatusByID
             && lhs.interaction === rhs.interaction
@@ -1159,7 +1240,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
         let tintByNodeID = tintByNodeID
         Canvas(
             opaque: true,
-            colorMode: .linear,
+            colorMode: .nonLinear,
             rendersAsynchronously: true
         ) { context, size in
             MicaPerformanceObservation.recordDebug(
@@ -1190,7 +1271,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                     with: .color(MicaTheme.Topology.headerSurface)
                 )
                 context.fill(
-                    Path(CGRect(x: 0, y: OverviewTopologyLayout.columnHeaderHeight, width: size.width, height: 0.5)),
+                    Path(CGRect(x: 0, y: OverviewTopologyLayout.columnHeaderHeight, width: size.width, height: MicaTheme.Shape.hairline)),
                     with: .color(MicaTheme.separator)
                 )
             }
@@ -1198,6 +1279,12 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
             let highlightedEdgeIDs = snapshot.highlight.edgeIDs
             let highlightedNodeIDs = snapshot.highlight.nodeIDs
             let isDimmed = snapshot.activeSelection != nil
+            let pinnedNodeID: String? = if snapshot.isPinned,
+                                           case .node(let nodeID) = snapshot.activeSelection {
+                nodeID
+            } else {
+                nil
+            }
 
             // Ordinary edges carry stage identity with density-bounded ink.
             for edge in band.edges where !highlightedEdgeIDs.contains(edge.edge.id) {
@@ -1241,6 +1328,7 @@ private struct OverviewTopologyBaseBand: View, @MainActor Equatable {
                     tint: tintByNodeID[node.node.id] ?? MicaTheme.textTertiary,
                     isDimmed: isDimmed && !highlightedNodeIDs.contains(node.node.id),
                     isHighlighted: highlightedNodeIDs.contains(node.node.id),
+                    isPinned: pinnedNodeID == node.node.id,
                     in: &context
                 )
             }
@@ -1397,6 +1485,8 @@ private struct OverviewTopologyHitBand: View, @MainActor Equatable {
     let layout: OverviewTopologyLayout
     let interaction: OverviewTopologyInteractionState
 
+    @State private var hasPointingHand = false
+
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.request == rhs.request
             && lhs.band.id == rhs.band.id
@@ -1409,12 +1499,17 @@ private struct OverviewTopologyHitBand: View, @MainActor Equatable {
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let location):
-                    interaction.setHoveredSelection(
-                        layout.hitTest(at: globalPoint(for: location))
-                    )
+                    let hit = layout.hitTest(at: globalPoint(for: location))
+                    interaction.setHoveredSelection(hit, bandID: band.id)
+                    updateCursor(pointingHand: hit != nil)
                 case .ended:
-                    interaction.setHoveredSelection(nil)
+                    interaction.setHoveredSelection(nil, bandID: band.id)
+                    updateCursor(pointingHand: false)
                 }
+            }
+            .onDisappear {
+                interaction.setHoveredSelection(nil, bandID: band.id)
+                updateCursor(pointingHand: false)
             }
             .simultaneousGesture(
                 SpatialTapGesture()
@@ -1425,6 +1520,16 @@ private struct OverviewTopologyHitBand: View, @MainActor Equatable {
                     }
             )
             .accessibilityHidden(true)
+    }
+
+    private func updateCursor(pointingHand: Bool) {
+        guard pointingHand != hasPointingHand else { return }
+        if pointingHand {
+            NSCursor.pointingHand.push()
+        } else {
+            NSCursor.pop()
+        }
+        hasPointingHand = pointingHand
     }
 
     private func globalPoint(for localPoint: CGPoint) -> CGPoint {
@@ -1628,8 +1733,13 @@ private struct OverviewTopologyAccessibilityNodes: View {
     }
 
     private func canOpenProxies(_ node: ConnectionTopology.Node) -> Bool {
-        guard case .policyHop = node.columnID else { return false }
-        switch policyIndex.resolve(name: node.name) {
+        switch node.columnID {
+        case .policyHop, .finalOutbound:
+            break
+        default:
+            return false
+        }
+        switch policyIndex.resolveCanonical(name: node.name) {
         case .group(let group):
             return group.selected.proxyNonBlank != nil
                 || group.members.contains { $0.proxyNonBlank != nil }
@@ -1781,22 +1891,29 @@ private enum OverviewTopologyDrawing {
         tint: Color = MicaTheme.textTertiary,
         isDimmed: Bool = false,
         isHighlighted: Bool = false,
+        isPinned: Bool = false,
         in context: inout GraphicsContext
     ) {
-        context.fill(node.drawingPath, with: .color(MicaTheme.Topology.nodeSurface))
         context.fill(
             node.drawingPath,
-            with: .color((isHighlighted ? MicaTheme.accent : tint).opacity(isHighlighted ? 0.12 : 0.025))
+            with: .color(MicaTheme.Topology.nodeSurface.opacity(isDimmed ? 0.58 : 1))
+        )
+        context.fill(
+            node.drawingPath,
+            with: .color(
+                (isHighlighted ? MicaTheme.accent : tint)
+                    .opacity(isHighlighted ? (isPinned ? 0.16 : 0.11) : (isDimmed ? 0.015 : 0.035))
+            )
         )
         context.stroke(
             node.drawingPath,
-            with: .color(isHighlighted ? MicaTheme.accent : tint.opacity(isDimmed ? 0.12 : 0.35)),
-            lineWidth: isHighlighted ? 1.25 : 0.75
+            with: .color(isHighlighted ? MicaTheme.accent : tint.opacity(isDimmed ? 0.14 : 0.38)),
+            lineWidth: isPinned ? 1.75 : (isHighlighted ? 1.25 : 0.75)
         )
         if status != .neutral {
             context.fill(
                 Path(ellipseIn: CGRect(x: node.rect.maxX - 10, y: node.rect.midY - 2.5, width: 5, height: 5)),
-                with: .color(status.color.opacity(isDimmed ? 0.3 : 1))
+                with: .color(status.color.opacity(isDimmed ? 0.35 : 1))
             )
         }
     }

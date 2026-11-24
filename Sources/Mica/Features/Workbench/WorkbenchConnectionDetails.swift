@@ -43,22 +43,26 @@ struct WorkbenchConnectionDecisionPathRail: View {
 
     private var horizontalPath: some View {
         HStack(spacing: MicaTheme.Spacing.space2) {
-            originStep
-                .frame(minWidth: 140, maxWidth: 200)
-            WorkbenchDecisionPathConnector()
-            inboundStep
-                .frame(minWidth: 130, maxWidth: 190)
-            WorkbenchDecisionPathConnector()
+            if !projection.origin.isEmpty {
+                originStep
+                    .frame(minWidth: 110, maxWidth: 200)
+                WorkbenchDecisionPathConnector()
+            }
+            if !projection.inbound.isEmpty {
+                inboundStep
+                    .frame(minWidth: 100, maxWidth: 180)
+                WorkbenchDecisionPathConnector()
+            }
             ruleStep
-                .frame(minWidth: 170, maxWidth: 250)
+                .frame(minWidth: 130, maxWidth: 240)
             ForEach(projection.segments) { segment in
                 WorkbenchDecisionPathConnector()
                 routeStep(segment)
-                    .frame(minWidth: 140, maxWidth: 210)
+                    .frame(minWidth: 110, maxWidth: 200)
             }
             WorkbenchDecisionPathConnector()
             destinationStep
-                .frame(minWidth: 160, maxWidth: 240)
+                .frame(minWidth: 130, maxWidth: 240)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -84,12 +88,15 @@ struct WorkbenchConnectionDecisionPathRail: View {
     }
 
     private var ruleStep: some View {
-        WorkbenchDecisionPathStep(
+        let ruleTitle = reported(projection.rule)
+        let ruleDisplay = projection.payload.isEmpty ? ruleTitle : "\(ruleTitle) · \(projection.payload)"
+        return WorkbenchDecisionPathStep(
             titleKey: "dashboard.col_rule",
-            value: "\(reported(projection.rule)) · \(reported(projection.payload))",
-            systemImage: "line.3.horizontal.decrease.circle",
+            value: ruleDisplay,
+            systemImage: ruleIsNavigable ? "arrow.right.circle" : "line.3.horizontal.decrease.circle",
             tint: ruleIsNavigable ? MicaTheme.accent : MicaTheme.textSecondary,
             monospaced: true,
+            actionHelpKey: ruleIsNavigable ? "traffic.open_matching_rule" : nil,
             action: ruleIsNavigable ? openRule : nil
         )
     }
@@ -129,49 +136,65 @@ struct WorkbenchConnectionDecisionPathRail: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: MicaTheme.Spacing.space1) {
-            WorkbenchDecisionReadout(
-                titleKey: "dashboard.col_chain",
-                value: projection.segments.count.formatted(),
-                systemImage: "point.3.connected.trianglepath.dotted",
-                tint: MicaTheme.textSecondary
-            )
-
-            Spacer(minLength: MicaTheme.Spacing.space3)
-
-            if showsClose {
-                if isClosing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
-                } else {
-                    WorkbenchLabeledCommand(
-                        titleKey: "action.close_connection",
-                        systemImage: "xmark.circle",
-                        isEnabled: canClose,
-                        role: .destructive,
-                        action: requestClose
-                    )
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: MicaTheme.Spacing.space1) {
+                chainCountReadout
+                Spacer(minLength: MicaTheme.Spacing.space3)
+                closeButtons
             }
 
-            if let closeGroup, closeGroup.connections.count > 1 {
-                if isClosingGroup {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
-                } else {
-                    WorkbenchLabeledCommand(
-                        titleKey: "action.close_connection_group",
-                        systemImage: "rectangle.3.group.bubble.left",
-                        isEnabled: canCloseGroup,
-                        role: .destructive,
-                        action: requestCloseGroup
-                    )
+            VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
+                chainCountReadout
+                HStack(spacing: MicaTheme.Spacing.space2) {
+                    closeButtons
                 }
             }
         }
         .frame(minHeight: MicaTheme.Metrics.controlMinHeight)
+    }
+
+    private var chainCountReadout: some View {
+        WorkbenchDecisionReadout(
+            titleKey: "dashboard.col_chain",
+            value: projection.segments.count.formatted(),
+            systemImage: "point.3.connected.trianglepath.dotted",
+            tint: MicaTheme.textSecondary
+        )
+    }
+
+    @ViewBuilder
+    private var closeButtons: some View {
+        if showsClose {
+            if isClosing {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
+            } else {
+                WorkbenchLabeledCommand(
+                    titleKey: "action.close_connection",
+                    systemImage: "xmark.circle",
+                    isEnabled: canClose,
+                    role: .destructive,
+                    action: requestClose
+                )
+            }
+        }
+
+        if let closeGroup, closeGroup.connections.count > 1 {
+            if isClosingGroup {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(minWidth: MicaTheme.Metrics.iconControlSize, minHeight: MicaTheme.Metrics.iconControlSize)
+            } else {
+                WorkbenchLabeledCommand(
+                    titleKey: "action.close_connection_group",
+                    systemImage: "rectangle.3.group.bubble.left",
+                    isEnabled: canCloseGroup,
+                    role: .destructive,
+                    action: requestCloseGroup
+                )
+            }
+        }
     }
 
     private func reported(_ value: String) -> String {
@@ -188,6 +211,9 @@ struct WorkbenchConnectionInspector: View {
 
     let row: WorkbenchConnectionRow?
     let isActive: Bool
+    var canClose: Bool = false
+    var isClosing: Bool = false
+    var onCloseConnection: (() -> Void)? = nil
     let close: () -> Void
 
     var body: some View {
@@ -201,7 +227,29 @@ struct WorkbenchConnectionInspector: View {
                     language: language
                 ),
                 statusTint: isActive ? MicaTheme.statusOK : .secondary,
-                close: close
+                close: close,
+                actions: {
+                    if isActive, let onCloseConnection, row.connection.id.dataNonEmpty != nil {
+                        HStack(spacing: MicaTheme.Spacing.space2) {
+                            if isClosing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Button(role: .destructive, action: onCloseConnection) {
+                                    Label(
+                                        MicaStrings.localizedKey("action.close_connection", language: language),
+                                        systemImage: "xmark.circle"
+                                    )
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .tint(MicaTheme.statusError)
+                                .disabled(!canClose)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
             ) {
                 WorkbenchDataInspectorSection("traffic.connection_section_identity") {
                     WorkbenchDataInspectorValueList(
@@ -243,8 +291,8 @@ struct WorkbenchConnectionInspector: View {
                         )
                     }
                 }
-
             }
+            .id(row.id)
         }
     }
 }
@@ -274,6 +322,7 @@ private struct WorkbenchConnectionAdditionalFieldList: View {
                         label: field.key,
                         value: field.value
                     )
+                    .id(field.key)
                 }
             }
             .overlay(alignment: .leading) {
@@ -339,7 +388,7 @@ private struct WorkbenchConnectionJSONNode: View {
         case .string(let text):
             scalarNode(text.isEmpty ? "\"\"" : text)
         case .number(let number):
-            scalarNode(numberText(number))
+            scalarNode(Self.numberText(number))
         case .bool(let value):
             scalarNode(String(value))
         case .null:
@@ -352,7 +401,8 @@ private struct WorkbenchConnectionJSONNode: View {
             Text(verbatim: label)
                 .micaThemeFont(.caption)
                 .foregroundStyle(.secondary)
-                .frame(minWidth: 92, idealWidth: 112, alignment: .leading)
+                .frame(minWidth: 84, idealWidth: 108, maxWidth: 136, alignment: .leading)
+                .help(label)
 
             Text(verbatim: text)
                 .micaThemeFont(.dataLabel)
@@ -417,14 +467,15 @@ private struct WorkbenchConnectionJSONNode: View {
                 .transition(.opacity)
             }
         }
+        .id(path)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func numberText(_ number: Double) -> String {
+    static func numberText(_ number: Double) -> String {
         guard number.isFinite else { return String(number) }
         if number.rounded() == number,
            number >= Double(Int64.min),
-           number <= Double(Int64.max) {
+           number < Double(Int64.max) {
             return String(Int64(number))
         }
         return String(number)

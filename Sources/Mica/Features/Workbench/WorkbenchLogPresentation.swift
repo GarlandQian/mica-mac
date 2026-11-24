@@ -65,6 +65,16 @@ enum WorkbenchLogSeverity: String, CaseIterable, Equatable, Sendable {
         self = .info
     }
 
+    var rank: Int {
+        switch self {
+        case .trace: 0
+        case .debug: 1
+        case .info: 2
+        case .warning: 3
+        case .error: 4
+        }
+    }
+
     private static func normalized(_ value: String) -> Self? {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "error", "err", "fatal", "panic": .error
@@ -74,6 +84,13 @@ enum WorkbenchLogSeverity: String, CaseIterable, Equatable, Sendable {
         case "trace": .trace
         default: nil
         }
+    }
+}
+
+extension LogSessionLevel {
+    func includes(_ severity: WorkbenchLogSeverity) -> Bool {
+        guard let minimumRank else { return true }
+        return severity.rank >= minimumRank
     }
 }
 
@@ -165,7 +182,7 @@ enum WorkbenchLogProjection {
         level: LogSessionLevel,
         query: String?
     ) -> Bool {
-        guard level.matches(row.entry.message.type) else { return false }
+        guard level.includes(row.severity) else { return false }
         guard let query else { return true }
         return WorkbenchDataSearch.contains(query, in: row.searchText)
     }

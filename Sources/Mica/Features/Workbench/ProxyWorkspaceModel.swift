@@ -24,11 +24,12 @@ final class ProxyWorkspaceModel {
     private(set) var accessibilityIndex = ProxyAccessibilityIndex.empty
     private(set) var directoryAccessibilityIndex = ProxyAccessibilityIndex.empty
     private(set) var activeGroup: ProxyActiveGroupPresentation?
+    private(set) var healthFilterCounts: [ProxyHealthFilter: Int] = [:]
+    private(set) var hasAcceptedCatalog = false
 
     @ObservationIgnored private var cache = ProxyCatalogProjectionCache()
     @ObservationIgnored private var directoryItemsByID: [String: ProxyGroupDirectoryItem] = [:]
     @ObservationIgnored private var previousInput: ProxyWorkspacePresentationInput?
-    @ObservationIgnored private var hasAcceptedCatalog = false
     @ObservationIgnored private(set) var memberProjectionBuildCount = 0
     @ObservationIgnored private(set) var groupPresentationBuildCount = 0
     @ObservationIgnored private(set) var workspaceReconciliationCount = 0
@@ -105,6 +106,14 @@ final class ProxyWorkspaceModel {
         }
 
         let activeChanged = cache.updateActiveGroup(groupID: next.workspace.activeGroupID)
+        if catalogChanged || activeChanged {
+            let allRows = cache.activeGroupIndex.rows
+            healthFilterCounts = Dictionary(
+                uniqueKeysWithValues: ProxyHealthFilter.allCases.map { filter in
+                    (filter, filter == .all ? allRows.count : allRows.filter(filter.includes).count)
+                }
+            )
+        }
         let filtersChanged = previous?.healthFilter != next.healthFilter
             || previous?.memberOrder != next.memberOrder
             || previous?.workspace.proxyMemberQuery != next.workspace.proxyMemberQuery
@@ -155,6 +164,7 @@ final class ProxyWorkspaceModel {
         accessibilityIndex = .empty
         directoryAccessibilityIndex = .empty
         activeGroup = nil
+        healthFilterCounts = [:]
         cache = ProxyCatalogProjectionCache()
         directoryItemsByID = [:]
         previousInput = nil

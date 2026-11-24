@@ -47,13 +47,22 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     func applyToApplication() {
         let application = NSApplication.shared
         application.appearance = nsAppearance
-        for window in application.windows {
+        for window in application.windows where Self.shouldApplyAppearance(to: window) {
             window.appearance = nsAppearance
             window.contentView?.appearance = nsAppearance
             window.contentViewController?.view.appearance = nsAppearance
             window.invalidateShadow()
             window.displayIfNeeded()
         }
+    }
+
+    @MainActor
+    private static func shouldApplyAppearance(to window: NSWindow) -> Bool {
+        let className = NSStringFromClass(type(of: window))
+        if className.contains("StatusBar") || className.contains("MenuBar") || className.contains("PopupMenu") {
+            return false
+        }
+        return window.styleMask.contains(.titled)
     }
 
     var titleKey: String {

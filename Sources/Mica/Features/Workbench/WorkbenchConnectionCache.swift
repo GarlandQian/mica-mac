@@ -536,6 +536,8 @@ struct WorkbenchConnectionProjectionCache {
         sortOrder.contains {
             $0.keyPath == \WorkbenchConnectionRow.upload
                 || $0.keyPath == \WorkbenchConnectionRow.download
+                || $0.keyPath == \WorkbenchConnectionRow.uploadSpeed
+                || $0.keyPath == \WorkbenchConnectionRow.downloadSpeed
         }
     }
 

@@ -89,13 +89,13 @@ struct WorkbenchNavigationTests {
         #expect(WorkbenchDestination.overview.shortcut == "1")
         #expect(WorkbenchDestination.proxies.shortcut == "2")
         #expect(WorkbenchDestination.connections.shortcut == "3")
-        #expect(WorkbenchDestination.logs.shortcut == "4")
-        #expect(WorkbenchDestination.rules.shortcut == "5")
-        #expect(WorkbenchDestination.sources.shortcut == "6")
-        #expect(
-            WorkbenchDestination.manageCases.allSatisfy { $0.shortcut == nil }
-        )
-        #expect(WorkbenchDestination.diagnostics.shortcut == nil)
+        #expect(WorkbenchDestination.rules.shortcut == "4")
+        #expect(WorkbenchDestination.sources.shortcut == "5")
+        #expect(WorkbenchDestination.logs.shortcut == "6")
+        #expect(WorkbenchDestination.diagnostics.shortcut == "7")
+        #expect(WorkbenchDestination.controllers.shortcut == "8")
+        #expect(WorkbenchDestination.configuration.shortcut == "9")
+        #expect(WorkbenchDestination.actions.shortcut == "0")
     }
 
     @Test func sidebarGroupsReachEveryDestinationExactlyOnce() {

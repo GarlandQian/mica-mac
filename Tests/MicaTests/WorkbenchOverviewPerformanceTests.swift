@@ -1367,7 +1367,7 @@ struct WorkbenchOverviewPerformanceTests {
                 == OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 9)
         )
         #expect(OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 0) >= 36)
-        #expect(OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 1_000_000) <= 44)
+        #expect(OverviewTopologyFlowScale.nodeHeight(forConnectionCount: 1_000_000) <= 48)
         #expect(OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 0) == 1.5)
         #expect(OverviewTopologyFlowScale.edgeWidth(forConnectionCount: 1_000_000) == 7)
 
@@ -1640,7 +1640,7 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(fixedCanvas.contains("LazyVStack(alignment: .leading"))
         #expect(fixedCanvas.contains("OverviewTelemetrySection("))
         #expect(fixedCanvas.contains("OverviewTopologySection("))
-        #expect(fixedCanvas.contains("ForEach(visibleOptionalModules)"))
+        #expect(fixedCanvas.contains("ForEach(visibleOptionalModules.filter"))
         #expect(fixedCanvas.contains(".micaObserveScrollPerformance()"))
         let telemetryPosition = try #require(
             fixedCanvas.range(of: "OverviewTelemetrySection(")
@@ -1649,7 +1649,7 @@ struct WorkbenchOverviewPerformanceTests {
             fixedCanvas.range(of: "OverviewTopologySection(")
         )
         let optionalPosition = try #require(
-            fixedCanvas.range(of: "ForEach(visibleOptionalModules)")
+            fixedCanvas.range(of: "ForEach(visibleOptionalModules.filter")
         )
         #expect(topologyPosition.lowerBound < telemetryPosition.lowerBound)
         #expect(telemetryPosition.lowerBound < optionalPosition.lowerBound)
@@ -1666,7 +1666,7 @@ struct WorkbenchOverviewPerformanceTests {
         #expect(editorSource.contains("struct OverviewPreferencesBar"))
         #expect(editorSource.contains("ForEach(OverviewMetricID.allCases)"))
         #expect(editorSource.contains("ForEach(OverviewOptionalModuleID.allCases)"))
-        #expect(editorSource.contains("store.setTimelineWindow"))
+        #expect(telemetrySource.contains("preferencesStore.setTimelineWindow"))
         #expect(editorSource.contains("store.reset()"))
         #expect(!editorSource.contains("UndoManager"))
         #expect(!editorSource.contains("DropDelegate"))
@@ -1690,7 +1690,7 @@ struct WorkbenchOverviewPerformanceTests {
             from: "private struct OverviewTopologyViewport",
             to: "private struct OverviewTopologyIdleSummary")
         #expect(topologyViewport.contains("LazyVStack"))
-        #expect(topologyViewport.contains("ScrollView(request.displayMode == .overview ? [.vertical] : [.horizontal, .vertical])"))
+        #expect(topologyViewport.contains("ScrollView(scrollAxes)"))
         #expect(topologyViewport.contains(".frame(height: viewportHeight)"))
         #expect(topologyViewport.contains(".scrollPosition($scrollPosition)"))
         #expect(topologyViewport.contains("hasHorizontalOverflow ? .visible : .hidden"))
@@ -1727,7 +1727,7 @@ struct WorkbenchOverviewPerformanceTests {
             to: "private struct OverviewTopologyLabelBand"
         )
         #expect(baseBand.contains("opaque: true"))
-        #expect(baseBand.contains("colorMode: .linear"))
+        #expect(baseBand.contains("colorMode: .nonLinear"))
         #expect(baseBand.contains("allowsMotion ? MicaTheme.Motion.stateChange : nil"))
         #expect(baseBand.contains("value: snapshot.activeSelection"))
         let topologyDrawing = try sourceSuffix(

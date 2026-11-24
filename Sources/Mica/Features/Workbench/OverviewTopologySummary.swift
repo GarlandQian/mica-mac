@@ -43,6 +43,14 @@ struct OverviewTopologySummary: Sendable {
         labels: Labels,
         maximumItems: Int = maximumItemsPerColumn
     ) async throws -> Self {
+        guard !topology.paths.isEmpty else {
+            return Self(
+                diagram: .empty,
+                itemsByID: [:],
+                mergedNameCount: 0,
+                mergedConnectionCount: 0
+            )
+        }
         let columns: [ConnectionTopology.Column.ID] = [.source, .policyHop(0), .finalOutbound]
         let limit = max(3, min(maximumItems, maximumItemsPerColumn))
         var counts = Array(repeating: [Value: Int](), count: columns.count)

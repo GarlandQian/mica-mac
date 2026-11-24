@@ -115,9 +115,9 @@ struct WorkbenchSourceFocusRail: View {
     private var updatedReadout: some View {
         WorkbenchDecisionReadout(
             titleKey: "traffic.updated_at",
-            value: projection.updatedAt,
+            value: projection.displayUpdatedAt,
             systemImage: "clock.arrow.circlepath",
-            tint: .secondary,
+            tint: MicaTheme.textSecondary,
             monospaced: true
         )
     }
@@ -125,10 +125,10 @@ struct WorkbenchSourceFocusRail: View {
     private var healthReadout: some View {
         WorkbenchDecisionReadout(
             titleKey: "traffic.provider_health_check",
-            value: projection.health ?? projection.healthAvailability,
+            value: projection.healthSummary ?? projection.healthAvailability,
             systemImage: "waveform.path.ecg",
             tint: MicaTheme.textSecondary,
-            monospaced: projection.health != nil
+            monospaced: projection.healthSummary != nil
         )
     }
 
@@ -174,6 +174,7 @@ struct WorkbenchProviderUpdateAllProgressView: View {
     @Environment(\.micaAppLanguage) private var language
 
     let progress: ProviderUpdateAllProgress
+    var onDismiss: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
@@ -182,10 +183,15 @@ struct WorkbenchProviderUpdateAllProgressView: View {
                     currentStatus
                     Spacer(minLength: MicaTheme.Spacing.space3)
                     counters
+                    dismissButton
                 }
 
                 VStack(alignment: .leading, spacing: MicaTheme.Spacing.space2) {
-                    currentStatus
+                    HStack(spacing: MicaTheme.Spacing.space2) {
+                        currentStatus
+                        Spacer(minLength: MicaTheme.Spacing.space2)
+                        dismissButton
+                    }
                     counters
                 }
             }
@@ -290,6 +296,18 @@ struct WorkbenchProviderUpdateAllProgressView: View {
         )
     }
 
+    @ViewBuilder
+    private var dismissButton: some View {
+        if !progress.isRunning, let onDismiss {
+            WorkbenchIconCommand(
+                titleKey: "action.dismiss",
+                systemImage: "xmark",
+                isEnabled: true,
+                action: onDismiss
+            )
+        }
+    }
+
     private var counters: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: MicaTheme.Spacing.space3) {
@@ -390,22 +408,60 @@ struct WorkbenchSourceInspector: View {
 
                 WorkbenchDataInspectorSection("traffic.source_section_status") {
                     WorkbenchDataInspectorValueList(
-                        values: WorkbenchDataInspectorProjection.sourceStatus(row)
+                        values: WorkbenchDataInspectorProjection.sourceStatusSummary(row, language: language)
                     )
                     if let updateFailure {
-                        WorkbenchDataInspectorField(
-                            titleKey: "traffic.update_status",
-                            value: updateFailure
-                        )
+                        failureBanner(titleKey: "traffic.update_status", message: updateFailure)
                     }
                     if let healthFailure {
-                        WorkbenchDataInspectorField(
-                            titleKey: "traffic.health_check_status",
-                            value: healthFailure
-                        )
+                        failureBanner(titleKey: "traffic.health_check_status", message: healthFailure)
+                    }
+                }
+
+                let healthValues = WorkbenchDataInspectorProjection.sourceHealthCheck(row, language: language)
+                if !healthValues.isEmpty {
+                    WorkbenchDataInspectorSection("traffic.provider_health_check") {
+                        WorkbenchDataInspectorValueList(values: healthValues)
+                    }
+                }
+
+                let subscriptionValues = WorkbenchDataInspectorProjection.sourceSubscription(row, language: language)
+                if !subscriptionValues.isEmpty {
+                    WorkbenchDataInspectorSection("traffic.provider_subscription_info") {
+                        WorkbenchDataInspectorValueList(values: subscriptionValues)
                     }
                 }
             }
+            .id(row.id)
         }
+    }
+
+    private func failureBanner(titleKey: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
+            Label {
+                Text(MicaStrings.localizedKey(titleKey, language: language))
+                    .micaThemeFont(.caption, weight: .semibold)
+                    .foregroundStyle(MicaTheme.statusError)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(MicaTheme.statusError)
+            }
+
+            Text(verbatim: message)
+                .micaThemeFont(.caption)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(MicaTheme.Spacing.space2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MicaTheme.Shape.rowRadius, style: .continuous)
+                .fill(MicaTheme.statusError.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MicaTheme.Shape.rowRadius, style: .continuous)
+                .strokeBorder(MicaTheme.statusError.opacity(0.24), lineWidth: MicaTheme.Shape.hairline)
+        )
     }
 }

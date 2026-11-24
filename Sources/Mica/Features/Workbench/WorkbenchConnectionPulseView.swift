@@ -6,6 +6,7 @@ struct WorkbenchConnectionPulseStrip: View {
     @Environment(\.micaAppLanguage) private var language
 
     let projection: WorkbenchConnectionPulseProjection
+    var onSelectOwner: ((String) -> Void)? = nil
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -32,11 +33,10 @@ struct WorkbenchConnectionPulseStrip: View {
             WorkbenchConnectionOwnerDistribution(
                 owners: projection.owners,
                 remainingCount: projection.remainingOwnerCount,
-                totalCount: projection.visibleCount
+                totalCount: projection.visibleCount,
+                onSelectOwner: onSelectOwner
             )
-            // Task 08-23 R6: cap the distribution bar so it cannot stretch
-            // across the whole row and starve the metrics.
-            .frame(minWidth: 260, maxWidth: 420)
+            .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -48,7 +48,8 @@ struct WorkbenchConnectionPulseStrip: View {
             WorkbenchConnectionOwnerDistribution(
                 owners: projection.owners,
                 remainingCount: projection.remainingOwnerCount,
-                totalCount: projection.visibleCount
+                totalCount: projection.visibleCount,
+                onSelectOwner: onSelectOwner
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,9 +182,10 @@ struct WorkbenchConnectionPulseStrip: View {
         return accumulated(projection.downloadBytes)
     }
 
-    private func accumulated(_ value: Int64?) -> String {
-        MicaStrings.localized(
-            "traffic.connection_accumulated \(bytes(value))",
+    private func accumulated(_ value: Int64?) -> String? {
+        guard let formatted = WorkbenchDataFormat.bytes(value) else { return nil }
+        return MicaStrings.localized(
+            "traffic.connection_accumulated \(formatted)",
             language: language
         )
     }
@@ -255,6 +257,7 @@ private struct WorkbenchConnectionOwnerDistribution: View {
     let owners: [WorkbenchConnectionPulseOwner]
     let remainingCount: Int
     let totalCount: Int
+    let onSelectOwner: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: MicaTheme.Spacing.space1) {
@@ -315,7 +318,7 @@ private struct WorkbenchConnectionOwnerDistribution: View {
 
                     if remainingCount > 0 {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.secondary.opacity(0.4))
+                            .fill(otherColor)
                             .frame(
                                 width: segmentWidth(
                                     count: remainingCount,
@@ -335,6 +338,7 @@ private struct WorkbenchConnectionOwnerDistribution: View {
         ForEach(owners.enumerated(), id: \.element.id) { index, owner in
             legendItem(
                 label: ownerLabel(owner.identity),
+                filterTerm: ownerFilterTerm(owner.identity),
                 count: owner.count,
                 color: color(at: index)
             )
@@ -346,14 +350,21 @@ private struct WorkbenchConnectionOwnerDistribution: View {
                     "traffic.connection_other_sources",
                     language: language
                 ),
+                filterTerm: nil,
                 count: remainingCount,
-                color: Color.secondary.opacity(0.7)
+                color: otherColor
             )
         }
     }
 
-    private func legendItem(label: String, count: Int, color: Color) -> some View {
-        HStack(spacing: MicaTheme.Spacing.space1) {
+    @ViewBuilder
+    private func legendItem(
+        label: String,
+        filterTerm: String?,
+        count: Int,
+        color: Color
+    ) -> some View {
+        let itemContent = HStack(spacing: MicaTheme.Spacing.space1) {
             Circle()
                 .fill(color)
                 .frame(width: 6, height: 6)
@@ -369,7 +380,28 @@ private struct WorkbenchConnectionOwnerDistribution: View {
                 .foregroundStyle(.secondary)
         }
         .help(label)
-        .accessibilityElement(children: .combine)
+
+        if let filterTerm, let onSelectOwner {
+            Button {
+                onSelectOwner(filterTerm)
+            } label: {
+                itemContent
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+        } else {
+            itemContent
+                .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func ownerFilterTerm(_ identity: WorkbenchConnectionOwnerIdentity) -> String? {
+        switch identity {
+        case .process(let value), .source(let value):
+            value
+        case .inner, .unreported:
+            nil
+        }
     }
 
     private func ownerLabel(_ identity: WorkbenchConnectionOwnerIdentity) -> String {
@@ -391,11 +423,15 @@ private struct WorkbenchConnectionOwnerDistribution: View {
         return availableWidth * CGFloat(count) / CGFloat(totalCount)
     }
 
+    private var otherColor: Color {
+        Color.secondary.opacity(0.45)
+    }
+
     private func color(at index: Int) -> Color {
         switch index {
         case 0: MicaTheme.accent
-        case 1: MicaTheme.textSecondary
-        default: MicaTheme.textTertiary
+        case 1: MicaTheme.Chart.download
+        default: MicaTheme.Chart.upload
         }
     }
 }

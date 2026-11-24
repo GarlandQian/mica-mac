@@ -189,6 +189,7 @@ struct WorkbenchDiagnosticsVerdictHeader: View {
         }
         .micaThemeFont(.caption)
         .lineLimit(1)
+        .truncationMode(.middle)
         .padding(.horizontal, MicaTheme.Spacing.space2)
         .padding(.vertical, 4)
         .background(MicaTheme.canvas.opacity(0.7), in: Capsule())
@@ -247,6 +248,7 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
                 issueList(compact: true)
             }
         }
+        .focusable()
         .onMoveCommand(perform: moveSelection)
     }
 
@@ -259,14 +261,20 @@ struct WorkbenchDiagnosticsIssueWorkspace: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(issues.enumerated()), id: \.element.id) { index, issue in
                 if index > 0 { Divider() }
+                let isSelected = selectedIssueID == issue.id
                 WorkbenchDiagnosticsIssueRow(
                     issue: issue,
-                    isSelected: selectedIssueID == issue.id
+                    isSelected: isSelected,
+                    showsDisclosureChevron: compact
                 ) {
-                    selectedIssueID = issue.id
+                    if compact, isSelected {
+                        selectedIssueID = nil
+                    } else {
+                        selectedIssueID = issue.id
+                    }
                 }
 
-                if compact, selectedIssueID == issue.id {
+                if compact, isSelected {
                     WorkbenchDiagnosticsIssueDetail(
                         issue: issue,
                         isActionEnabled: isActionEnabled,
@@ -301,16 +309,12 @@ private struct WorkbenchDiagnosticsIssueRow: View {
 
     let issue: WorkbenchDiagnosticsIssue
     let isSelected: Bool
+    var showsDisclosureChevron = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: MicaTheme.Spacing.space2) {
-                Rectangle()
-                    .fill(issue.severity.tint)
-                    .frame(width: 3)
-                    .accessibilityHidden(true)
-
                 WorkbenchSymbol(
                     systemName: issue.severity.systemImage,
                     tint: issue.severity.tint,
@@ -335,14 +339,25 @@ private struct WorkbenchDiagnosticsIssueRow: View {
                 }
 
                 Spacer(minLength: MicaTheme.Spacing.space2)
-                Image(systemName: "chevron.forward")
-                    .micaThemeFont(.caption, weight: .semibold)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                Image(
+                    systemName: showsDisclosureChevron && isSelected
+                        ? "chevron.down"
+                        : "chevron.forward"
+                )
+                .micaThemeFont(.caption, weight: .semibold)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             }
             .padding(.vertical, MicaTheme.Spacing.space2)
+            .padding(.leading, MicaTheme.Spacing.space3)
             .padding(.trailing, MicaTheme.Spacing.space2)
             .background(isSelected ? MicaTheme.accent.opacity(0.14) : Color.clear)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(issue.severity.tint)
+                    .frame(width: 3)
+                    .accessibilityHidden(true)
+            }
             .clipShape(.rect(cornerRadius: MicaTheme.Metrics.moduleRadius))
             .contentShape(.rect)
         }
@@ -823,5 +838,6 @@ private struct WorkbenchDiagnosticsAreaCard: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+        .micaStateChangeAnimation(value: isHovered)
     }
 }

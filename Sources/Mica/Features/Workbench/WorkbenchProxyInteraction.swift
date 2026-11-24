@@ -74,7 +74,6 @@ enum ProxyCatalogUpdateClassifier {
 enum ProxyInteractionRegion: Hashable {
     case directory
     case nodes
-    case inspector
 }
 
 struct WorkbenchProxyFilterObstructions: OptionSet, Equatable, Sendable {
@@ -219,18 +218,15 @@ final class ProxyCatalogPresentationCoordinator {
             return
         }
 
-        let remainingMilliseconds = Int64(
-            ceil(max(0, deadline.timeIntervalSince(now) * 1_000))
+        let delayMilliseconds = max(
+            1,
+            Int64(ceil(max(0, deadline.timeIntervalSince(now) * 1_000)))
         )
         deadlineTask = Task { @concurrent [weak self] in
-            if remainingMilliseconds > 0 {
-                do {
-                    try await Task.sleep(
-                        for: .milliseconds(remainingMilliseconds)
-                    )
-                } catch {
-                    return
-                }
+            do {
+                try await Task.sleep(for: .milliseconds(delayMilliseconds))
+            } catch {
+                return
             }
             guard !Task.isCancelled else { return }
             await self?.pendingDeadlineReached()
@@ -262,6 +258,8 @@ final class ProxyCatalogPresentationCoordinator {
 @Observable
 final class ProxyScrollInteractionTracker {
     private(set) var isScrolling = false
+    private(set) var isDirectoryScrolling = false
+    private(set) var isNodesScrolling = false
     @ObservationIgnored private var scrollingRegions: Set<ProxyInteractionRegion> = []
 
     func update(
@@ -296,9 +294,19 @@ final class ProxyScrollInteractionTracker {
             changed = scrollingRegions.remove(region) != nil
         }
         guard changed else { return }
-        let anyRegionIsScrolling = !scrollingRegions.isEmpty
-        if isScrolling != anyRegionIsScrolling {
-            isScrolling = anyRegionIsScrolling
+        switch region {
+        case .directory:
+            if isDirectoryScrolling != nextIsScrolling {
+                isDirectoryScrolling = nextIsScrolling
+            }
+        case .nodes:
+            if isNodesScrolling != nextIsScrolling {
+                isNodesScrolling = nextIsScrolling
+            }
+        }
+        let nextAggregate = !scrollingRegions.isEmpty
+        if isScrolling != nextAggregate {
+            isScrolling = nextAggregate
         }
         MicaPerformanceObservation.recordDebug(
             .scrollPhase,
@@ -329,6 +337,8 @@ final class ProxyScrollInteractionTracker {
         coordinator.reset()
         scrollingRegions.removeAll(keepingCapacity: true)
         if isScrolling { isScrolling = false }
+        if isDirectoryScrolling { isDirectoryScrolling = false }
+        if isNodesScrolling { isNodesScrolling = false }
     }
 }
 

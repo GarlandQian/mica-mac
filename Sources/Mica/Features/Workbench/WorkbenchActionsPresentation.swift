@@ -153,6 +153,8 @@ struct WorkbenchActionCommand: Identifiable, Equatable, Sendable {
     let isEnabled: Bool
     let requiresConfirmation: Bool
     let confirmationMessageKey: String?
+    var actionButtonKey: String? = nil
+    var evidence: String? = nil
 }
 
 struct WorkbenchActionCommandGroup: Identifiable, Equatable, Sendable {
@@ -312,7 +314,7 @@ enum WorkbenchActionsProjection {
         guard availability.isCommandState else { return [] }
 
         let permitsLiveCommands = input.sessionState.allowsLiveCommands
-        let ordinaryCommandEnabled = permitsLiveCommands && !input.isBusy
+        let ordinaryCommandEnabled = permitsLiveCommands && input.canRefresh && !input.isBusy
         var commands: [WorkbenchActionCommand] = []
 
         if input.capabilities.snapshot {
@@ -327,7 +329,8 @@ enum WorkbenchActionsProjection {
                     risk: .standard,
                     isEnabled: input.canRefresh && !input.isBusy,
                     requiresConfirmation: false,
-                    confirmationMessageKey: nil
+                    confirmationMessageKey: nil,
+                    actionButtonKey: "action.refresh"
                 )
             )
         }
@@ -389,7 +392,11 @@ enum WorkbenchActionsProjection {
                     risk: row.isDestructive ? .destructive : .standard,
                     isEnabled: ordinaryCommandEnabled,
                     requiresConfirmation: row.requiresConfirmation,
-                    confirmationMessageKey: row.confirmationMessageKey
+                    confirmationMessageKey: row.confirmationMessageKey,
+                    actionButtonKey: row.actionButtonKey,
+                    evidence: row.evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? nil
+                        : row.evidence
                 )
             )
         }
@@ -428,7 +435,8 @@ enum WorkbenchActionsProjection {
                 risk: .standard,
                 isEnabled: isEnabled,
                 requiresConfirmation: false,
-                confirmationMessageKey: nil
+                confirmationMessageKey: nil,
+                actionButtonKey: titleKey
             )
         )
     }
@@ -506,9 +514,9 @@ extension UnifiedControllerType {
     var hasWorkbenchRuntimeOperations: Bool {
         switch self {
         case .mihomoCompatible, .openClashMihomoCompatible,
-             .nikkiMihomoCompatible, .cmfaCompatible:
+             .nikkiMihomoCompatible, .cmfaCompatible, .surgeHTTPAPI:
             true
-        case .surgeHTTPAPI, .singBoxCompatible, .stashCompatible,
+        case .singBoxCompatible, .stashCompatible,
              .stashCmfaCompatible, .smartProbe, .unknown, .unsupported:
             false
         }

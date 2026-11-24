@@ -194,10 +194,10 @@ struct SessionStreamStateTests {
         #expect(LogSessionLevel.error.surgeUpstreamValue == "error")
     }
 
-    @Test func traceLogFilterMatchesOnlyReportedTraceEntries() {
+    @Test func traceLogFilterMatchesThresholdEntries() {
         #expect(LogSessionLevel.trace.matches("trace"))
         #expect(LogSessionLevel.trace.matches(" TRACE "))
-        #expect(!LogSessionLevel.trace.matches("debug"))
+        #expect(LogSessionLevel.trace.matches("debug"))
         #expect(!LogSessionLevel.debug.matches("trace"))
     }
 

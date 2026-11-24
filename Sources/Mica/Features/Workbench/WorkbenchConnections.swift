@@ -66,7 +66,7 @@ extension WorkbenchDataInspectorProjection {
             values.append(
                 value(
                     "connection.closed-at",
-                    "traffic.log_received_time",
+                    "traffic.closed_time",
                     WorkbenchDataFormat.receivedDateTime(closedAt, language: language),
                     monospaced: true
                 )
@@ -137,6 +137,7 @@ struct WorkbenchConnectionRow: Identifiable, Equatable {
     let ruleRouteText: String
     let stackedDetailText: String
     let timestampText: String
+    let formattedTimestampText: String
     let searchText: String
     let metadataAdditionalFields: [WorkbenchConnectionAdditionalField]
     let connectionAdditionalFields: [WorkbenchConnectionAdditionalField]
@@ -153,6 +154,32 @@ struct WorkbenchConnectionRow: Identifiable, Equatable {
 
     var upload: Int { connection.upload ?? -1 }
     var download: Int { connection.download ?? -1 }
+    var uploadSpeed: Int { connection.uploadSpeed ?? -1 }
+    var downloadSpeed: Int { connection.downloadSpeed ?? -1 }
+    var timestampSortKey: String {
+        if let closedAt {
+            return String(format: "%020.3f", closedAt.timeIntervalSince1970)
+        }
+        if let startedAt {
+            switch WorkbenchDataFormat.parseProviderTimestamp(startedAt) {
+            case .date(let date):
+                return String(format: "%020.3f", date.timeIntervalSince1970)
+            case .verbatim(let raw):
+                return raw
+            }
+        }
+        return ""
+    }
+
+    func matchesStructuralIdentity(of other: Self) -> Bool {
+        identityFamily == other.identityFamily
+            && sourceIndex == other.sourceIndex
+            && host == other.host
+            && destination == other.destination
+            && process == other.process
+            && rule == other.rule
+            && payload == other.payload
+    }
 }
 
 enum WorkbenchConnectionProjection {
@@ -249,17 +276,29 @@ enum WorkbenchConnectionProjection {
             let connectionAdditionalFields = WorkbenchConnectionAdditionalField.fields(
                 in: connection.additionalFields
             )
-            let searchText = [
-                connection.id, host, destination, process, network, route, rule,
-                payload, startedAt ?? "", item.closedAt?.ISO8601Format() ?? "",
+            let searchParts = [
+                connection.id,
+                host == "-" ? "" : host,
+                destination == "-" ? "" : destination,
+                process == "-" ? "" : process,
+                network == "-" ? "" : network,
+                route == "-" ? "" : route,
+                rule == "-" ? "" : rule,
+                payload == "-" ? "" : payload,
+                startedAt ?? "",
+                item.closedAt?.ISO8601Format() ?? "",
                 metadata?.processPath ?? "",
+                metadata?.sniffHost ?? "",
+                metadata?.dnsMode ?? "",
+                metadata?.connectionLogs?.joined(separator: "\n") ?? "",
                 metadata?.sourceIP ?? "", metadata?.sourcePort ?? "",
                 metadata?.inboundName ?? "", metadata?.inboundIP ?? "",
                 metadata?.inboundPort ?? "", metadata?.remoteDestination ?? "",
                 metadata?.specialProxy ?? "", metadata?.specialRules ?? "",
                 WorkbenchDataFormat.chain(connection.providerChains) ?? "",
                 metadataFields, connectionFields,
-            ].joined(separator: "\n")
+            ]
+            let searchText = searchParts.filter { !$0.isEmpty }.joined(separator: "\n")
             let identity = identities.make(
                 reportedID: connection.id,
                 fallbackComponents: [
@@ -272,6 +311,9 @@ enum WorkbenchConnectionProjection {
             let timestampText = item.closedAt.map {
                 WorkbenchDataFormat.receivedDateTime($0, language: language)
             } ?? startedAt ?? unavailableText
+            let formattedTimestampText = item.closedAt.map {
+                WorkbenchDataFormat.receivedDateTime($0, language: language)
+            } ?? WorkbenchDataFormat.providerUpdatedAt(startedAt, language: language) ?? unavailableText
 
             return WorkbenchConnectionRow(
                 id: identity.id,
@@ -293,6 +335,7 @@ enum WorkbenchConnectionProjection {
                 ruleRouteText: "\(rule) · \(route)",
                 stackedDetailText: "\(destination) · \(rule) · \(route)",
                 timestampText: timestampText,
+                formattedTimestampText: formattedTimestampText,
                 searchText: searchText,
                 metadataAdditionalFields: metadataAdditionalFields,
                 connectionAdditionalFields: connectionAdditionalFields,
@@ -304,8 +347,8 @@ enum WorkbenchConnectionProjection {
                 uploadRateDisplayText: reportedUploadRate,
                 downloadDisplayText: reportedDownload,
                 downloadRateDisplayText: reportedDownloadRate,
-                uploadSummaryText: "↑ \(reportedUpload)",
-                downloadSummaryText: "↓ \(reportedDownload)"
+                uploadSummaryText: uploadText.map { "↑ \($0)" } ?? "↑ —",
+                downloadSummaryText: downloadText.map { "↓ \($0)" } ?? "↓ —"
             )
         }
     }
@@ -354,6 +397,12 @@ enum WorkbenchConnectionProjection {
                 language: formatter.language
             )
         } ?? row.startedAt ?? unavailableText
+        let formattedTimestampText = row.closedAt.map {
+            WorkbenchDataFormat.receivedDateTime(
+                $0,
+                language: formatter.language
+            )
+        } ?? WorkbenchDataFormat.providerUpdatedAt(row.startedAt, language: formatter.language) ?? unavailableText
 
         return WorkbenchConnectionRow(
             id: row.id,
@@ -375,6 +424,7 @@ enum WorkbenchConnectionProjection {
             ruleRouteText: row.ruleRouteText,
             stackedDetailText: row.stackedDetailText,
             timestampText: timestampText,
+            formattedTimestampText: formattedTimestampText,
             searchText: row.searchText,
             metadataAdditionalFields: row.metadataAdditionalFields,
             connectionAdditionalFields: row.connectionAdditionalFields,
@@ -386,8 +436,8 @@ enum WorkbenchConnectionProjection {
             uploadRateDisplayText: uploadRateText ?? unavailableText,
             downloadDisplayText: reportedDownload,
             downloadRateDisplayText: downloadRateText ?? unavailableText,
-            uploadSummaryText: "↑ \(reportedUpload)",
-            downloadSummaryText: "↓ \(reportedDownload)"
+            uploadSummaryText: uploadText.map { "↑ \($0)" } ?? "↑ —",
+            downloadSummaryText: downloadText.map { "↓ \($0)" } ?? "↓ —"
         )
     }
 
@@ -397,7 +447,7 @@ enum WorkbenchConnectionProjection {
     ) -> String {
         let timestampTitleKey = row.closedAt == nil
             ? "traffic.start_time"
-            : "traffic.log_received_time"
+            : "traffic.closed_time"
         let uploadTitle = localization.localizedKey("dashboard.col_upload")
         let downloadTitle = localization.localizedKey("dashboard.col_download")
         return [
@@ -519,8 +569,8 @@ struct WorkbenchConnectionDecisionPathProjection: Equatable {
             metadata?.inboundName?.dataNonEmpty,
             inboundAddress,
         ]) ?? ""
-        rule = row.connection.rule?.dataNonEmpty ?? row.rule
-        payload = row.connection.rulePayload?.dataNonEmpty ?? row.payload
+        rule = row.connection.rule?.dataNonEmpty ?? ""
+        payload = row.connection.rulePayload?.dataNonEmpty ?? ""
         let destinationAddress = WorkbenchDataFormat.address(
             metadata?.destinationIP,
             port: metadata?.destinationPort
@@ -528,26 +578,26 @@ struct WorkbenchConnectionDecisionPathProjection: Equatable {
         destination = WorkbenchDataFormat.joined([
             metadata?.host?.dataNonEmpty ?? metadata?.sniffHost?.dataNonEmpty,
             destinationAddress,
-        ]) ?? row.destination
+        ]) ?? (row.destination == "-" ? "" : row.destination)
 
         var nextSegments: [WorkbenchConnectionDecisionPathSegment] = []
-        for (index, value) in (row.connection.providerChains ?? []).enumerated() {
-            guard value.dataNonEmpty != nil else { continue }
+        for (index, value) in (row.connection.providerChains ?? []).reversed().enumerated() {
+            guard let clean = value.dataNonEmpty else { continue }
             nextSegments.append(
                 WorkbenchConnectionDecisionPathSegment(
-                    id: "provider-\(index)-\(value)",
+                    id: "provider-\(index)-\(clean)",
                     kind: .provider,
-                    value: value
+                    value: clean
                 )
             )
         }
-        for (index, value) in (row.connection.chains ?? []).enumerated() {
-            guard value.dataNonEmpty != nil else { continue }
+        for (index, value) in (row.connection.chains ?? []).reversed().enumerated() {
+            guard let clean = value.dataNonEmpty else { continue }
             nextSegments.append(
                 WorkbenchConnectionDecisionPathSegment(
-                    id: "policy-\(index)-\(value)",
+                    id: "policy-\(index)-\(clean)",
                     kind: .policy,
-                    value: value
+                    value: clean
                 )
             )
         }
@@ -601,11 +651,11 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
                 payload: rule.payload
             )
             ruleIdentities.append(target)
-            guard rule.type.dataNonEmpty != nil,
-                  rule.payload.dataNonEmpty != nil else {
+            guard rule.type.dataNonEmpty != nil else {
                 continue
             }
-            let key = RuleKey(type: rule.type, payload: rule.payload)
+            let normalizedPayload = rule.payload.dataNonEmpty ?? ""
+            let key = RuleKey(type: rule.type, payload: normalizedPayload)
             if uniqueRules[key] != nil {
                 uniqueRules.removeValue(forKey: key)
                 ambiguousRuleKeys.insert(key)
@@ -642,10 +692,10 @@ struct WorkbenchConnectionNavigationDirectory: Equatable {
         type: String,
         payload: String
     ) -> WorkbenchConnectionRuleNavigationTarget? {
-        guard type.dataNonEmpty != nil, payload.dataNonEmpty != nil else {
+        guard type.dataNonEmpty != nil else {
             return nil
         }
-        return uniqueRules[RuleKey(type: type, payload: payload)]
+        return uniqueRules[RuleKey(type: type, payload: payload.dataNonEmpty ?? "")]
     }
 
     func policyTarget(named target: String) -> ProxyGroupOccurrence? {

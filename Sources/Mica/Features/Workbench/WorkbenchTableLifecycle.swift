@@ -13,8 +13,10 @@ final class WorkbenchNativeTableLifecycle {
     private var inspectionScheduled = false
     private var reportedTableID: ObjectIdentifier?
     private var onReady: (ObjectIdentifier) -> Void = { _ in }
+    private var onDetach: (ObjectIdentifier) -> Void = { _ in }
     private var onInteraction: (WorkbenchDataScrollTransition) -> Void = { _ in }
     private var pendingRowIndex: (() -> Int?)?
+    private var pendingAnchor: UnitPoint = .top
     private var lastScrollGeometry: CGRect?
     private var scrollCorrections = 0
     private var liveScrollObservations: [NSObjectProtocol] = []
@@ -23,13 +25,25 @@ final class WorkbenchNativeTableLifecycle {
     private var wheelIdleGeneration: UInt64 = 0
     private var isCorrectingScroll = false
 
+    isolated deinit {
+        if let frameObservation {
+            NotificationCenter.default.removeObserver(frameObservation)
+        }
+        for observer in liveScrollObservations {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        wheelIdleTask?.cancel()
+    }
+
     func attach(
         _ marker: NSView,
         edge: Edge,
         onReady: @escaping (ObjectIdentifier) -> Void,
+        onDetach: @escaping (ObjectIdentifier) -> Void = { _ in },
         onInteraction: @escaping (WorkbenchDataScrollTransition) -> Void
     ) {
         self.onReady = onReady
+        self.onDetach = onDetach
         self.onInteraction = onInteraction
         switch edge {
         case .before: before = marker
@@ -54,21 +68,27 @@ final class WorkbenchNativeTableLifecycle {
         guard before === marker || after === marker else { return }
         if before === marker { before = nil }
         if after === marker { after = nil }
+        let detachedTableID = reportedTableID
         stopObservingFrame()
         cancelScroll()
         removeInteractionObservers()
         table = nil
         reportedTableID = nil
+        if let detachedTableID {
+            onDetach(detachedTableID)
+        }
         if before == nil, after == nil {
             onReady = { _ in }
+            onDetach = { _ in }
             onInteraction = { _ in }
         }
     }
 
-    func scrollToRow(resolving rowIndex: @escaping () -> Int?) {
+    func scrollToRow(anchor: UnitPoint = .top, resolving rowIndex: @escaping () -> Int?) {
         guard let table, table.window != nil else { return }
         finishInteraction()
         pendingRowIndex = rowIndex
+        pendingAnchor = anchor
         lastScrollGeometry = nil
         scrollCorrections = 0
         observeFrame(of: table)
@@ -89,11 +109,33 @@ final class WorkbenchNativeTableLifecycle {
 
     func visibleRowIndex(preferringLast: Bool) -> Int? {
         guard let table, table.numberOfRows > 0 else { return nil }
-        let rows = table.rows(in: table.visibleRect)
+        let adjustedRect = contentVisibleRect(for: table)
+        let rows = table.rows(in: adjustedRect)
         guard rows.location != NSNotFound, rows.length > 0 else { return nil }
         return preferringLast
             ? min(NSMaxRange(rows) - 1, table.numberOfRows - 1)
             : rows.location
+    }
+
+    var isScrolledNearBottom: Bool {
+        guard let table, table.numberOfRows > 0, table.isFlipped else { return false }
+        let visible = table.visibleRect
+        guard visible.height > 0 else { return false }
+        return visible.maxY >= table.bounds.height - 28
+    }
+
+    private func contentVisibleRect(for table: NSTableView) -> CGRect {
+        let visible = table.visibleRect
+        let topInset = table.enclosingScrollView?.contentView.contentInsets.top ?? 0
+        guard table.isFlipped, topInset > 0, visible.height > topInset else {
+            return visible
+        }
+        return CGRect(
+            x: visible.minX,
+            y: visible.minY + topInset,
+            width: visible.width,
+            height: visible.height - topInset
+        )
     }
 
     private func correctPendingScroll() {
@@ -102,17 +144,26 @@ final class WorkbenchNativeTableLifecycle {
             cancelScroll()
             return
         }
-        guard index < table.numberOfRows else { return }
+        guard index < table.numberOfRows else {
+            scrollCorrections += 1
+            if scrollCorrections >= 4 {
+                cancelScroll()
+            }
+            return
+        }
         let target = table.rect(ofRow: index)
-        let visible = table.visibleRect
-        if target.intersection(visible).height >= min(target.height, visible.height),
+        let contentVisible = contentVisibleRect(for: table)
+        let fullyVisible = target.minY >= contentVisible.minY - 0.5
+            && target.maxY <= contentVisible.maxY + 0.5
+        if fullyVisible,
            table.rowView(atRow: index, makeIfNecessary: false) != nil {
             cancelScroll()
             return
         }
-        // Automatic row heights replace estimates as the destination is laid
-        // out. Correct only when that real geometry changes, never on a timer.
-        guard target != lastScrollGeometry else { return }
+        if target == lastScrollGeometry {
+            cancelScroll()
+            return
+        }
         guard scrollCorrections < 8 else {
             cancelScroll()
             return
@@ -120,9 +171,35 @@ final class WorkbenchNativeTableLifecycle {
         lastScrollGeometry = target
         scrollCorrections += 1
         isCorrectingScroll = true
-        table.scrollRowToVisible(index)
+        scroll(table: table, toRowRect: target, rowIndex: index, anchor: pendingAnchor)
         isCorrectingScroll = false
         scheduleInspection()
+    }
+
+    private func scroll(
+        table: NSTableView,
+        toRowRect target: CGRect,
+        rowIndex: Int,
+        anchor: UnitPoint
+    ) {
+        guard let scrollView = table.enclosingScrollView, table.isFlipped else {
+            table.scrollRowToVisible(rowIndex)
+            return
+        }
+        let topInset = scrollView.contentView.contentInsets.top
+        let visible = table.visibleRect
+        let usableHeight = max(0, visible.height - topInset)
+        let maxOriginY = max(-topInset, table.bounds.height - visible.height)
+        let rawY: CGFloat
+        if anchor.y <= 0.25 {
+            rawY = target.minY - topInset
+        } else if anchor.y >= 0.75 {
+            rawY = target.maxY - visible.height
+        } else {
+            rawY = target.midY - topInset - usableHeight / 2
+        }
+        let clampedY = min(max(-topInset, rawY), maxOriginY)
+        table.scroll(NSPoint(x: visible.minX, y: clampedY))
     }
 
     private func inspect() {
@@ -140,7 +217,7 @@ final class WorkbenchNativeTableLifecycle {
             correctPendingScroll()
             return
         }
-        let visibleRows = target.rows(in: target.visibleRect)
+        let visibleRows = target.rows(in: contentVisibleRect(for: target))
         if target.numberOfRows > 0,
            target.visibleRect.height > 0,
            visibleRows.length > 0, visibleRows.location != NSNotFound,
@@ -164,7 +241,9 @@ final class WorkbenchNativeTableLifecycle {
             object: target,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.scheduleInspection() }
+            MainActor.assumeIsolated {
+                self?.scheduleInspection()
+            }
         }
     }
 
@@ -296,6 +375,7 @@ struct WorkbenchTableLifecycleMarker: NSViewRepresentable {
     let lifecycle: WorkbenchNativeTableLifecycle
     let edge: WorkbenchNativeTableLifecycle.Edge
     let onReady: (ObjectIdentifier) -> Void
+    var onDetach: (ObjectIdentifier) -> Void = { _ in }
     let onInteraction: (WorkbenchDataScrollTransition) -> Void
 
     func makeNSView(context: Context) -> WorkbenchTableLifecycleMarkerView {
@@ -306,7 +386,13 @@ struct WorkbenchTableLifecycleMarker: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: WorkbenchTableLifecycleMarkerView, context: Context) {
-        lifecycle.attach(nsView, edge: edge, onReady: onReady, onInteraction: onInteraction)
+        lifecycle.attach(
+            nsView,
+            edge: edge,
+            onReady: onReady,
+            onDetach: onDetach,
+            onInteraction: onInteraction
+        )
     }
 
     static func dismantleNSView(_ nsView: WorkbenchTableLifecycleMarkerView, coordinator: ()) {

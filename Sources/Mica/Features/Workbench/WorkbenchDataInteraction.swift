@@ -14,6 +14,13 @@ enum WorkbenchDataRowGeometry {
     /// Stable table geometry avoids row churn while leaving enough room for
     /// the two-line data cells used by Connections, Rules, Sources, and Logs.
     static let height: CGFloat = 40
+
+    static func height(for fontScale: AppFontScale, lines: Int = 2) -> CGFloat {
+        if lines <= 1 {
+            return max(30, ceil(28 * fontScale.multiplier))
+        }
+        return max(40, ceil(42 * fontScale.multiplier))
+    }
 }
 
 struct WorkbenchDataWidthBudget: Equatable {
@@ -34,6 +41,7 @@ struct WorkbenchDataWidthBudget: Equatable {
 struct WorkbenchDataResponsive<Content: View>: View {
     let budget: WorkbenchDataWidthBudget
     private let content: (WorkbenchDataWidthMode) -> Content
+    @State private var mode: WorkbenchDataWidthMode = .compact
 
     init(
         budget: WorkbenchDataWidthBudget,
@@ -44,15 +52,28 @@ struct WorkbenchDataResponsive<Content: View>: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
+        let widthBudget = budget
 #if DEBUG
-            resolvedContent(for: budget.mode(for: proxy.size.width))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        resolvedContent(for: mode)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onGeometryChange(for: WorkbenchDataWidthMode.self) { proxy in
+                widthBudget.mode(for: proxy.size.width)
+            } action: { _, nextMode in
+                if mode != nextMode {
+                    mode = nextMode
+                }
+            }
 #else
-            content(budget.mode(for: proxy.size.width))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        content(mode)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onGeometryChange(for: WorkbenchDataWidthMode.self) { proxy in
+                widthBudget.mode(for: proxy.size.width)
+            } action: { _, nextMode in
+                if mode != nextMode {
+                    mode = nextMode
+                }
+            }
 #endif
-        }
     }
 
 #if DEBUG
@@ -248,6 +269,7 @@ struct WorkbenchDataTableViewport<Content: View>: View {
     let interaction: WorkbenchDataInteractionCoordinator
     let onInteractionBegan: () -> Void
     let onInteractionEnded: () -> Void
+    let onReachedBottom: () -> Void
     let onAnchorCommit: (String?) -> Void
     private let content: Content
     private let rowIndex: (String) -> Int?
@@ -269,6 +291,7 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         rowID: @escaping (Int) -> String?,
         onInteractionBegan: @escaping () -> Void = {},
         onInteractionEnded: @escaping () -> Void = {},
+        onReachedBottom: @escaping () -> Void = {},
         onAnchorCommit: @escaping (String?) -> Void = { _ in },
         @ViewBuilder content: () -> Content
     ) {
@@ -281,6 +304,7 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         self.rowID = rowID
         self.onInteractionBegan = onInteractionBegan
         self.onInteractionEnded = onInteractionEnded
+        self.onReachedBottom = onReachedBottom
         self.onAnchorCommit = onAnchorCommit
         self.content = content()
     }
@@ -288,16 +312,24 @@ struct WorkbenchDataTableViewport<Content: View>: View {
     var body: some View {
         content
                 .background {
-                    WorkbenchTableLifecycleMarker(lifecycle: tableLifecycle, edge: .before, onReady: {
-                        readyTableID = $0
-                    }, onInteraction: handleNativeScroll)
+                    WorkbenchTableLifecycleMarker(
+                        lifecycle: tableLifecycle,
+                        edge: .before,
+                        onReady: { readyTableID = $0 },
+                        onDetach: { if readyTableID == $0 { readyTableID = nil } },
+                        onInteraction: handleNativeScroll
+                    )
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
                 .overlay {
-                    WorkbenchTableLifecycleMarker(lifecycle: tableLifecycle, edge: .after, onReady: {
-                        readyTableID = $0
-                    }, onInteraction: handleNativeScroll)
+                    WorkbenchTableLifecycleMarker(
+                        lifecycle: tableLifecycle,
+                        edge: .after,
+                        onReady: { readyTableID = $0 },
+                        onDetach: { if readyTableID == $0 { readyTableID = nil } },
+                        onInteraction: handleNativeScroll
+                    )
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
@@ -311,15 +343,12 @@ struct WorkbenchDataTableViewport<Content: View>: View {
                             isUserScrolling: phaseState.isUserScrolling
                           ) else { return }
                     anchorID = target
-                    tableLifecycle.scrollToRow { rowIndex(target) }
+                    tableLifecycle.scrollToRow(anchor: anchor) { rowIndex(target) }
                 }
                 .onChange(of: generation) {
                     tableLifecycle.cancelScroll()
                     finishInteractionIfNeeded()
                     anchorID = nil
-                }
-                .onScrollPhaseChange { _, phase in
-                    handleScrollPhase(phase)
                 }
                 .onDisappear {
                     tableLifecycle.cancelScroll()
@@ -336,38 +365,23 @@ struct WorkbenchDataTableViewport<Content: View>: View {
         )
     }
 
-    private func handleScrollPhase(_ phase: ScrollPhase) {
-        let isUserScrolling = switch phase {
-        case .tracking, .interacting, .decelerating:
-            true
-        case .idle, .animating:
-            false
-        }
-
-        if let transition = phaseState.update(isUserScrolling: isUserScrolling) {
-            apply(transition)
-        }
-
-        if phase == .idle {
-            commitVisibleAnchor()
-        }
-    }
-
     private func handleNativeScroll(_ transition: WorkbenchDataScrollTransition) {
         if let changed = phaseState.update(isUserScrolling: transition == .began) {
             apply(changed)
         }
         if transition == .ended {
             commitVisibleAnchor()
+            if anchor.y > 0.5, tableLifecycle.isScrolledNearBottom {
+                onReachedBottom()
+            }
         }
     }
 
     private func commitVisibleAnchor() {
-        if let index = tableLifecycle.visibleRowIndex(preferringLast: anchor.y > 0.5),
-           let id = rowID(index) {
-            anchorID = id
-        }
-        onAnchorCommit(anchorID)
+        guard let index = tableLifecycle.visibleRowIndex(preferringLast: anchor.y > 0.5),
+              let id = rowID(index) else { return }
+        anchorID = id
+        onAnchorCommit(id)
     }
 
     private func finishInteractionIfNeeded() {

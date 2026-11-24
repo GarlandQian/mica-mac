@@ -44,7 +44,7 @@ struct ContentView: View {
             }
             .onAppear {
                 registerMainWindowIfNeeded()
-                applyPresentationLanguage()
+                appModel.applyPresentationLanguage(preferences.language)
             }
             .onDisappear {
                 if didRegisterMainWindow {
@@ -76,8 +76,8 @@ struct ContentView: View {
                 guard let router = appModel.selectedRouter else { return }
                 presentEditController(router)
             }
-            .onChange(of: preferences.language) { _, _ in
-                applyPresentationLanguage()
+            .onChange(of: preferences.language) { _, language in
+                appModel.applyPresentationLanguage(language)
             }
     }
 
@@ -102,6 +102,7 @@ struct ContentView: View {
         NavigationSplitView {
             WorkbenchSidebarView(
                 destination: destination,
+                isEditingController: navigation.editor != nil,
                 isControllerSwitchingEnabled: navigation.canSelectController,
                 onSelectController: requestControllerSelection,
                 onAddController: presentAddController
@@ -153,13 +154,6 @@ struct ContentView: View {
         }
 
         updateCombinedCloseGuard()
-    }
-
-    private func applyPresentationLanguage() {
-        Bundle.setMicaLocalizationLanguage(
-            MicaStrings.resolvedLanguageCode(for: preferences.language)
-        )
-        appModel.applyPresentationLanguage(preferences.language)
     }
 
     private func presentAddController() {
