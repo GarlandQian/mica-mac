@@ -50,19 +50,86 @@ jobs:
       - name: Build release binary
         run: swift build --configuration release
 
-      - name: Package unsigned DMG
+      - name: Sign and package DMG
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
+          set -euo pipefail
+
           package_root="$RUNNER_TEMP/mica-release"
           app_bundle="$package_root/Mica.app"
           dmg_root="$package_root/dmg-root"
           bin_path="$(swift build --configuration release --show-bin-path)"
-          dmg_path="$package_root/Mica-${RELEASE_VERSION}-unsigned.dmg"
+          keychain_path="$RUNNER_TEMP/mica-signing.keychain-db"
+          p12_path="$RUNNER_TEMP/developer-id.p12"
 
+          cleanup() {
+            rm -f "$p12_path"
+            if [[ -f "$keychain_path" ]]; then
+              security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          rm -rf "$package_root"
           mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources" "$dmg_root"
           cp "$bin_path/Mica" "$app_bundle/Contents/MacOS/Mica"
           cp Sources/Mica/App/Info.plist "$app_bundle/Contents/Info.plist"
-          cp -R "$bin_path/Mica_Mica.bundle" "$app_bundle/Contents/Resources/Mica_Mica.bundle"
-          cp -R "$app_bundle" "$dmg_root/Mica.app"
+          ditto "$bin_path/Mica_Mica.bundle" "$app_bundle/Contents/Resources/Mica_Mica.bundle"
+
+          has_developer_id=false
+          if [[ -n "$APPLE_DEVELOPER_ID_CERTIFICATE_P12" && -n "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" && -n "$APPLE_SIGNING_IDENTITY" ]]; then
+            has_developer_id=true
+          fi
+
+          has_notarization=false
+          if [[ "$has_developer_id" == "true" && -n "$APPLE_ID" && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" ]]; then
+            has_notarization=true
+          fi
+
+          if [[ "$has_notarization" == "true" ]]; then
+            distribution_mode="notarized"
+            dmg_path="$package_root/Mica-${RELEASE_VERSION}.dmg"
+          elif [[ "$has_developer_id" == "true" ]]; then
+            distribution_mode="signed-unnotarized"
+            dmg_path="$package_root/Mica-${RELEASE_VERSION}-signed.dmg"
+          else
+            distribution_mode="unsigned"
+            dmg_path="$package_root/Mica-${RELEASE_VERSION}-unsigned.dmg"
+          fi
+
+          if [[ "$has_developer_id" == "true" ]]; then
+            keychain_password="$(openssl rand -hex 24)"
+            echo "$APPLE_DEVELOPER_ID_CERTIFICATE_P12" | base64 --decode > "$p12_path"
+
+            security create-keychain -p "$keychain_password" "$keychain_path"
+            security set-keychain-settings -lut 21600 "$keychain_path"
+            security unlock-keychain -p "$keychain_password" "$keychain_path"
+            security import "$p12_path" \
+              -k "$keychain_path" \
+              -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+              -T /usr/bin/codesign \
+              -T /usr/bin/security
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+            security list-keychains -d user -s "$keychain_path" login.keychain-db
+
+            codesign --force --deep --options runtime --timestamp \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --identifier dev.mica.mica \
+              "$app_bundle"
+          else
+            codesign --force --deep --sign - --identifier dev.mica.mica "$app_bundle"
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+
+          ditto "$app_bundle" "$dmg_root/Mica.app"
+          ln -s /Applications "$dmg_root/Applications"
 
           hdiutil create \
             -volname "Mica ${RELEASE_VERSION}" \
@@ -70,9 +137,24 @@ jobs:
             -ov \
             -format UDZO \
             "$dmg_path"
+
+          if [[ "$has_developer_id" == "true" ]]; then
+            codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg_path"
+          fi
+
           hdiutil verify "$dmg_path"
 
+          if [[ "$has_notarization" == "true" ]]; then
+            xcrun notarytool submit "$dmg_path" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --wait
+            xcrun stapler staple "$dmg_path"
+          fi
+
           echo "DMG_PATH=$dmg_path" >> "$GITHUB_ENV"
+          echo "DISTRIBUTION_MODE=$distribution_mode" >> "$GITHUB_ENV"
 
       - name: Prepare release notes
         run: |
@@ -84,7 +166,18 @@ jobs:
             END { if (!found) exit 1 }
           ' CHANGELOG.md > "$notes_path"
 
-          printf '\n### Distribution\n\nThis DMG is unsigned and not notarized. macOS may require the user to approve or bypass Gatekeeper before opening it.\n' >> "$notes_path"
+          case "$DISTRIBUTION_MODE" in
+            notarized)
+              printf '\n### Distribution & Installation\n\nThis DMG is signed with an Apple Developer ID certificate and notarized by Apple. Open the DMG and drag `Mica.app` into `Applications`.\n' >> "$notes_path"
+              ;;
+            signed-unnotarized)
+              printf '\n### Distribution & Installation\n\nThis DMG is signed with an Apple Developer ID certificate, but not notarized by Apple. Drag `Mica.app` into `Applications`, then if macOS Gatekeeper blocks it, allow it in **System Settings → Privacy & Security** or run:\n\n```bash\nxattr -dr com.apple.quarantine /Applications/Mica.app\n```\n' >> "$notes_path"
+              ;;
+            *)
+              printf '\n### Distribution & Installation\n\nThis DMG is ad-hoc signed only (not Developer ID signed or Apple notarized). Browser-downloaded DMGs carry macOS quarantine metadata, which causes Gatekeeper to report the app as damaged until quarantine is cleared. Drag `Mica.app` into `Applications`, then run:\n\n```bash\nxattr -dr com.apple.quarantine /Applications/Mica.app\n```\n' >> "$notes_path"
+              ;;
+          esac
+
           echo "RELEASE_NOTES_PATH=$notes_path" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release
