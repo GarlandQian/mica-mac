@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.34.1 - 2026-11-26
+
+### Packaging & Release
+
+- Fixed release DMG packaging to apply full `.app` bundle code signing (sealing `Info.plist` and `Mica_Mica.bundle`), preserve bundle structure with `ditto`, and include an `/Applications` symlink for drag-and-drop installation.
+- Added optional Apple Developer ID signing and `notarytool` notarization support via repository Secrets, with clear unsigned-build quarantine removal instructions in GitHub Release notes.
+
+### Tests
+
+- Stabilized the wheel-burst table scroll test under CI load.
+
 ## 0.34.0 - 2026-11-24
 
 ### Workbench
