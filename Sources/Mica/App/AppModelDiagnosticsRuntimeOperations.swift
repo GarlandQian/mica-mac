@@ -15,7 +15,10 @@ extension AppModel {
     }
 
     var actionsRuntimeOperationRows: [DiagnosticsRuntimeOperationRow] {
-        guard selectedUnifiedControllerType.hasWorkbenchRuntimeOperations else { return [] }
+        guard selectedUnifiedControllerType != .unknown,
+              selectedUnifiedControllerType != .unsupported else {
+            return []
+        }
         return diagnosticsRuntimeOperationRows
     }
 

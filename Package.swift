@@ -32,7 +32,7 @@ let package = Package(
         .executableTarget(
             name: "Mica",
             dependencies: ["MicaCore"],
-            exclude: ["App/Info.plist"],
+            exclude: ["App/Info.plist", "App/AppIcon.icon"],
             resources: [.process("Resources")],
             linkerSettings: [
                 .unsafeFlags([

@@ -7,7 +7,6 @@ struct MicaApp: App {
     @NSApplicationDelegateAdaptor(MicaAppDelegate.self) private var appDelegate
     private let launchPreferencesApplied: Void = AppLaunchPreferences.applyFromProcessArguments()
     @State private var appModel: AppModel
-    @State private var overviewPreferencesStore: OverviewPreferencesStore
     @StateObject private var preferences: AppPreferencesStore
     @FocusedValue(\.micaFocusedWorkbenchDestination) private var focusedArea
     @FocusedValue(\.micaAddControllerRequestID) private var addControllerRequestID
@@ -20,9 +19,6 @@ struct MicaApp: App {
         Bundle.enableModuleLocalization()
         AppRuntimeSmokeProbe.runIfRequested()
         _appModel = State(wrappedValue: AppModel())
-        _overviewPreferencesStore = State(
-            wrappedValue: OverviewPreferencesStore()
-        )
         _preferences = StateObject(wrappedValue: AppPreferencesStore())
     }
 
@@ -40,7 +36,7 @@ struct MicaApp: App {
 
     var body: some Scene {
         WindowGroup(id: MicaSceneID.workbench) {
-            ContentView(overviewPreferencesStore: overviewPreferencesStore)
+            ContentView()
                 .environment(appModel)
                 .environmentObject(preferences)
                 .micaScenePreferences(
@@ -225,6 +221,12 @@ private extension View {
 private final class MicaAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
+        if !Bundle.main.bundlePath.hasSuffix(".app"),
+           let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+            ?? Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let iconImage = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = iconImage
+        }
 
         DispatchQueue.main.async {
             NSApplication.shared.activate()

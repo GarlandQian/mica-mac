@@ -80,6 +80,18 @@ jobs:
           mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources" "$dmg_root"
           cp "$bin_path/Mica" "$app_bundle/Contents/MacOS/Mica"
           cp Sources/Mica/App/Info.plist "$app_bundle/Contents/Info.plist"
+          xcrun actool Sources/Mica/App/AppIcon.icon \
+            --compile "$app_bundle/Contents/Resources" \
+            --platform macosx \
+            --minimum-deployment-target 27.0 \
+            --app-icon AppIcon \
+            --target-device mac \
+            --output-partial-info-plist "$package_root/icon-partial.plist" \
+            --enable-on-demand-resources NO \
+            --development-region en
+          if [[ ! -f "$app_bundle/Contents/Resources/AppIcon.icns" ]]; then
+            cp Sources/Mica/Resources/AppIcon.icns "$app_bundle/Contents/Resources/AppIcon.icns"
+          fi
           ditto "$bin_path/Mica_Mica.bundle" "$app_bundle/Contents/Resources/Mica_Mica.bundle"
 
           has_developer_id=false

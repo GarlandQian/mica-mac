@@ -211,27 +211,10 @@ struct LiveSessionRuntimeTests {
             await runtime.publication(for: .connections, force: true)
         )
         guard case .connections(let firstConnections) = first.payload,
-              case .mihomo(let firstResponse) = firstConnections.source else {
+              case .mihomo = firstConnections.source else {
             Issue.record("Expected initial Mihomo connection publication")
             return
         }
-
-        var cache = WorkbenchConnectionProjectionCache()
-        cache.project(
-            activeConnections: firstResponse.connections,
-            closedConnections: [],
-            scope: .active,
-            structureRevision: firstConnections.revisions.structure,
-            metricsRevision: firstConnections.revisions.metrics,
-            closedRevision: 0,
-            query: "",
-            sortOrder: [],
-            language: .english,
-            change: .replacement
-        )
-        let initialStaticRows = cache.staticRowProjectionCount
-        let initialMetricCandidates = cache.metricsCandidateProjectionCount
-        let initialMetricRows = cache.metricsRowProjectionCount
 
         _ = await runtime.ingestMihomoConnections(
             ConnectionsResponse(
@@ -255,30 +238,8 @@ struct LiveSessionRuntimeTests {
         #expect(secondConnections.revisions.metrics == firstConnections.revisions.metrics &+ 1)
         #expect(secondConnections.revisions.traffic == firstConnections.revisions.traffic)
         #expect(secondConnections.changedMetricIndices == [frames.changedIndex])
-
-        cache.project(
-            activeConnections: secondResponse.connections,
-            closedConnections: [],
-            scope: .active,
-            structureRevision: secondConnections.revisions.structure,
-            metricsRevision: secondConnections.revisions.metrics,
-            closedRevision: 0,
-            query: "",
-            sortOrder: [],
-            language: .english,
-            change: ConnectionsCatalogChange(
-                structureChanged: false,
-                metricsChanged: true,
-                changedMetricIndices: secondConnections.changedMetricIndices,
-                trafficChanged: false
-            )
-        )
-
-        #expect(cache.staticRowProjectionCount == initialStaticRows)
-        #expect(cache.metricsCandidateProjectionCount == initialMetricCandidates + 1)
-        #expect(cache.metricsRowProjectionCount == initialMetricRows + 1)
         #expect(
-            cache.allRows[frames.changedIndex].connection.upload
+            secondResponse.connections[frames.changedIndex].upload
                 == frames.metricUpdated[frames.changedIndex].upload
         )
     }

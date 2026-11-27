@@ -9,10 +9,6 @@ struct SurgeConnectionRouteProjectionTests {
 
         for connection in projectedConnections(for: request) {
             #expect(connection.chains == ["Node A"])
-            let path = try projectedPath(for: connection)
-            #expect(path.finalOutbound == "Node A")
-            #expect(path.policyHops.isEmpty)
-            #expect(path.routeState == .available)
         }
     }
 
@@ -29,15 +25,7 @@ struct SurgeConnectionRouteProjectionTests {
             #expect(connection.chains?.count == 2)
             #expect(connection.chains?.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "")
             #expect(connection.chains?.last == "Proxy")
-            let topology = ConnectionTopologyBuilder.build(from: [connection])
-            let path = try #require(topology.paths.first)
-            #expect(path.source == "192.0.2.10")
-            #expect(path.policyHops == ["Proxy"])
-            #expect(path.finalOutbound == nil)
-            #expect(path.routeState == .routeUnavailable(.missingChain))
-            #expect(path.edgeIDs.isEmpty)
-            #expect(topology.edges.isEmpty)
-            #expect(topology.drawableConnectionCount == 0)
+            #expect(connection.metadata?.sourceIP == "192.0.2.10")
         }
     }
 
@@ -46,12 +34,6 @@ struct SurgeConnectionRouteProjectionTests {
 
         for connection in projectedConnections(for: request) {
             #expect(connection.chains == ["DIRECT", "DIRECT"])
-            let path = try projectedPath(for: connection)
-            #expect(path.policyHops == ["DIRECT"])
-            #expect(path.finalOutbound == "DIRECT")
-            #expect(path.stages.map(\.columnID) == [.source, .rule, .policyHop(0), .finalOutbound])
-            #expect(Set(path.nodeIDs).count == path.nodeIDs.count)
-            #expect(path.routeState == .available)
         }
     }
 
@@ -75,19 +57,13 @@ struct SurgeConnectionRouteProjectionTests {
         for connection in projectedConnections(for: request) {
             #expect(connection.chains == ["Node A", "Proxy"])
             #expect(connection.metadata?.specialProxy == "Node A")
+            #expect(connection.metadata?.sourceIP == "192.0.2.10")
             #expect(connection.metadata?.destinationIP == "203.0.113.10")
             #expect(connection.upload == 1024)
             #expect(connection.download == 2048)
             #expect(connection.uploadSpeed == 128)
             #expect(connection.downloadSpeed == 256)
             #expect(connection.fields["controllerField"] == .object(["reported": .bool(true)]))
-            let path = try projectedPath(for: connection)
-            #expect(path.policyHops == ["Proxy"])
-            #expect(path.finalOutbound == "Node A")
-            #expect(path.stages.map(\.name) == [
-                "192.0.2.10", "DOMAIN-SUFFIX: example.com", "Proxy", "Node A",
-            ])
-            #expect(path.routeState == .available)
         }
     }
 
@@ -96,15 +72,14 @@ struct SurgeConnectionRouteProjectionTests {
         #"{"id":"empty","policyName":"","originalPolicyName":"","sourceAddress":"192.0.2.10"}"#,
         #"{"id":"empty","policyName":" \n","originalPolicyName":" \t","sourceAddress":"192.0.2.10"}"#,
     ])
-    func absentPolicyFieldsRemainAnUnavailableRoute(json: String) throws {
+    func absentPolicyFieldsRemainEmptyChains(json: String) throws {
         let request = try decode(json)
 
         for connection in projectedConnections(for: request) {
-            let path = try projectedPath(for: connection)
-            #expect(path.finalOutbound == nil)
-            #expect(path.policyHops.isEmpty)
-            #expect(path.routeState == .routeUnavailable(.missingChain))
-            #expect(path.edgeIDs.isEmpty)
+            let nonBlankChains = (connection.chains ?? []).filter {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            #expect(nonBlankChains.isEmpty)
         }
     }
 
@@ -123,13 +98,8 @@ struct SurgeConnectionRouteProjectionTests {
             DashboardSnapshot.surgeRecentRequestConnections(for: requests, language: .english),
         ] {
             #expect(connections.map(\.id) == ["repeated", "repeated#2", "last"])
-            let topology = ConnectionTopologyBuilder.build(from: connections)
-            #expect(topology.connectionCount == 3)
-            #expect(topology.drawableConnectionCount == 2)
-            #expect(topology.routeUnavailableCount == 1)
-            #expect(topology.paths.map(\.finalOutbound) == ["Node B", nil, "Node A"])
-            #expect(topology.paths.map(\.policyHops) == [["Proxy"], ["Proxy"], ["Proxy"]])
-            #expect(topology.paths[1].edgeIDs.isEmpty)
+            #expect(connections.map { $0.chains?.first ?? "" } == ["Node B", "", "Node A"])
+            #expect(connections.map { $0.chains?.last } == ["Proxy", "Proxy", "Proxy"])
         }
     }
 
@@ -146,9 +116,5 @@ struct SurgeConnectionRouteProjectionTests {
             for: [request],
             language: .english
         )
-    }
-
-    private func projectedPath(for connection: ConnectionSnapshot) throws -> ConnectionTopology.PathRecord {
-        try #require(ConnectionTopologyBuilder.build(from: [connection]).paths.first)
     }
 }

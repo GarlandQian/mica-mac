@@ -1,0 +1,89 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "extended-srgb:0.11765,0.16078,0.23137,1.00000",
+      "extended-srgb:0.04314,0.07059,0.12549,1.00000"
+    ]
+  },
+  "fill-specializations" : [
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "extended-srgb:0.09412,0.12549,0.18431,1.00000",
+          "extended-srgb:0.03137,0.04706,0.08627,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "glass" : true,
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "mica-layer-top.svg",
+          "name" : "Top Plate"
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Top Group",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.42
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.72
+      }
+    },
+    {
+      "glass" : true,
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "mica-layer-middle.svg",
+          "name" : "Middle Plate"
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Middle Group",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.45
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.65
+      }
+    },
+    {
+      "glass" : true,
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "mica-layer-bottom.svg",
+          "name" : "Bottom Plate"
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Bottom Group",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.45
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.58
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

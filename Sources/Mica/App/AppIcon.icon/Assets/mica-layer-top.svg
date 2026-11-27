@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="g-top" x1="20%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#F0F9FF"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <rect x="-195" y="-195" width="390" height="390" rx="56" ry="56"
+        transform="translate(512 392) scale(1.08 0.54) rotate(45)"
+        fill="url(#g-top)"/>
+</svg>

@@ -29,10 +29,10 @@ struct MicaMenuBarTests {
         )
 
         let followMode = MicaMenuBarPolicyProjection.groups(catalog, visibility: .followMode)
-        #expect(followMode.map(\.group.id) == ["Proxy", "Media"])
+        #expect(followMode.map(\.id) == ["Proxy", "Media"])
 
         let always = MicaMenuBarPolicyProjection.groups(catalog, visibility: .alwaysShow)
-        #expect(always.map(\.group.id) == ["Proxy", "Media", "GLOBAL"])
+        #expect(always.map(\.id) == ["Proxy", "Media", "GLOBAL"])
     }
 
     @MainActor

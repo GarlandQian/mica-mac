@@ -9,20 +9,15 @@ struct ProxyMetadataNumberFormattingTests {
         let upperBoundary = 9_223_372_036_854_775_808.0
         let lowerBoundary = -9_223_372_036_854_775_808.0
 
-        // The upper boundary is also Double(Int64.max), which has rounded up
-        // past the representable integer range. Its nearest lower Double is
-        // still an exactly representable Int64.
-        #expect(ProxyReportedMetadataField.displayText(for: .number(upperBoundary.nextDown))
+        #expect(MicaFormatters.formatMetadataNumber(upperBoundary.nextDown)
             == "9223372036854774784")
-        #expect(ProxyReportedMetadataField.displayText(for: .number(lowerBoundary))
+        #expect(MicaFormatters.formatMetadataNumber(lowerBoundary)
             == "-9223372036854775808")
-        #expect(ProxyReportedMetadataField.displayText(for: .number(lowerBoundary.nextUp))
+        #expect(MicaFormatters.formatMetadataNumber(lowerBoundary.nextUp)
             == "-9223372036854774784")
 
         for value in [upperBoundary, upperBoundary.nextUp, lowerBoundary.nextDown] {
-            let displayed = try #require(
-                ProxyReportedMetadataField.displayText(for: .number(value))
-            )
+            let displayed = MicaFormatters.formatMetadataNumber(value)
             #expect(Double(displayed) == value)
         }
     }
@@ -35,13 +30,13 @@ struct ProxyMetadataNumberFormattingTests {
             (0.5, "0.5"),
             (-12.75, "-12.75"),
         ] {
-            #expect(ProxyReportedMetadataField.displayText(for: .number(value)) == expected)
+            #expect(MicaFormatters.formatMetadataNumber(value) == expected)
         }
     }
 
     @Test func nonFiniteValuesRemainVisibleWhenProvidedDirectly() {
-        #expect(ProxyReportedMetadataField.displayText(for: .number(.infinity)) == "inf")
-        #expect(ProxyReportedMetadataField.displayText(for: .number(-.infinity)) == "-inf")
-        #expect(ProxyReportedMetadataField.displayText(for: .number(.nan)) == "nan")
+        #expect(MicaFormatters.formatMetadataNumber(.infinity) == "inf")
+        #expect(MicaFormatters.formatMetadataNumber(-.infinity) == "-inf")
+        #expect(MicaFormatters.formatMetadataNumber(.nan) == "nan")
     }
 }
