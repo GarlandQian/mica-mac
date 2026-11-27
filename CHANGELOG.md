@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.35.0 - 2026-11-27
+
+### UI & Performance
+
+- Completely rewrote the native macOS frontend (`Sources/Mica/UI` and `MicaTheme`) into a minimal, Surge-inspired native workspace while preserving `MicaCore` and the background session runtime.
+- Consolidated navigation into 6 focused workspaces (Overview, Proxies, Connections, Rules & Providers, Logs, Controllers & Config) with a unified right-side inspector toggle and native `Table`/`List` virtualization.
+- Eliminated Proxies page scroll, group-switching, and hover lag by removing per-row hover/anchor preference tracking, floating glass previews, drop shadows, and high-frequency cross-domain redraws.
+- Replaced the heavy Overview topology and multi-chart stack with an isolated live metrics strip, a single lightweight `Canvas` traffic graph, and quick policy group switching.
+
+### App Icon & Packaging
+
+- Designed and added a native macOS 27 Liquid Glass Icon Composer bundle (`AppIcon.icon`) with layered translucent mica plates compiled via `xcrun actool` into `Assets.car` and `AppIcon.icns`, supporting Default, Dark, and Clear system icon styles.
+- Updated `Info.plist` (`CFBundleIconName` and `CFBundleIconFile`) and `.github/workflows/release.yml` to compile and package the Liquid Glass icon in release DMGs.
+
 ## 0.34.1 - 2026-11-26
 
 ### Packaging & Release
